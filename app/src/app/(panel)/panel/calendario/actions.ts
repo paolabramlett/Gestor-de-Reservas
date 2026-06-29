@@ -2,6 +2,7 @@
 
 import { getCurrentUsuario } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { calcularTotalReserva } from "@/lib/negocio/tarifas";
 import { revalidatePath } from "next/cache";
 
 export async function reasignarHabitacionAction(
@@ -92,9 +93,22 @@ export async function cambiarFechasAction(
     }
   }
 
+  // Recalculate cost for new dates
+  const { total, desglose } = await calcularTotalReserva(
+    reserva.tipoDeHabitacionId,
+    ingreso,
+    salida,
+    reserva.numPersonas
+  );
+
   await prisma.reserva.update({
     where: { id: reservaId },
-    data: { fechaIngreso: ingreso, fechaSalida: salida },
+    data: {
+      fechaIngreso: ingreso,
+      fechaSalida: salida,
+      totalMxn: total,
+      desglosePorNoche: desglose,
+    },
   });
 
   revalidatePath("/panel/calendario");

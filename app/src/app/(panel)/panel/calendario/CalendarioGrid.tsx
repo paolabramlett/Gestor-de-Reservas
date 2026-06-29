@@ -26,7 +26,7 @@ type ReservaData = {
   tipoDeHabitacionId: string;
   huesped: { nombre: string; email: string; telefono: string | null };
   asignacion: { habitacionId: string } | null;
-  pagoManual: { estadoDePago: string } | null;
+  pagoManual: { estadoDePago: string; montoAnticipo: number | null } | null;
 };
 
 type BloqueoData = {
@@ -660,6 +660,20 @@ export function CalendarioGrid({
           </div>
           <div>{daysBetween(tooltip.reserva.fechaIngreso, tooltip.reserva.fechaSalida)} noches · {tooltip.reserva.numPersonas} pax</div>
           <div className="font-medium mt-1">{formatMXN(tooltip.reserva.totalMxn)}</div>
+          {/* Anticipo y saldo */}
+          {tooltip.reserva.pagoManual?.estadoDePago === "ANTICIPO_PAGADO" &&
+            tooltip.reserva.pagoManual.montoAnticipo != null && (
+              <div className="mt-1 space-y-0.5">
+                <div className="flex justify-between text-gray-300">
+                  <span>Anticipo</span>
+                  <span>{formatMXN(tooltip.reserva.pagoManual.montoAnticipo)}</span>
+                </div>
+                <div className="flex justify-between text-amber-400 font-medium">
+                  <span>Falta</span>
+                  <span>{formatMXN(tooltip.reserva.totalMxn - tooltip.reserva.pagoManual.montoAnticipo)}</span>
+                </div>
+              </div>
+            )}
           {tooltip.reserva.tipoEspecial && (
             <div className="mt-1 text-purple-300 capitalize">
               {tooltip.reserva.tipoEspecial.replace(/_/g, " ").toLowerCase()}

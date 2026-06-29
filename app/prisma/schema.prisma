@@ -208,11 +208,12 @@ model AsignacionDeHabitacion {
 }
 
 model PagoManual {
-  id           String       @id @default(cuid())
-  reservaId    String       @unique
-  estadoDePago EstadoDePago @default(PENDIENTE)
-  notas        String?
-  actualizadoEn DateTime    @updatedAt
+  id            String       @id @default(cuid())
+  reservaId     String       @unique
+  estadoDePago  EstadoDePago @default(PENDIENTE)
+  montoAnticipo Decimal?     @db.Decimal(10, 2)
+  notas         String?
+  actualizadoEn DateTime     @updatedAt
 
   reserva Reserva @relation(fields: [reservaId], references: [id], onDelete: Cascade)
 

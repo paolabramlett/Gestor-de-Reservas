@@ -222,6 +222,25 @@ export default async function ReservaDetallePage({
       {esPagoManual && esEditable && (
         <div className="bg-white rounded-lg border border-gray-200 p-5 mb-6">
           <h2 className="text-sm font-semibold text-gray-700 mb-3">Pago y notas</h2>
+
+          {/* Resumen de saldo */}
+          {reserva.pagoManual?.estadoDePago === "ANTICIPO_PAGADO" && reserva.pagoManual.montoAnticipo && (
+            <div className="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm">
+              <div className="flex justify-between text-gray-700">
+                <span>Total</span>
+                <span className="font-medium">${Number(reserva.totalMxn).toLocaleString("es-MX")} MXN</span>
+              </div>
+              <div className="flex justify-between text-green-700 mt-1">
+                <span>Anticipo pagado</span>
+                <span className="font-medium">${Number(reserva.pagoManual.montoAnticipo).toLocaleString("es-MX")} MXN</span>
+              </div>
+              <div className="flex justify-between text-amber-800 font-semibold mt-1 pt-1 border-t border-amber-200">
+                <span>Falta por pagar</span>
+                <span>${(Number(reserva.totalMxn) - Number(reserva.pagoManual.montoAnticipo)).toLocaleString("es-MX")} MXN</span>
+              </div>
+            </div>
+          )}
+
           <form action={actualizarPagoYNotasAction} className="space-y-4">
             <input type="hidden" name="reservaId" value={reserva.id} />
             <div>
@@ -231,6 +250,22 @@ export default async function ReservaDetallePage({
                 <option value="ANTICIPO_PAGADO" selected={reserva.pagoManual?.estadoDePago === "ANTICIPO_PAGADO"}>Anticipo pagado</option>
                 <option value="PAGADO_COMPLETO" selected={reserva.pagoManual?.estadoDePago === "PAGADO_COMPLETO"}>Pagado completo</option>
               </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">
+                Monto de anticipo (MXN)
+                <span className="ml-1 text-gray-400 font-normal">— solo si aplica</span>
+              </label>
+              <input
+                type="number"
+                name="montoAnticipo"
+                min={0}
+                max={Number(reserva.totalMxn)}
+                step="0.01"
+                defaultValue={reserva.pagoManual?.montoAnticipo ? Number(reserva.pagoManual.montoAnticipo) : ""}
+                placeholder="0.00"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              />
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">Notas internas</label>
@@ -247,9 +282,21 @@ export default async function ReservaDetallePage({
       {esPagoManual && !esEditable && reserva.pagoManual && (
         <div className="bg-white rounded-lg border border-gray-200 p-5 mb-6">
           <h2 className="text-sm font-semibold text-gray-700 mb-3">Pago</h2>
-          <p className="text-sm text-gray-700">{reserva.pagoManual.estadoDePago.replace("_", " ")}</p>
+          <p className="text-sm text-gray-700">{reserva.pagoManual.estadoDePago.replace(/_/g, " ").toLowerCase()}</p>
+          {reserva.pagoManual.estadoDePago === "ANTICIPO_PAGADO" && reserva.pagoManual.montoAnticipo && (
+            <div className="mt-2 space-y-1 text-sm">
+              <div className="flex justify-between text-gray-600">
+                <span>Anticipo pagado</span>
+                <span>${Number(reserva.pagoManual.montoAnticipo).toLocaleString("es-MX")} MXN</span>
+              </div>
+              <div className="flex justify-between font-medium text-gray-800">
+                <span>Falta por pagar</span>
+                <span>${(Number(reserva.totalMxn) - Number(reserva.pagoManual.montoAnticipo)).toLocaleString("es-MX")} MXN</span>
+              </div>
+            </div>
+          )}
           {reserva.pagoManual.notas && (
-            <p className="text-sm text-gray-500 mt-1">{reserva.pagoManual.notas}</p>
+            <p className="text-sm text-gray-500 mt-2">{reserva.pagoManual.notas}</p>
           )}
         </div>
       )}

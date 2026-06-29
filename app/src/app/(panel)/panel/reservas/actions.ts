@@ -66,6 +66,11 @@ export async function actualizarPagoYNotasAction(formData: FormData) {
   const reservaId = formData.get("reservaId") as string;
   const estadoDePago = formData.get("estadoDePago") as EstadoDePago;
   const notas = (formData.get("notas") as string) || undefined;
+  const montoAnticipoRaw = formData.get("montoAnticipo") as string;
+  const montoAnticipo =
+    estadoDePago === EstadoDePago.ANTICIPO_PAGADO && montoAnticipoRaw
+      ? Number(montoAnticipoRaw)
+      : null;
 
   const reserva = await prisma.reserva.findFirst({
     where: { id: reservaId, propiedadId: usuario.propiedadId },
@@ -75,8 +80,8 @@ export async function actualizarPagoYNotasAction(formData: FormData) {
 
   await prisma.pagoManual.upsert({
     where: { reservaId },
-    update: { estadoDePago, notas },
-    create: { reservaId, estadoDePago, notas },
+    update: { estadoDePago, notas, montoAnticipo },
+    create: { reservaId, estadoDePago, notas, montoAnticipo },
   });
 
   redirect(`/panel/reservas/${reservaId}`);

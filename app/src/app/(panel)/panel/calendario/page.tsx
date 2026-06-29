@@ -72,7 +72,12 @@ export default async function CalendarioPage({
       telefono: r.huesped.telefono,
     },
     asignacion: r.asignacion ? { habitacionId: r.asignacion.habitacionId } : null,
-    pagoManual: r.pagoManual ? { estadoDePago: r.pagoManual.estadoDePago as string } : null,
+    pagoManual: r.pagoManual
+      ? {
+          estadoDePago: r.pagoManual.estadoDePago as string,
+          montoAnticipo: r.pagoManual.montoAnticipo ? Number(r.pagoManual.montoAnticipo) : null,
+        }
+      : null,
   }));
 
   const bloqueosData = bloqueos.map((b) => ({
