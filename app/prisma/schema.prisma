@@ -1,0 +1,240 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum ModalidadTarifa {
+  POR_PERSONA
+  POR_HABITACION
+}
+
+enum EstadoReserva {
+  CONFIRMADA
+  EN_CURSO
+  COMPLETADA
+  CANCELADA
+  NO_SHOW
+}
+
+enum OrigenReserva {
+  ONLINE
+  MANUAL
+}
+
+enum EstadoDePago {
+  PENDIENTE
+  ANTICIPO_PAGADO
+  PAGADO_COMPLETO
+}
+
+enum RolUsuario {
+  ADMIN
+  RESERVACIONES
+  FINANZAS
+  SUPER_ADMIN
+}
+
+// ─── Multi-tenant root ───────────────────────────────────────────────────────
+
+model Propiedad {
+  id              String   @id @default(cuid())
+  clerkOrgId      String   @unique
+  slug            String   @unique
+  nombre          String
+  descripcion     String?
+  logoUrl         String?
+  colorPrimario   String?
+  colorSecundario String?
+  telefono        String?
+  email           String?
+  direccion       String?
+  creadoEn        DateTime @default(now())
+  actualizadoEn   DateTime @updatedAt
+
+  tiposDeHabitacion TipoDeHabitacion[]
+  habitaciones      Habitacion[]
+  temporadas        Temporada[]
+  reservas          Reserva[]
+  usuarios          UsuarioPropiedad[]
+
+  @@map("propiedades")
+}
+
+model UsuarioPropiedad {
+  id          String     @id @default(cuid())
+  clerkUserId String
+  propiedadId String
+  rol         RolUsuario
+  creadoEn    DateTime   @default(now())
+
+  propiedad Propiedad @relation(fields: [propiedadId], references: [id], onDelete: Cascade)
+
+  @@unique([clerkUserId, propiedadId])
+  @@map("usuarios_propiedad")
+}
+
+// ─── Habitaciones ────────────────────────────────────────────────────────────
+
+model TipoDeHabitacion {
+  id                  String          @id @default(cuid())
+  propiedadId         String
+  nombre              String
+  descripcion         String?
+  capacidadMin        Int
+  capacidadMax        Int
+  fotos               String[]
+  amenidades          String[]
+  tarifaBasePrice     Decimal         @db.Decimal(10, 2)
+  tarifaBaseModalidad ModalidadTarifa
+  activo              Boolean         @default(true)
+  creadoEn            DateTime        @default(now())
+  actualizadoEn       DateTime        @updatedAt
+
+  propiedad      Propiedad        @relation(fields: [propiedadId], references: [id], onDelete: Cascade)
+  habitaciones   Habitacion[]
+  temporadas     Temporada[]
+  reservas       Reserva[]
+  bloqueosDeTipo BloqueoDetipo[]
+
+  @@map("tipos_de_habitacion")
+}
+
+model Habitacion {
+  id                 String   @id @default(cuid())
+  propiedadId        String
+  tipoDeHabitacionId String
+  numero             String
+  descripcion        String?
+  activa             Boolean  @default(true)
+  creadoEn           DateTime @default(now())
+  actualizadoEn      DateTime @updatedAt
+
+  propiedad        Propiedad        @relation(fields: [propiedadId], references: [id], onDelete: Cascade)
+  tipoDeHabitacion TipoDeHabitacion @relation(fields: [tipoDeHabitacionId], references: [id])
+  asignaciones     AsignacionDeHabitacion[]
+  bloqueos         BloqueoDeHabitacion[]
+
+  @@unique([propiedadId, numero])
+  @@map("habitaciones")
+}
+
+// ─── Tarifas y temporadas ────────────────────────────────────────────────────
+
+model Temporada {
+  id                 String          @id @default(cuid())
+  propiedadId        String
+  tipoDeHabitacionId String
+  nombre             String
+  fechaInicio        DateTime        @db.Date
+  fechaFin           DateTime        @db.Date
+  precio             Decimal         @db.Decimal(10, 2)
+  modalidad          ModalidadTarifa
+  creadoEn           DateTime        @default(now())
+  actualizadoEn      DateTime        @updatedAt
+
+  propiedad        Propiedad        @relation(fields: [propiedadId], references: [id], onDelete: Cascade)
+  tipoDeHabitacion TipoDeHabitacion @relation(fields: [tipoDeHabitacionId], references: [id])
+
+  @@map("temporadas")
+}
+
+// ─── Huéspedes ───────────────────────────────────────────────────────────────
+
+model Huesped {
+  id       String   @id @default(cuid())
+  nombre   String
+  email    String
+  telefono String?
+  creadoEn DateTime @default(now())
+
+  reservas Reserva[]
+
+  @@map("huespedes")
+}
+
+// ─── Reservas ────────────────────────────────────────────────────────────────
+
+model Reserva {
+  id                    String        @id @default(cuid())
+  codigoReserva         String        @unique
+  propiedadId           String
+  tipoDeHabitacionId    String
+  huespedId             String
+  origen                OrigenReserva
+  estado                EstadoReserva @default(CONFIRMADA)
+  fechaIngreso          DateTime      @db.Date
+  fechaSalida           DateTime      @db.Date
+  numPersonas           Int
+  totalMxn              Decimal       @db.Decimal(10, 2)
+  desglosePorNoche      Json
+  stripePaymentIntentId String?       @unique
+  creadoEn              DateTime      @default(now())
+  actualizadoEn         DateTime      @updatedAt
+
+  propiedad        Propiedad        @relation(fields: [propiedadId], references: [id], onDelete: Cascade)
+  tipoDeHabitacion TipoDeHabitacion @relation(fields: [tipoDeHabitacionId], references: [id])
+  huesped          Huesped          @relation(fields: [huespedId], references: [id])
+  asignacion       AsignacionDeHabitacion?
+  pagoManual       PagoManual?
+
+  @@map("reservas")
+}
+
+model AsignacionDeHabitacion {
+  id           String   @id @default(cuid())
+  reservaId    String   @unique
+  habitacionId String
+  asignadoEn   DateTime @default(now())
+
+  reserva    Reserva    @relation(fields: [reservaId], references: [id], onDelete: Cascade)
+  habitacion Habitacion @relation(fields: [habitacionId], references: [id])
+
+  @@map("asignaciones_de_habitacion")
+}
+
+model PagoManual {
+  id           String       @id @default(cuid())
+  reservaId    String       @unique
+  estadoDePago EstadoDePago @default(PENDIENTE)
+  notas        String?
+  actualizadoEn DateTime    @updatedAt
+
+  reserva Reserva @relation(fields: [reservaId], references: [id], onDelete: Cascade)
+
+  @@map("pagos_manuales")
+}
+
+// ─── Bloqueos ────────────────────────────────────────────────────────────────
+
+model BloqueoDeHabitacion {
+  id           String   @id @default(cuid())
+  habitacionId String
+  propiedadId  String
+  fechaInicio  DateTime @db.Date
+  fechaFin     DateTime @db.Date
+  motivo       String?
+  creadoEn     DateTime @default(now())
+
+  habitacion Habitacion @relation(fields: [habitacionId], references: [id], onDelete: Cascade)
+
+  @@map("bloqueos_de_habitacion")
+}
+
+model BloqueoDetipo {
+  id                 String   @id @default(cuid())
+  tipoDeHabitacionId String
+  propiedadId        String
+  fechaInicio        DateTime @db.Date
+  fechaFin           DateTime @db.Date
+  motivo             String?
+  creadoEn           DateTime @default(now())
+
+  tipoDeHabitacion TipoDeHabitacion @relation(fields: [tipoDeHabitacionId], references: [id], onDelete: Cascade)
+
+  @@map("bloqueos_de_tipo")
+}
