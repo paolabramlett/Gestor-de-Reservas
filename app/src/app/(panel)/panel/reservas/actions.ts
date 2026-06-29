@@ -87,6 +87,61 @@ export async function actualizarPagoYNotasAction(formData: FormData) {
   redirect(`/panel/reservas/${reservaId}`);
 }
 
+export async function actualizarDatosReservaAction(formData: FormData) {
+  const usuario = await getCurrentUsuario();
+  if (!usuario) redirect("/sign-in");
+
+  const reservaId = formData.get("reservaId") as string;
+  const fechaIngreso = new Date(formData.get("fechaIngreso") as string);
+  const fechaSalida = new Date(formData.get("fechaSalida") as string);
+  const numPersonas = Number(formData.get("numPersonas"));
+  const nombre = formData.get("nombre") as string;
+  const email = formData.get("email") as string;
+  const telefono = (formData.get("telefono") as string) || null;
+
+  const reserva = await prisma.reserva.findFirst({
+    where: { id: reservaId, propiedadId: usuario.propiedadId },
+    include: { asignacion: true },
+  });
+  if (!reserva) throw new Error("Reserva no encontrada");
+
+  if (fechaIngreso >= fechaSalida) redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("La fecha de salida debe ser posterior al ingreso")}`);
+
+  // Conflict check on the assigned room (excluding this reservation)
+  if (reserva.asignacion) {
+    const conflicto = await prisma.reserva.findFirst({
+      where: {
+        id: { not: reservaId },
+        estado: { notIn: ["CANCELADA", "NO_SHOW"] },
+        asignacion: { habitacionId: reserva.asignacion.habitacionId },
+        fechaIngreso: { lt: fechaSalida },
+        fechaSalida: { gt: fechaIngreso },
+      },
+    });
+    if (conflicto) redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("Las nuevas fechas entran en conflicto con otra reserva en la misma habitación")}`);
+  }
+
+  const { total, desglose } = await calcularTotalReserva(
+    reserva.tipoDeHabitacionId,
+    fechaIngreso,
+    fechaSalida,
+    numPersonas
+  );
+
+  await prisma.$transaction([
+    prisma.reserva.update({
+      where: { id: reservaId },
+      data: { fechaIngreso, fechaSalida, numPersonas, totalMxn: total, desglosePorNoche: desglose },
+    }),
+    prisma.huesped.update({
+      where: { id: reserva.huespedId },
+      data: { nombre, email, telefono },
+    }),
+  ]);
+
+  redirect(`/panel/reservas/${reservaId}`);
+}
+
 export async function actualizarEstadoReservaAction(formData: FormData) {
   const usuario = await getCurrentUsuario();
   if (!usuario) redirect("/sign-in");

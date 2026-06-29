@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import {
   asignarHabitacionAction,
   actualizarPagoYNotasAction,
+  actualizarDatosReservaAction,
 } from "../actions";
 import {
   checkInAction,
@@ -133,59 +134,173 @@ export default async function ReservaDetallePage({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-6 mb-6">
-        {/* Detalles de la reserva */}
-        <div className="bg-white rounded-lg border border-gray-200 p-5">
-          <h2 className="text-sm font-semibold text-gray-700 mb-3">Reserva</h2>
-          <dl className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <dt className="text-gray-500">Tipo</dt>
-              <dd className="text-gray-900">{reserva.tipoDeHabitacion.nombre}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-gray-500">Ingreso</dt>
-              <dd className="text-gray-900">{new Date(reserva.fechaIngreso).toLocaleDateString("es-MX")}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-gray-500">Salida</dt>
-              <dd className="text-gray-900">{new Date(reserva.fechaSalida).toLocaleDateString("es-MX")}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-gray-500">Personas</dt>
-              <dd className="text-gray-900">{reserva.numPersonas}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-gray-500">Total</dt>
-              <dd className="font-semibold text-gray-900">${Number(reserva.totalMxn).toLocaleString("es-MX")} MXN</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-gray-500">Origen</dt>
-              <dd className="text-gray-900">{esOnline ? "Online (Stripe)" : "Manual"}</dd>
-            </div>
-          </dl>
-        </div>
+      {/* Datos editables de la reserva */}
+      {esEditable ? (
+        <form action={actualizarDatosReservaAction} className="bg-white rounded-lg border border-gray-200 p-5 mb-6">
+          <input type="hidden" name="reservaId" value={reserva.id} />
+          <h2 className="text-sm font-semibold text-gray-700 mb-4">Datos de la reserva</h2>
 
-        {/* Huésped */}
-        <div className="bg-white rounded-lg border border-gray-200 p-5">
-          <h2 className="text-sm font-semibold text-gray-700 mb-3">Huésped</h2>
-          <dl className="space-y-2 text-sm">
+          <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm mb-4">
+            {/* Tipo (solo lectura) */}
             <div>
-              <dt className="text-gray-500">Nombre</dt>
-              <dd className="text-gray-900 font-medium">{reserva.huesped.nombre}</dd>
-            </div>
-            <div>
-              <dt className="text-gray-500">Email</dt>
-              <dd className="text-gray-900">{reserva.huesped.email}</dd>
-            </div>
-            {reserva.huesped.telefono && (
-              <div>
-                <dt className="text-gray-500">Teléfono</dt>
-                <dd className="text-gray-900">{reserva.huesped.telefono}</dd>
+              <label className="block text-xs text-gray-500 mb-1">Tipo de habitación</label>
+              <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-700">
+                {reserva.tipoDeHabitacion.nombre}
               </div>
-            )}
-          </dl>
+            </div>
+
+            {/* Origen (solo lectura) */}
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Origen</label>
+              <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-700">
+                {esOnline ? "Online (Stripe)" : "Manual"}
+              </div>
+            </div>
+
+            {/* Fechas */}
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Fecha de ingreso</label>
+              <input
+                type="date"
+                name="fechaIngreso"
+                defaultValue={reserva.fechaIngreso.toISOString().slice(0, 10)}
+                required
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Fecha de salida</label>
+              <input
+                type="date"
+                name="fechaSalida"
+                defaultValue={reserva.fechaSalida.toISOString().slice(0, 10)}
+                required
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              />
+            </div>
+
+            {/* Personas */}
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Número de personas</label>
+              <input
+                type="number"
+                name="numPersonas"
+                defaultValue={reserva.numPersonas}
+                min={reserva.tipoDeHabitacion.capacidadMin}
+                max={reserva.tipoDeHabitacion.capacidadMax}
+                required
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              />
+            </div>
+
+            {/* Total (solo lectura, se recalcula al guardar) */}
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Total actual (MXN)</label>
+              <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg font-semibold text-gray-900">
+                ${Number(reserva.totalMxn).toLocaleString("es-MX")}
+                <span className="ml-1 text-xs font-normal text-gray-400">se recalcula al guardar</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Huésped */}
+          <div className="border-t border-gray-100 pt-4 mb-4">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Huésped</h3>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm">
+              <div className="col-span-2 sm:col-span-1">
+                <label className="block text-xs text-gray-500 mb-1">Nombre completo</label>
+                <input
+                  type="text"
+                  name="nombre"
+                  defaultValue={reserva.huesped.nombre}
+                  required
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Email</label>
+                <input
+                  type="email"
+                  name="email"
+                  defaultValue={reserva.huesped.email}
+                  required
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Teléfono</label>
+                <input
+                  type="tel"
+                  name="telefono"
+                  defaultValue={reserva.huesped.telefono ?? ""}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            className="rounded-lg bg-gray-900 text-white px-5 py-2 text-sm font-medium hover:bg-gray-700"
+          >
+            Guardar cambios
+          </button>
+        </form>
+      ) : (
+        <div className="grid grid-cols-2 gap-6 mb-6">
+          {/* Detalles (solo lectura) */}
+          <div className="bg-white rounded-lg border border-gray-200 p-5">
+            <h2 className="text-sm font-semibold text-gray-700 mb-3">Reserva</h2>
+            <dl className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <dt className="text-gray-500">Tipo</dt>
+                <dd className="text-gray-900">{reserva.tipoDeHabitacion.nombre}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-gray-500">Ingreso</dt>
+                <dd className="text-gray-900">{new Date(reserva.fechaIngreso).toLocaleDateString("es-MX")}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-gray-500">Salida</dt>
+                <dd className="text-gray-900">{new Date(reserva.fechaSalida).toLocaleDateString("es-MX")}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-gray-500">Personas</dt>
+                <dd className="text-gray-900">{reserva.numPersonas}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-gray-500">Total</dt>
+                <dd className="font-semibold text-gray-900">${Number(reserva.totalMxn).toLocaleString("es-MX")} MXN</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-gray-500">Origen</dt>
+                <dd className="text-gray-900">{esOnline ? "Online (Stripe)" : "Manual"}</dd>
+              </div>
+            </dl>
+          </div>
+
+          {/* Huésped (solo lectura) */}
+          <div className="bg-white rounded-lg border border-gray-200 p-5">
+            <h2 className="text-sm font-semibold text-gray-700 mb-3">Huésped</h2>
+            <dl className="space-y-2 text-sm">
+              <div>
+                <dt className="text-gray-500">Nombre</dt>
+                <dd className="text-gray-900 font-medium">{reserva.huesped.nombre}</dd>
+              </div>
+              <div>
+                <dt className="text-gray-500">Email</dt>
+                <dd className="text-gray-900">{reserva.huesped.email}</dd>
+              </div>
+              {reserva.huesped.telefono && (
+                <div>
+                  <dt className="text-gray-500">Teléfono</dt>
+                  <dd className="text-gray-900">{reserva.huesped.telefono}</dd>
+                </div>
+              )}
+            </dl>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Asignación de habitación */}
       <div className="bg-white rounded-lg border border-gray-200 p-5 mb-6">
