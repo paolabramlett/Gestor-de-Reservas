@@ -60,7 +60,7 @@ export default async function TemporadasPage() {
                   </Link>
                   <form action={eliminarTemporadaAction} className="inline">
                     <input type="hidden" name="id" value={t.id} />
-                    <button type="submit" className="text-sm text-red-500 hover:underline" onClick={() => confirm("¿Eliminar esta temporada?")}>
+                    <button type="submit" className="text-sm text-red-500 hover:underline">
                       Eliminar
                     </button>
                   </form>
