@@ -45,6 +45,7 @@ type DragState =
       originalHabitacionId: string;
       tipoDeHabitacionId: string;
       targetHabitacionId: string | null;
+      startX: number;
       startY: number;
     }
   | {
@@ -235,6 +236,7 @@ export function CalendarioGrid({
         originalHabitacionId: reserva.asignacion?.habitacionId ?? "",
         tipoDeHabitacionId: reserva.tipoDeHabitacionId,
         targetHabitacionId: reserva.asignacion?.habitacionId ?? null,
+        startX: e.clientX,
         startY: e.clientY,
       });
     },
@@ -289,10 +291,17 @@ export function CalendarioGrid({
       }
     };
 
-    const handleMouseUp = async () => {
+    const handleMouseUp = async (e: MouseEvent) => {
       if (drag.type === "moving") {
-        const { reservaId, originalHabitacionId, targetHabitacionId, tipoDeHabitacionId } = drag;
+        const { reservaId, originalHabitacionId, targetHabitacionId, tipoDeHabitacionId, startX, startY } = drag;
         setDrag({ type: "idle" });
+
+        // Click (no significant movement) → navigate to reservation
+        const moved = Math.abs(e.clientX - startX) > 5 || Math.abs(e.clientY - startY) > 5;
+        if (!moved) {
+          router.push(`/panel/reservas/${reservaId}`);
+          return;
+        }
 
         if (targetHabitacionId && targetHabitacionId !== originalHabitacionId) {
           const targetRoom = habitaciones.find((h) => h.id === targetHabitacionId);
