@@ -33,6 +33,12 @@ enum EstadoDePago {
   PAGADO_COMPLETO
 }
 
+enum TipoEspecialReserva {
+  CORTESIA
+  PRECIO_ACORDADO
+  PROMOCION
+}
+
 enum RolUsuario {
   ADMIN
   RESERVACIONES
@@ -176,6 +182,7 @@ model Reserva {
   totalMxn              Decimal       @db.Decimal(10, 2)
   desglosePorNoche      Json
   stripePaymentIntentId String?       @unique
+  tipoEspecial          TipoEspecialReserva?
   creadoEn              DateTime      @default(now())
   actualizadoEn         DateTime      @updatedAt
 

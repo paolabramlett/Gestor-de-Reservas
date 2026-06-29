@@ -15,6 +15,7 @@ const ROLES_FINANZAS: RolUsuario[] = [RolUsuario.ADMIN, RolUsuario.FINANZAS, Rol
 
 const NAV = [
   { href: "/panel", label: "Dashboard", roles: null },
+  { href: "/panel/calendario", label: "Calendario", roles: null },
   { href: "/panel/reservas", label: "Reservas", roles: null },
   { href: "/panel/tipos", label: "Tipos de habitación", roles: ROLES_ADMIN },
   { href: "/panel/habitaciones", label: "Habitaciones", roles: ROLES_ADMIN },
