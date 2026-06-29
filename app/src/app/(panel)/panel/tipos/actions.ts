@@ -18,6 +18,7 @@ export async function crearTipoAction(formData: FormData) {
       capacidadMax: Number(formData.get("capacidadMax")),
       tarifaBasePrice: Number(formData.get("tarifaBasePrice")),
       tarifaBaseModalidad: formData.get("tarifaBaseModalidad") as ModalidadTarifa,
+      suplementoPorPersona: Number(formData.get("suplementoPorPersona")) || null,
     },
   });
 
@@ -39,6 +40,7 @@ export async function actualizarTipoAction(formData: FormData) {
       capacidadMax: Number(formData.get("capacidadMax")),
       tarifaBasePrice: Number(formData.get("tarifaBasePrice")),
       tarifaBaseModalidad: formData.get("tarifaBaseModalidad") as ModalidadTarifa,
+      suplementoPorPersona: Number(formData.get("suplementoPorPersona")) || null,
       activo: formData.get("activo") === "true",
     },
   });

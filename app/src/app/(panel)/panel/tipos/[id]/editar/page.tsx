@@ -52,8 +52,15 @@ export default async function EditarTipoPage({ params }: { params: Promise<{ id:
             <select name="tarifaBaseModalidad" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
               <option value="POR_HABITACION" selected={tipo.tarifaBaseModalidad === "POR_HABITACION"}>Por habitación</option>
               <option value="POR_PERSONA" selected={tipo.tarifaBaseModalidad === "POR_PERSONA"}>Por persona</option>
+              <option value="BASE_MAS_SUPLEMENTO" selected={tipo.tarifaBaseModalidad === "BASE_MAS_SUPLEMENTO"}>Base + suplemento por persona</option>
             </select>
           </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Suplemento por persona adicional (MXN)</label>
+          <input type="number" name="suplementoPorPersona" defaultValue={tipo.suplementoPorPersona ? Number(tipo.suplementoPorPersona) : 0} min={0} step="0.01" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+          <p className="text-xs text-gray-400 mt-1">Solo aplica con modalidad "Base + suplemento". Ej: base $1,000 + $200/pax extra → 3 personas = $1,400</p>
         </div>
 
         <div>

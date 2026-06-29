@@ -11,6 +11,7 @@ datasource db {
 enum ModalidadTarifa {
   POR_PERSONA
   POR_HABITACION
+  BASE_MAS_SUPLEMENTO
 }
 
 enum EstadoReserva {
@@ -89,9 +90,10 @@ model TipoDeHabitacion {
   capacidadMax        Int
   fotos               String[]
   amenidades          String[]
-  tarifaBasePrice     Decimal         @db.Decimal(10, 2)
-  tarifaBaseModalidad ModalidadTarifa
-  activo              Boolean         @default(true)
+  tarifaBasePrice        Decimal          @db.Decimal(10, 2)
+  tarifaBaseModalidad    ModalidadTarifa
+  suplementoPorPersona   Decimal?         @db.Decimal(10, 2)
+  activo                 Boolean          @default(true)
   creadoEn            DateTime        @default(now())
   actualizadoEn       DateTime        @updatedAt
 
@@ -132,8 +134,9 @@ model Temporada {
   nombre             String
   fechaInicio        DateTime        @db.Date
   fechaFin           DateTime        @db.Date
-  precio             Decimal         @db.Decimal(10, 2)
-  modalidad          ModalidadTarifa
+  precio               Decimal          @db.Decimal(10, 2)
+  modalidad            ModalidadTarifa
+  suplementoPorPersona Decimal?         @db.Decimal(10, 2)
   creadoEn           DateTime        @default(now())
   actualizadoEn      DateTime        @updatedAt
 

@@ -1,9 +1,10 @@
 import { prisma } from "@/lib/prisma";
 
 export type DesglosePorNoche = {
-  fecha: string; // ISO date YYYY-MM-DD
+  fecha: string;
   precio: number;
-  modalidad: "POR_PERSONA" | "POR_HABITACION";
+  modalidad: "POR_PERSONA" | "POR_HABITACION" | "BASE_MAS_SUPLEMENTO";
+  suplementoPorPersona?: number;
   fuente: "TEMPORADA" | "TARIFA_BASE";
   temporadaNombre?: string;
 };
@@ -28,6 +29,7 @@ export async function calcularTarifaPorNoche(
       fecha: fechaStr,
       precio: Number(temporada.precio),
       modalidad: temporada.modalidad,
+      suplementoPorPersona: temporada.suplementoPorPersona ? Number(temporada.suplementoPorPersona) : undefined,
       fuente: "TEMPORADA",
       temporadaNombre: temporada.nombre,
     };
@@ -36,13 +38,14 @@ export async function calcularTarifaPorNoche(
   // Fallback a TarifaBase
   const tipo = await prisma.tipoDeHabitacion.findUniqueOrThrow({
     where: { id: tipoDeHabitacionId },
-    select: { tarifaBasePrice: true, tarifaBaseModalidad: true },
+    select: { tarifaBasePrice: true, tarifaBaseModalidad: true, suplementoPorPersona: true },
   });
 
   return {
     fecha: fechaStr,
     precio: Number(tipo.tarifaBasePrice),
     modalidad: tipo.tarifaBaseModalidad,
+    suplementoPorPersona: tipo.suplementoPorPersona ? Number(tipo.suplementoPorPersona) : undefined,
     fuente: "TARIFA_BASE",
   };
 }
@@ -63,8 +66,15 @@ export async function calcularTotalReserva(
   }
 
   const total = desglose.reduce((acc, noche) => {
-    const precio =
-      noche.modalidad === "POR_PERSONA" ? noche.precio * numPersonas : noche.precio;
+    let precio: number;
+    if (noche.modalidad === "POR_PERSONA") {
+      precio = noche.precio * numPersonas;
+    } else if (noche.modalidad === "BASE_MAS_SUPLEMENTO") {
+      const suplemento = noche.suplementoPorPersona ?? 0;
+      precio = noche.precio + (numPersonas - 1) * suplemento;
+    } else {
+      precio = noche.precio;
+    }
     return acc + precio;
   }, 0);
 
