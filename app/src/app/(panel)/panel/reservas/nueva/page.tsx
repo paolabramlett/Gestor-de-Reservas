@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { crearReservaManualAction } from "../actions";
 import DisponibilidadCheck from "./DisponibilidadCheck";
+import { DatePicker } from "@/components/DatePicker";
 
 export default async function NuevaReservaPage() {
   const usuario = await getCurrentUsuario();
@@ -36,11 +37,11 @@ export default async function NuevaReservaPage() {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de ingreso</label>
-            <input type="date" name="fechaIngreso" defaultValue={hoy} required className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+            <DatePicker name="fechaIngreso" defaultValue={hoy} required />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de salida</label>
-            <input type="date" name="fechaSalida" defaultValue={manana} required className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+            <DatePicker name="fechaSalida" defaultValue={manana} required />
           </div>
         </div>
 

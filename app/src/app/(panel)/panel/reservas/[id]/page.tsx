@@ -6,6 +6,7 @@ import {
   actualizarPagoYNotasAction,
   actualizarDatosReservaAction,
 } from "../actions";
+import { DatePicker } from "@/components/DatePicker";
 import {
   checkInAction,
   checkOutAction,
@@ -179,22 +180,18 @@ export default async function ReservaDetallePage({
             {/* Fechas */}
             <div>
               <label className="block text-xs text-gray-500 mb-1">Fecha de ingreso</label>
-              <input
-                type="date"
+              <DatePicker
                 name="fechaIngreso"
                 defaultValue={reserva.fechaIngreso.toISOString().slice(0, 10)}
                 required
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
               />
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">Fecha de salida</label>
-              <input
-                type="date"
+              <DatePicker
                 name="fechaSalida"
                 defaultValue={reserva.fechaSalida.toISOString().slice(0, 10)}
                 required
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
               />
             </div>
 
