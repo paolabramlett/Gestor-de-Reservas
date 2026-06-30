@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { Prisma, OrigenReserva, EstadoReserva, EstadoDePago } from "@prisma/client";
+import { Prisma, OrigenReserva, EstadoReserva, EstadoDePago, TipoEspecialReserva } from "@prisma/client";
 import { ulid } from "ulid";
 import { calcularTotalReserva } from "./tarifas";
 import { verificarDisponibilidadAtómica } from "./disponibilidad";
@@ -93,16 +93,27 @@ type CrearReservaManualInput = {
   fechaSalida: Date;
   numPersonas: number;
   estadoDePago?: EstadoDePago;
+  montoAnticipo?: number | null;
   notas?: string;
+  tipoEspecial?: TipoEspecialReserva | null;
+  totalOverride?: number | null; // precio acordado por el usuario
 };
 
 export async function crearReservaManual(input: CrearReservaManualInput) {
-  const { total, desglose } = await calcularTotalReserva(
+  const { total: totalCalculado, desglose } = await calcularTotalReserva(
     input.tipoDeHabitacionId,
     input.fechaIngreso,
     input.fechaSalida,
     input.numPersonas
   );
+
+  // Si hay precio acordado/cortesía, usar ese total; si es cortesía sin precio, 0
+  const total =
+    input.totalOverride != null
+      ? input.totalOverride
+      : input.tipoEspecial === "CORTESIA"
+      ? 0
+      : totalCalculado;
 
   return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     let huesped = await tx.huesped.findFirst({
@@ -131,9 +142,11 @@ export async function crearReservaManual(input: CrearReservaManualInput) {
         numPersonas: input.numPersonas,
         totalMxn: total,
         desglosePorNoche: desglose,
+        tipoEspecial: input.tipoEspecial ?? null,
         pagoManual: {
           create: {
             estadoDePago: input.estadoDePago ?? EstadoDePago.PENDIENTE,
+            montoAnticipo: input.montoAnticipo ?? null,
             notas: input.notas,
           },
         },

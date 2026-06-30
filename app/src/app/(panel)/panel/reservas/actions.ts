@@ -3,7 +3,7 @@
 import { getCurrentUsuario } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { crearReservaManual } from "@/lib/negocio/reservas";
-import { EstadoDePago, EstadoReserva } from "@prisma/client";
+import { EstadoDePago, EstadoReserva, TipoEspecialReserva } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { calcularTotalReserva } from "@/lib/negocio/tarifas";
 import { verificarDisponibilidadAtómica } from "@/lib/negocio/disponibilidad";
@@ -22,6 +22,15 @@ export async function crearReservaManualAction(formData: FormData) {
   const estadoDePago = (formData.get("estadoDePago") as EstadoDePago) || EstadoDePago.PENDIENTE;
   const notas = (formData.get("notas") as string) || undefined;
   const from = formData.get("from") as string;
+  const tipoEspecialRaw = formData.get("tipoEspecial") as string;
+  const tipoEspecial = tipoEspecialRaw ? (tipoEspecialRaw as TipoEspecialReserva) : null;
+  const montoAnticipoRaw = formData.get("montoAnticipo") as string;
+  const montoAnticipo =
+    estadoDePago === EstadoDePago.ANTICIPO_PAGADO && montoAnticipoRaw
+      ? Number(montoAnticipoRaw)
+      : null;
+  const totalOverrideRaw = formData.get("totalOverride") as string;
+  const totalOverride = totalOverrideRaw ? Number(totalOverrideRaw) : null;
 
   const reserva = await crearReservaManual({
     propiedadId: usuario.propiedadId,
@@ -34,6 +43,9 @@ export async function crearReservaManualAction(formData: FormData) {
     numPersonas,
     estadoDePago,
     notas,
+    tipoEspecial,
+    montoAnticipo,
+    totalOverride,
   });
 
   if (from === "calendario") {
