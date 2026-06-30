@@ -35,7 +35,7 @@ export async function crearReservaManualAction(formData: FormData) {
     notas,
   });
 
-  redirect(`/panel/reservas/${reserva.id}`);
+  redirect(`/panel/reservas/${reserva.id}?success=${encodeURIComponent("Reserva creada")}`);
 }
 
 export async function asignarHabitacionAction(formData: FormData) {
@@ -56,7 +56,7 @@ export async function asignarHabitacionAction(formData: FormData) {
     create: { reservaId, habitacionId },
   });
 
-  redirect(`/panel/reservas/${reservaId}`);
+  redirect(`/panel/reservas/${reservaId}?success=${encodeURIComponent("Habitación asignada")}`);
 }
 
 export async function actualizarPagoYNotasAction(formData: FormData) {
@@ -161,7 +161,7 @@ export async function actualizarDatosReservaAction(formData: FormData) {
       : []),
   ]);
 
-  redirect(`/panel/reservas/${reservaId}`);
+  redirect(`/panel/reservas/${reservaId}?success=${encodeURIComponent("Pago guardado")}`);
 }
 
 export async function actualizarEstadoReservaAction(formData: FormData) {
@@ -176,7 +176,7 @@ export async function actualizarEstadoReservaAction(formData: FormData) {
     data: { estado },
   });
 
-  redirect(`/panel/reservas/${reservaId}`);
+  redirect(`/panel/reservas/${reservaId}?success=${encodeURIComponent("Reserva actualizada")}`);
 }
 
 export async function calcularTotalPreviewAction(

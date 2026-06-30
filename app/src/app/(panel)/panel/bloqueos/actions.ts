@@ -20,7 +20,7 @@ export async function crearBloqueoHabitacionAction(formData: FormData) {
     },
   });
 
-  redirect("/panel/bloqueos");
+  redirect("/panel/bloqueos?success=" + encodeURIComponent("Cambios guardados"));
 }
 
 export async function eliminarBloqueoHabitacionAction(formData: FormData) {
@@ -34,7 +34,7 @@ export async function eliminarBloqueoHabitacionAction(formData: FormData) {
     },
   });
 
-  redirect("/panel/bloqueos");
+  redirect("/panel/bloqueos?success=" + encodeURIComponent("Cambios guardados"));
 }
 
 // ─── BloqueoDetipo (5.6) ─────────────────────────────────────────────────────
@@ -53,7 +53,7 @@ export async function crearBloqueoTipoAction(formData: FormData) {
     },
   });
 
-  redirect("/panel/bloqueos");
+  redirect("/panel/bloqueos?success=" + encodeURIComponent("Cambios guardados"));
 }
 
 export async function eliminarBloqueoTipoAction(formData: FormData) {
@@ -67,5 +67,5 @@ export async function eliminarBloqueoTipoAction(formData: FormData) {
     },
   });
 
-  redirect("/panel/bloqueos");
+  redirect("/panel/bloqueos?success=" + encodeURIComponent("Cambios guardados"));
 }

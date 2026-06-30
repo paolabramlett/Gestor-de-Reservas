@@ -27,7 +27,7 @@ export async function crearHabitacionAction(formData: FormData) {
     },
   });
 
-  redirect("/panel/habitaciones");
+  redirect("/panel/habitaciones?success=" + encodeURIComponent("Cambios guardados"));
 }
 
 export async function actualizarHabitacionAction(formData: FormData) {
@@ -59,5 +59,5 @@ export async function actualizarHabitacionAction(formData: FormData) {
     },
   });
 
-  redirect("/panel/habitaciones");
+  redirect("/panel/habitaciones?success=" + encodeURIComponent("Cambios guardados"));
 }

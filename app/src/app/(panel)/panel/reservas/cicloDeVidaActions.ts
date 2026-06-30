@@ -15,7 +15,7 @@ export async function checkInAction(formData: FormData) {
     const msg = err instanceof Error ? err.message : "Error";
     redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent(msg)}`);
   }
-  redirect(`/panel/reservas/${reservaId}`);
+  redirect(`/panel/reservas/${reservaId}?success=${encodeURIComponent("Check-in registrado")}`);
 }
 
 export async function checkOutAction(formData: FormData) {
@@ -24,7 +24,7 @@ export async function checkOutAction(formData: FormData) {
 
   const reservaId = formData.get("reservaId") as string;
   await checkOut(reservaId, usuario.propiedadId);
-  redirect(`/panel/reservas/${reservaId}`);
+  redirect(`/panel/reservas/${reservaId}?success=${encodeURIComponent("Check-out registrado")}`);
 }
 
 export async function noShowAction(formData: FormData) {
@@ -33,7 +33,7 @@ export async function noShowAction(formData: FormData) {
 
   const reservaId = formData.get("reservaId") as string;
   await marcarNoShow(reservaId, usuario.propiedadId);
-  redirect(`/panel/reservas/${reservaId}`);
+  redirect(`/panel/reservas/${reservaId}?success=${encodeURIComponent("Marcado como No-Show")}`);
 }
 
 export async function cancelarReservaAction(formData: FormData) {
@@ -52,5 +52,5 @@ export async function cancelarReservaAction(formData: FormData) {
     politicaReembolso,
     montoParcialMxn,
   });
-  redirect(`/panel/reservas/${reservaId}`);
+  redirect(`/panel/reservas/${reservaId}?success=${encodeURIComponent("Reserva cancelada")}`);
 }

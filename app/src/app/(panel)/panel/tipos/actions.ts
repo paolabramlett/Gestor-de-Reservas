@@ -22,7 +22,7 @@ export async function crearTipoAction(formData: FormData) {
     },
   });
 
-  redirect("/panel/tipos");
+  redirect("/panel/tipos?success=" + encodeURIComponent("Cambios guardados"));
 }
 
 export async function actualizarTipoAction(formData: FormData) {
@@ -45,5 +45,5 @@ export async function actualizarTipoAction(formData: FormData) {
     },
   });
 
-  redirect("/panel/tipos");
+  redirect("/panel/tipos?success=" + encodeURIComponent("Cambios guardados"));
 }

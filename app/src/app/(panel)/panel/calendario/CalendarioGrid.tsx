@@ -166,6 +166,7 @@ export function CalendarioGrid({
     nuevaFechaSalida: string;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -312,7 +313,7 @@ export function CalendarioGrid({
             const result = await reasignarHabitacionAction(reservaId, targetHabitacionId);
             setPending(false);
             if (result.error) setError(result.error);
-            else router.refresh();
+            else { setSuccessMsg("Habitación reasignada"); router.refresh(); setTimeout(() => setSuccessMsg(null), 3500); }
           }
         }
       } else if (drag.type === "resizing") {
@@ -353,7 +354,7 @@ export function CalendarioGrid({
     setPending(false);
     setConfirm(null);
     if (result.error) setError(result.error);
-    else router.refresh();
+    else { setSuccessMsg("Fechas actualizadas"); router.refresh(); setTimeout(() => setSuccessMsg(null), 3500); }
   };
 
   // ─── Visual drag overlay ──────────────────────────────────────────────────
@@ -719,6 +720,14 @@ export function CalendarioGrid({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Success toast */}
+      {successMsg && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-3 text-sm text-white shadow-xl">
+          <span className="text-green-400">✓</span>
+          {successMsg}
         </div>
       )}
 

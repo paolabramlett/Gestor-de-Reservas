@@ -55,7 +55,7 @@ export async function crearTemporadaAction(formData: FormData) {
     },
   });
 
-  redirect("/panel/temporadas");
+  redirect("/panel/temporadas?success=" + encodeURIComponent("Cambios guardados"));
 }
 
 export async function actualizarTemporadaAction(formData: FormData) {
@@ -90,7 +90,7 @@ export async function actualizarTemporadaAction(formData: FormData) {
     },
   });
 
-  redirect("/panel/temporadas");
+  redirect("/panel/temporadas?success=" + encodeURIComponent("Cambios guardados"));
 }
 
 export async function eliminarTemporadaAction(formData: FormData) {
@@ -102,5 +102,5 @@ export async function eliminarTemporadaAction(formData: FormData) {
     where: { id, propiedadId: usuario.propiedadId },
   });
 
-  redirect("/panel/temporadas");
+  redirect("/panel/temporadas?success=" + encodeURIComponent("Cambios guardados"));
 }

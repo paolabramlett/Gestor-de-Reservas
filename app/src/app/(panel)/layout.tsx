@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUsuario } from "@/lib/auth";
 import Link from "next/link";
 import { RolUsuario } from "@prisma/client";
+import { SuccessToast } from "@/components/SuccessToast";
 
 // Rutas restringidas por rol:
 // - Configuración y tipos/habitaciones/temporadas: solo ADMIN y SUPER_ADMIN
@@ -72,6 +73,7 @@ export default async function PanelLayout({
           {children}
         </RolGuard>
       </main>
+      <SuccessToast />
     </div>
   );
 }
