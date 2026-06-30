@@ -390,9 +390,29 @@ export function CalendarioGrid({
           >
             ←
           </a>
-          <span className="text-sm font-medium w-36 text-center">
-            {MES_NOMBRES[mes - 1]} {año}
-          </span>
+
+          {/* Dropdowns mes + año */}
+          <div className="flex items-center gap-1">
+            <select
+              value={mes}
+              onChange={(e) => router.push(`/panel/calendario?mes=${e.target.value}&año=${año}`)}
+              className="border border-gray-300 rounded-lg px-2 py-1 text-sm bg-white cursor-pointer"
+            >
+              {MES_NOMBRES.map((nombre, i) => (
+                <option key={i} value={i + 1}>{nombre}</option>
+              ))}
+            </select>
+            <select
+              value={año}
+              onChange={(e) => router.push(`/panel/calendario?mes=${mes}&año=${e.target.value}`)}
+              className="border border-gray-300 rounded-lg px-2 py-1 text-sm bg-white cursor-pointer w-20"
+            >
+              {Array.from({ length: 5 }, (_, i) => año - 2 + i).map((y) => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
+
           <a
             href={`/panel/calendario?mes=${nextMes}&año=${nextAño}`}
             className="px-2 py-1 rounded border border-gray-300 text-sm hover:bg-gray-50"
