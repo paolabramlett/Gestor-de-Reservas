@@ -3,6 +3,7 @@ import { getCurrentUsuario } from "@/lib/auth";
 import Link from "next/link";
 import { RolUsuario } from "@prisma/client";
 import { SuccessToast } from "@/components/SuccessToast";
+import { ClerkProvider } from "@clerk/nextjs";
 
 // Rutas restringidas por rol:
 // - Configuración y tipos/habitaciones/temporadas: solo ADMIN y SUPER_ADMIN
@@ -50,6 +51,7 @@ export default async function PanelLayout({
   );
 
   return (
+    <ClerkProvider>
     <div className="min-h-screen flex bg-gray-50">
       <aside className="w-56 bg-white border-r border-gray-200 flex flex-col">
         <div className="px-4 py-5 border-b border-gray-200">
@@ -75,6 +77,7 @@ export default async function PanelLayout({
       </main>
       <SuccessToast />
     </div>
+    </ClerkProvider>
   );
 }
 
