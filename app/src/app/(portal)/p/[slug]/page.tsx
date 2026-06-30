@@ -11,18 +11,33 @@ export default async function PortalHomePage({
   const propiedad = await getPropiedadBySlug(slug);
   if (!propiedad) notFound();
 
+  const colorPrimario = propiedad.colorPrimario ?? "#111827";
+
   return (
-    <div className="max-w-3xl mx-auto px-4 py-12">
-      <h1 className="text-3xl font-bold text-gray-900 mb-2">{propiedad.nombre}</h1>
-      {propiedad.descripcion && (
-        <p className="text-gray-600 mb-8">{propiedad.descripcion}</p>
-      )}
-      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">
-          Consulta disponibilidad
-        </h2>
-        <FormularioBusqueda slug={slug} />
+    <div className="min-h-screen bg-gray-50">
+      {/* Hero */}
+      <div
+        className="relative px-4 py-20 text-center text-white"
+        style={{ backgroundColor: colorPrimario }}
+      >
+        <div className="max-w-2xl mx-auto">
+          <h1 className="text-4xl font-bold mb-3 tracking-tight">{propiedad.nombre}</h1>
+          {propiedad.descripcion && (
+            <p className="text-base opacity-80 mb-0 leading-relaxed">{propiedad.descripcion}</p>
+          )}
+        </div>
+
+        {/* Buscador flotante sobre el hero */}
+        <div className="relative max-w-3xl mx-auto mt-10">
+          <div className="bg-white rounded-2xl shadow-xl p-5 text-left">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Consulta disponibilidad</p>
+            <FormularioBusqueda slug={slug} colorPrimario={colorPrimario} />
+          </div>
+        </div>
       </div>
+
+      {/* Espacio para que el contenido no quede detrás del hero */}
+      <div className="pb-12" />
     </div>
   );
 }
