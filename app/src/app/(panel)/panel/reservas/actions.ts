@@ -92,6 +92,7 @@ export async function actualizarDatosReservaAction(formData: FormData) {
   if (!usuario) redirect("/sign-in");
 
   const reservaId = formData.get("reservaId") as string;
+  const tipoDeHabitacionId = formData.get("tipoDeHabitacionId") as string;
   const fechaIngreso = new Date(formData.get("fechaIngreso") as string);
   const fechaSalida = new Date(formData.get("fechaSalida") as string);
   const numPersonas = Number(formData.get("numPersonas"));
@@ -105,10 +106,19 @@ export async function actualizarDatosReservaAction(formData: FormData) {
   });
   if (!reserva) throw new Error("Reserva no encontrada");
 
-  if (fechaIngreso >= fechaSalida) redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("La fecha de salida debe ser posterior al ingreso")}`);
+  // Validate tipo belongs to this propiedad
+  const tipo = await prisma.tipoDeHabitacion.findFirst({
+    where: { id: tipoDeHabitacionId, propiedadId: usuario.propiedadId },
+  });
+  if (!tipo) redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("Tipo de habitación no válido")}`);
 
-  // Conflict check on the assigned room (excluding this reservation)
-  if (reserva.asignacion) {
+  if (fechaIngreso >= fechaSalida)
+    redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("La fecha de salida debe ser posterior al ingreso")}`);
+
+  const tipoChanged = tipoDeHabitacionId !== reserva.tipoDeHabitacionId;
+
+  // Conflict check: only if same tipo AND same assigned room
+  if (reserva.asignacion && !tipoChanged) {
     const conflicto = await prisma.reserva.findFirst({
       where: {
         id: { not: reservaId },
@@ -118,11 +128,12 @@ export async function actualizarDatosReservaAction(formData: FormData) {
         fechaSalida: { gt: fechaIngreso },
       },
     });
-    if (conflicto) redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("Las nuevas fechas entran en conflicto con otra reserva en la misma habitación")}`);
+    if (conflicto)
+      redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("Las nuevas fechas entran en conflicto con otra reserva en la misma habitación")}`);
   }
 
   const { total, desglose } = await calcularTotalReserva(
-    reserva.tipoDeHabitacionId,
+    tipoDeHabitacionId,
     fechaIngreso,
     fechaSalida,
     numPersonas
@@ -131,12 +142,23 @@ export async function actualizarDatosReservaAction(formData: FormData) {
   await prisma.$transaction([
     prisma.reserva.update({
       where: { id: reservaId },
-      data: { fechaIngreso, fechaSalida, numPersonas, totalMxn: total, desglosePorNoche: desglose },
+      data: {
+        tipoDeHabitacionId,
+        fechaIngreso,
+        fechaSalida,
+        numPersonas,
+        totalMxn: total,
+        desglosePorNoche: desglose,
+      },
     }),
     prisma.huesped.update({
       where: { id: reserva.huespedId },
       data: { nombre, email, telefono },
     }),
+    // If tipo changed, clear room assignment (it belongs to the old tipo)
+    ...(tipoChanged && reserva.asignacion
+      ? [prisma.asignacionDeHabitacion.delete({ where: { reservaId } })]
+      : []),
   ]);
 
   redirect(`/panel/reservas/${reservaId}`);

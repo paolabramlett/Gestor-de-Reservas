@@ -53,14 +53,20 @@ export default async function ReservaDetallePage({
   });
   if (!reserva) notFound();
 
-  const habitacionesDelTipo = await prisma.habitacion.findMany({
-    where: {
-      propiedadId: usuario.propiedadId,
-      tipoDeHabitacionId: reserva.tipoDeHabitacionId,
-      activa: true,
-    },
-    orderBy: { numero: "asc" },
-  });
+  const [habitacionesDelTipo, tiposDeHabitacion] = await Promise.all([
+    prisma.habitacion.findMany({
+      where: {
+        propiedadId: usuario.propiedadId,
+        tipoDeHabitacionId: reserva.tipoDeHabitacionId,
+        activa: true,
+      },
+      orderBy: { numero: "asc" },
+    }),
+    prisma.tipoDeHabitacion.findMany({
+      where: { propiedadId: usuario.propiedadId, activo: true },
+      orderBy: { nombre: "asc" },
+    }),
+  ]);
 
   const esPagoManual = reserva.origen === "MANUAL";
   const esOnline = reserva.origen === "ONLINE";
@@ -141,12 +147,25 @@ export default async function ReservaDetallePage({
           <h2 className="text-sm font-semibold text-gray-700 mb-4">Datos de la reserva</h2>
 
           <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm mb-4">
-            {/* Tipo (solo lectura) */}
+            {/* Tipo de habitación */}
             <div>
               <label className="block text-xs text-gray-500 mb-1">Tipo de habitación</label>
-              <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-700">
-                {reserva.tipoDeHabitacion.nombre}
-              </div>
+              <select
+                name="tipoDeHabitacionId"
+                defaultValue={reserva.tipoDeHabitacionId}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              >
+                {tiposDeHabitacion.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.nombre}
+                  </option>
+                ))}
+              </select>
+              {reserva.asignacion && (
+                <p className="text-xs text-amber-600 mt-1">
+                  Si cambias el tipo, la habitación asignada se liberará y deberás reasignar.
+                </p>
+              )}
             </div>
 
             {/* Origen (solo lectura) */}
