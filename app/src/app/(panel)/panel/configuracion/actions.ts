@@ -17,6 +17,7 @@ export async function actualizarPropiedadAction(formData: FormData) {
       email: (formData.get("email") as string) || null,
       direccion: (formData.get("direccion") as string) || null,
       colorPrimario: (formData.get("colorPrimario") as string) || null,
+      logoUrl: (formData.get("logoUrl") as string) || null,
     },
   });
 

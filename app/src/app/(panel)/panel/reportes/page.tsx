@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { EstadoDePago } from "@prisma/client";
 import Link from "next/link";
+import { DatePicker } from "@/components/DatePicker";
 
 const MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
@@ -152,13 +153,13 @@ export default async function ReportesPage({
 
       {/* Selector de período */}
       <form method="GET" className="flex flex-wrap gap-3 items-end mb-8 bg-white border border-gray-200 rounded-lg p-4">
-        <div>
+        <div className="w-44">
           <label className="block text-xs text-gray-500 mb-1">Desde</label>
-          <input type="date" name="inicio" defaultValue={inicio} className="border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+          <DatePicker name="inicio" defaultValue={inicio} />
         </div>
-        <div>
+        <div className="w-44">
           <label className="block text-xs text-gray-500 mb-1">Hasta</label>
-          <input type="date" name="fin" defaultValue={fin} className="border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+          <DatePicker name="fin" defaultValue={fin} />
         </div>
         {/* Accesos rápidos */}
         <div className="flex gap-2 flex-wrap">
