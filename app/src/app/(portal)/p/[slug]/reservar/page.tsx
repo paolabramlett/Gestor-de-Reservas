@@ -3,7 +3,43 @@ import { prisma } from "@/lib/prisma";
 import { calcularTotalReserva } from "@/lib/negocio/tarifas";
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import type { Metadata } from "next";
 import FormularioReserva from "./FormularioReserva";
+import PhotoGallery from "./PhotoGallery";
+
+export async function generateMetadata({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ tipoId?: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const sp = await searchParams;
+  if (!sp.tipoId) return {};
+
+  const propiedad = await getPropiedadBySlug(slug);
+  if (!propiedad) return {};
+
+  const tipo = await prisma.tipoDeHabitacion.findFirst({
+    where: { id: sp.tipoId, propiedadId: propiedad.id },
+  });
+  if (!tipo) return {};
+
+  const titulo = `Reservar ${tipo.nombre}`;
+  const descripcion = tipo.descripcion ?? `Reserva ${tipo.nombre} en ${propiedad.nombre}.`;
+  const imagen = tipo.fotos[0];
+
+  return {
+    title: titulo,
+    description: descripcion,
+    openGraph: {
+      title: titulo,
+      description: descripcion,
+      images: imagen ? [{ url: imagen }] : undefined,
+    },
+  };
+}
 
 export default async function ReservarPage({
   params,
@@ -73,19 +109,7 @@ export default async function ReservarPage({
           <div className="lg:col-span-2 space-y-4">
             {/* Card habitación */}
             <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
-              {tipo.fotos[0] ? (
-                <img
-                  src={tipo.fotos[0]}
-                  alt={tipo.nombre}
-                  className="w-full h-44 object-cover"
-                />
-              ) : (
-                <div className="w-full h-44 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-                  <svg className="w-10 h-10 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 3.75h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008z" />
-                  </svg>
-                </div>
-              )}
+              <PhotoGallery fotos={tipo.fotos} alt={tipo.nombre} />
               <div className="p-4">
                 <h2 className="font-bold text-gray-900 text-lg mb-1">{tipo.nombre}</h2>
                 {tipo.descripcion && (

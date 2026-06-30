@@ -1,6 +1,38 @@
 import { getPropiedadBySlug } from "@/lib/auth";
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import type { Metadata } from "next";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const propiedad = await getPropiedadBySlug(slug);
+  if (!propiedad) return {};
+
+  const titulo = propiedad.nombre;
+  const descripcion = propiedad.descripcion ?? `Reserva directamente en ${propiedad.nombre}.`;
+  const imagen = propiedad.logoUrl ?? undefined;
+
+  return {
+    title: { default: titulo, template: `%s · ${titulo}` },
+    description: descripcion,
+    openGraph: {
+      title: titulo,
+      description: descripcion,
+      images: imagen ? [{ url: imagen }] : undefined,
+      type: "website",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: titulo,
+      description: descripcion,
+      images: imagen ? [imagen] : undefined,
+    },
+  };
+}
 
 export default async function PortalLayout({
   children,
