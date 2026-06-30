@@ -322,9 +322,20 @@ export default async function ReservaDetallePage({
       <div className="bg-white rounded-lg border border-gray-200 p-5 mb-6">
         <h2 className="text-sm font-semibold text-gray-700 mb-3">Habitación asignada</h2>
         {reserva.asignacion ? (
-          <p className="text-sm text-gray-700 mb-3">
-            Hab. <span className="font-medium">{reserva.asignacion.habitacion.numero}</span>
-          </p>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm text-gray-700">
+              Hab. <span className="font-medium">{reserva.asignacion.habitacion.numero}</span>
+            </p>
+            <a
+              href={`/panel/calendario?mes=${reserva.fechaIngreso.getMonth() + 1}&año=${reserva.fechaIngreso.getFullYear()}`}
+              className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+              </svg>
+              Ver en calendario
+            </a>
+          </div>
         ) : (
           <p className="text-sm text-amber-600 mb-3">Sin habitación asignada — necesaria para hacer check-in</p>
         )}

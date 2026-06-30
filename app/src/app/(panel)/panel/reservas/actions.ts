@@ -21,6 +21,7 @@ export async function crearReservaManualAction(formData: FormData) {
   const numPersonas = Number(formData.get("numPersonas"));
   const estadoDePago = (formData.get("estadoDePago") as EstadoDePago) || EstadoDePago.PENDIENTE;
   const notas = (formData.get("notas") as string) || undefined;
+  const from = formData.get("from") as string;
 
   const reserva = await crearReservaManual({
     propiedadId: usuario.propiedadId,
@@ -35,6 +36,11 @@ export async function crearReservaManualAction(formData: FormData) {
     notas,
   });
 
+  if (from === "calendario") {
+    const mes = fechaIngreso.getMonth() + 1;
+    const año = fechaIngreso.getFullYear();
+    redirect(`/panel/calendario?mes=${mes}&año=${año}&success=${encodeURIComponent("Reserva creada")}`);
+  }
   redirect(`/panel/reservas/${reserva.id}?success=${encodeURIComponent("Reserva creada")}`);
 }
 

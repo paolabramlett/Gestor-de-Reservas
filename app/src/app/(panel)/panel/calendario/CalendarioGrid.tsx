@@ -465,6 +465,14 @@ export function CalendarioGrid({
           </div>
         </div>
 
+        {/* Nueva reserva */}
+        <a
+          href="/panel/reservas/nueva?from=calendario"
+          className="ml-auto rounded-lg bg-gray-900 text-white px-4 py-1.5 text-sm font-medium hover:bg-gray-700 flex-shrink-0"
+        >
+          + Nueva reserva
+        </a>
+
         {pending && (
           <span className="text-xs text-gray-500 animate-pulse">Guardando...</span>
         )}

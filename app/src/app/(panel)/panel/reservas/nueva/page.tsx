@@ -5,9 +5,15 @@ import { crearReservaManualAction } from "../actions";
 import DisponibilidadCheck from "./DisponibilidadCheck";
 import { DatePicker } from "@/components/DatePicker";
 
-export default async function NuevaReservaPage() {
+export default async function NuevaReservaPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ from?: string }>;
+}) {
   const usuario = await getCurrentUsuario();
   if (!usuario) redirect("/sign-in");
+
+  const { from } = await searchParams;
 
   const tipos = await prisma.tipoDeHabitacion.findMany({
     where: { propiedadId: usuario.propiedadId, activo: true },
@@ -19,9 +25,19 @@ export default async function NuevaReservaPage() {
 
   return (
     <div className="p-8 max-w-2xl">
-      <h1 className="text-xl font-semibold text-gray-900 mb-6">Nueva reserva manual</h1>
+      <div className="flex items-center gap-3 mb-6">
+        <a
+          href={from === "calendario" ? "/panel/calendario" : "/panel/reservas"}
+          className="text-sm text-gray-500 hover:text-gray-700"
+        >
+          ← {from === "calendario" ? "Calendario" : "Reservas"}
+        </a>
+        <span className="text-gray-300">/</span>
+        <h1 className="text-xl font-semibold text-gray-900">Nueva reserva</h1>
+      </div>
 
       <form action={crearReservaManualAction} className="space-y-5 bg-white rounded-lg border border-gray-200 p-6">
+        <input type="hidden" name="from" value={from ?? ""} />
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de habitación</label>
           <select name="tipoDeHabitacionId" required className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
@@ -91,7 +107,10 @@ export default async function NuevaReservaPage() {
           <button type="submit" className="rounded-lg bg-gray-900 text-white px-5 py-2 text-sm font-medium hover:bg-gray-700">
             Crear reserva
           </button>
-          <a href="/panel/reservas" className="rounded-lg border border-gray-300 text-gray-700 px-5 py-2 text-sm font-medium hover:bg-gray-50">
+          <a
+            href={from === "calendario" ? "/panel/calendario" : "/panel/reservas"}
+            className="rounded-lg border border-gray-300 text-gray-700 px-5 py-2 text-sm font-medium hover:bg-gray-50"
+          >
             Cancelar
           </a>
         </div>
