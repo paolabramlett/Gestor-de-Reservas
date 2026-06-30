@@ -41,6 +41,19 @@ export default async function ReservarPage({
   const fechaInFmt = fechaIn.toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" });
   const fechaOutFmt = fechaOut.toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" });
 
+  // Política de cancelación
+  const limiteCancelacion = new Date(fechaIn);
+  limiteCancelacion.setHours(limiteCancelacion.getHours() - 48);
+  const ahoraMas1h = new Date(Date.now() + 3600000); // margen conservador
+  const cancelable = ahoraMas1h < limiteCancelacion;
+  const STRIPE_PORCENTAJE = 0.036;
+  const STRIPE_FIJA = 3;
+  const comisionRetenida = Math.round((total * STRIPE_PORCENTAJE + STRIPE_FIJA) * 100) / 100;
+  const montoReembolso = Math.round((total - comisionRetenida) * 100) / 100;
+  const limiteFmt = limiteCancelacion.toLocaleDateString("es-MX", {
+    weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit",
+  });
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-5xl mx-auto px-4 py-8">
@@ -134,6 +147,42 @@ export default async function ReservarPage({
                 <span>Total</span>
                 <span>${total.toLocaleString("es-MX")} MXN</span>
               </div>
+            </div>
+
+            {/* Política de cancelación */}
+            <div className={`rounded-2xl border p-4 text-xs space-y-1.5 ${cancelable ? "bg-green-50 border-green-200" : "bg-amber-50 border-amber-200"}`}>
+              <div className="flex items-center gap-1.5 font-semibold mb-2 text-sm">
+                {cancelable ? (
+                  <>
+                    <svg className="w-4 h-4 text-green-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="text-green-800">Cancelación gratuita disponible</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4 text-amber-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                    </svg>
+                    <span className="text-amber-800">Sin cancelación disponible</span>
+                  </>
+                )}
+              </div>
+              {cancelable ? (
+                <>
+                  <p className="text-green-700">
+                    Cancela antes del <span className="font-medium">{limiteFmt}</span> y recibe un reembolso de{" "}
+                    <span className="font-medium">${montoReembolso.toLocaleString("es-MX")} MXN</span>.
+                  </p>
+                  <p className="text-green-600">
+                    Se retiene ${comisionRetenida.toLocaleString("es-MX")} MXN de comisión de pasarela de pago (Stripe).
+                  </p>
+                </>
+              ) : (
+                <p className="text-amber-700">
+                  El check-in es en menos de 48 horas. No es posible cancelar ni obtener reembolso en este momento.
+                </p>
+              )}
             </div>
           </div>
 
