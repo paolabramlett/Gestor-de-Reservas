@@ -482,7 +482,17 @@ export function CalendarioGrid({
       {sinAsignar.length > 0 && (
         <div className="mb-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2 text-sm text-amber-800">
           {sinAsignar.length} reserva{sinAsignar.length > 1 ? "s" : ""} sin habitación asignada este mes:{" "}
-          {sinAsignar.map((r) => r.codigoReserva).join(", ")}
+          {sinAsignar.map((r, i) => (
+            <span key={r.id}>
+              {i > 0 && ", "}
+              <a
+                href={`/panel/reservas/${r.id}`}
+                className="font-medium underline underline-offset-2 hover:text-amber-900"
+              >
+                {r.codigoReserva}
+              </a>
+            </span>
+          ))}
         </div>
       )}
 
