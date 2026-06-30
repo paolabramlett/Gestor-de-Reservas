@@ -1,55 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createHmac, timingSafeEqual } from "crypto";
 import { stripe } from "@/lib/stripe";
 import { crearReservaOnline } from "@/lib/negocio/reservas";
 import { enviarConfirmacion, enviarAlertaEquipo, enviarPagoFallido } from "@/lib/emails";
 import { prisma } from "@/lib/prisma";
 import Stripe from "stripe";
 
-const TOLERANCE = 300; // 5 minutos
-
-function verificarFirmaStripe(body: Buffer, sigHeader: string, secret: string): boolean {
-  const parts: Record<string, string> = {};
-  for (const part of sigHeader.split(",")) {
-    const [k, ...rest] = part.split("=");
-    if (k && rest.length) parts[k] = rest.join("=");
-  }
-  const ts = parts["t"];
-  const v1 = parts["v1"];
-  if (!ts || !v1) return false;
-
-  const now = Math.floor(Date.now() / 1000);
-  if (Math.abs(now - Number(ts)) > TOLERANCE) return false;
-
-  const payload = `${ts}.${body.toString("utf8")}`;
-  const expected = createHmac("sha256", secret).update(payload, "utf8").digest("hex");
-
-  try {
-    return timingSafeEqual(Buffer.from(v1, "hex"), Buffer.from(expected, "hex"));
-  } catch {
-    return false;
-  }
-}
-
 export async function POST(req: NextRequest) {
-  const buf = await req.arrayBuffer();
-  const body = Buffer.from(buf);
+  const body = await req.text();
   const sig = req.headers.get("stripe-signature");
 
   if (!sig) {
     return NextResponse.json({ error: "Sin firma" }, { status: 400 });
   }
 
-  const secret = process.env.STRIPE_WEBHOOK_SECRET!;
-  if (!verificarFirmaStripe(body, sig, secret)) {
-    return NextResponse.json({ error: "Firma inválida" }, { status: 400 });
-  }
-
   let event: Stripe.Event;
   try {
-    event = JSON.parse(body.toString("utf8")) as Stripe.Event;
-  } catch {
-    return NextResponse.json({ error: "Body inválido" }, { status: 400 });
+    event = stripe.webhooks.constructEvent(body, sig, process.env.STRIPE_WEBHOOK_SECRET!);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Firma inválida";
+    console.error("[webhook] constructEvent error:", msg);
+    return NextResponse.json({ error: msg }, { status: 400 });
   }
 
   if (event.type === "payment_intent.succeeded") {
