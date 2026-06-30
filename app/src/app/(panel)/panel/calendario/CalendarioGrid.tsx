@@ -354,7 +354,11 @@ export function CalendarioGrid({
     setPending(false);
     setConfirm(null);
     if (result.error) setError(result.error);
-    else { setSuccessMsg("Fechas actualizadas"); router.refresh(); setTimeout(() => setSuccessMsg(null), 3500); }
+    else {
+      setSuccessMsg(result.precioAcordado ? "Fechas actualizadas · Verifica el precio acordado en la reserva" : "Fechas actualizadas");
+      router.refresh();
+      setTimeout(() => setSuccessMsg(null), 5000);
+    }
   };
 
   // ─── Visual drag overlay ──────────────────────────────────────────────────

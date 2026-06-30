@@ -209,13 +209,43 @@ export default async function ReservaDetallePage({
               />
             </div>
 
-            {/* Total (solo lectura, se recalcula al guardar) */}
+            {/* Total — comportamiento según tipoEspecial */}
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Total actual (MXN)</label>
-              <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg font-semibold text-gray-900">
-                ${Number(reserva.totalMxn).toLocaleString("es-MX")}
-                <span className="ml-1 text-xs font-normal text-gray-400">se recalcula al guardar</span>
-              </div>
+              {reserva.tipoEspecial === "CORTESIA" ? (
+                <>
+                  <label className="block text-xs text-gray-500 mb-1">Total (MXN)</label>
+                  <div className="px-3 py-2 bg-purple-50 border border-purple-200 rounded-lg text-purple-700 text-sm font-medium">
+                    $0 — Cortesía
+                  </div>
+                </>
+              ) : reserva.tipoEspecial === "PRECIO_ACORDADO" || reserva.tipoEspecial === "PROMOCION" ? (
+                <>
+                  <label className="block text-xs text-gray-500 mb-1">
+                    {reserva.tipoEspecial === "PROMOCION" ? "Precio de promoción (MXN)" : "Precio acordado (MXN)"}
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                    <input
+                      type="number"
+                      name="totalOverride"
+                      defaultValue={Number(reserva.totalMxn)}
+                      min={0}
+                      step="0.01"
+                      required
+                      className="w-full border border-gray-300 rounded-lg pl-7 pr-3 py-2 text-sm"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">Este precio no se recalcula automáticamente.</p>
+                </>
+              ) : (
+                <>
+                  <label className="block text-xs text-gray-500 mb-1">Total actual (MXN)</label>
+                  <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg font-semibold text-gray-900">
+                    ${Number(reserva.totalMxn).toLocaleString("es-MX")}
+                    <span className="ml-1 text-xs font-normal text-gray-400">se recalcula al guardar</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 

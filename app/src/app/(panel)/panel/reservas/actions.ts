@@ -150,12 +150,30 @@ export async function actualizarDatosReservaAction(formData: FormData) {
       redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("Las nuevas fechas entran en conflicto con otra reserva en la misma habitación")}`);
   }
 
-  const { total, desglose } = await calcularTotalReserva(
-    tipoDeHabitacionId,
-    fechaIngreso,
-    fechaSalida,
-    numPersonas
-  );
+  const totalOverrideRaw = formData.get("totalOverride") as string;
+  const totalOverride = totalOverrideRaw ? Number(totalOverrideRaw) : null;
+
+  let total: number;
+  let desglose: unknown;
+
+  if (reserva.tipoEspecial === "CORTESIA") {
+    total = 0;
+    desglose = {};
+  } else if (
+    (reserva.tipoEspecial === "PRECIO_ACORDADO" || reserva.tipoEspecial === "PROMOCION") &&
+    totalOverride == null
+  ) {
+    // Keep existing agreed price if user didn't supply a new one
+    total = Number(reserva.totalMxn);
+    desglose = reserva.desglosePorNoche;
+  } else if (totalOverride != null) {
+    total = totalOverride;
+    desglose = {};
+  } else {
+    const result = await calcularTotalReserva(tipoDeHabitacionId, fechaIngreso, fechaSalida, numPersonas);
+    total = Number(result.total);
+    desglose = result.desglose;
+  }
 
   await prisma.$transaction([
     prisma.reserva.update({
@@ -166,7 +184,7 @@ export async function actualizarDatosReservaAction(formData: FormData) {
         fechaSalida,
         numPersonas,
         totalMxn: total,
-        desglosePorNoche: desglose,
+        desglosePorNoche: desglose as import("@prisma/client").Prisma.InputJsonValue,
       },
     }),
     prisma.huesped.update({

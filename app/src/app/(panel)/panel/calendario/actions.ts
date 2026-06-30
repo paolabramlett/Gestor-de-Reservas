@@ -62,7 +62,7 @@ export async function cambiarFechasAction(
   reservaId: string,
   nuevaFechaIngreso: string,
   nuevaFechaSalida: string
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; precioAcordado?: boolean }> {
   const usuario = await getCurrentUsuario();
   if (!usuario) return { error: "No autorizado" };
 
@@ -93,13 +93,27 @@ export async function cambiarFechasAction(
     }
   }
 
-  // Recalculate cost for new dates
-  const { total, desglose } = await calcularTotalReserva(
-    reserva.tipoDeHabitacionId,
-    ingreso,
-    salida,
-    reserva.numPersonas
-  );
+  // Price logic: keep agreed/courtesy prices; recalculate only normal reservations
+  let total: number | import("@prisma/client").Prisma.Decimal = reserva.totalMxn;
+  let desglose: import("@prisma/client").Prisma.InputJsonValue = reserva.desglosePorNoche as import("@prisma/client").Prisma.InputJsonValue;
+  let precioAcordado = false;
+
+  if (reserva.tipoEspecial === "CORTESIA") {
+    total = 0;
+    desglose = {};
+  } else if (reserva.tipoEspecial === "PRECIO_ACORDADO" || reserva.tipoEspecial === "PROMOCION") {
+    // Keep existing total — user set it manually
+    precioAcordado = true;
+  } else {
+    const result = await calcularTotalReserva(
+      reserva.tipoDeHabitacionId,
+      ingreso,
+      salida,
+      reserva.numPersonas
+    );
+    total = result.total;
+    desglose = result.desglose;
+  }
 
   await prisma.reserva.update({
     where: { id: reservaId },
@@ -112,5 +126,5 @@ export async function cambiarFechasAction(
   });
 
   revalidatePath("/panel/calendario");
-  return {};
+  return { precioAcordado };
 }
