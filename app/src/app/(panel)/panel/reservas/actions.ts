@@ -175,8 +175,28 @@ export async function actualizarDatosReservaAction(formData: FormData) {
     desglose = result.desglose;
   }
 
-  await prisma.$transaction([
-    prisma.reserva.update({
+  // Check if this huesped record is shared with other reservations
+  const otrasReservasConMismoHuesped = await prisma.reserva.count({
+    where: { huespedId: reserva.huespedId, id: { not: reservaId } },
+  });
+
+  await prisma.$transaction(async (tx) => {
+    let huespedId = reserva.huespedId;
+
+    if (otrasReservasConMismoHuesped > 0) {
+      // Create a new huesped record to avoid affecting other reservations
+      const nuevoHuesped = await tx.huesped.create({
+        data: { nombre, email, telefono },
+      });
+      huespedId = nuevoHuesped.id;
+    } else {
+      await tx.huesped.update({
+        where: { id: reserva.huespedId },
+        data: { nombre, email, telefono },
+      });
+    }
+
+    await tx.reserva.update({
       where: { id: reservaId },
       data: {
         tipoDeHabitacionId,
@@ -185,17 +205,14 @@ export async function actualizarDatosReservaAction(formData: FormData) {
         numPersonas,
         totalMxn: total,
         desglosePorNoche: desglose as import("@prisma/client").Prisma.InputJsonValue,
+        huespedId,
       },
-    }),
-    prisma.huesped.update({
-      where: { id: reserva.huespedId },
-      data: { nombre, email, telefono },
-    }),
-    // If tipo changed, clear room assignment (it belongs to the old tipo)
-    ...(tipoChanged && reserva.asignacion
-      ? [prisma.asignacionDeHabitacion.delete({ where: { reservaId } })]
-      : []),
-  ]);
+    });
+
+    if (tipoChanged && reserva.asignacion) {
+      await tx.asignacionDeHabitacion.delete({ where: { reservaId } });
+    }
+  });
 
   redirect(`/panel/reservas/${reservaId}?success=${encodeURIComponent("Pago guardado")}`);
 }
