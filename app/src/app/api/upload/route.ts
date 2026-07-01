@@ -1,5 +1,4 @@
 import { createClient } from "@supabase/supabase-js";
-import { getCurrentUsuario } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 
 const supabase = createClient(
@@ -12,8 +11,6 @@ const MAX_SIZE_MB = 5;
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif"];
 
 export async function POST(req: NextRequest) {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const formData = await req.formData();
   const file = formData.get("file") as File | null;
@@ -25,7 +22,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `El archivo supera el límite de ${MAX_SIZE_MB}MB` }, { status: 400 });
 
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
-  const path = `${usuario.propiedadId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+  const path = `uploads/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
 
   const bytes = await file.arrayBuffer();
 
