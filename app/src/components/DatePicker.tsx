@@ -45,12 +45,16 @@ export function DatePicker({
   required,
   min,
   max,
+  colorPrimario,
+  onChange,
 }: {
   name: string;
   defaultValue?: string;
   required?: boolean;
   min?: string;
   max?: string;
+  colorPrimario?: string;
+  onChange?: (iso: string) => void;
 }) {
   const today = new Date();
   const todayObj: SelectedDate = {
@@ -112,7 +116,9 @@ export function DatePicker({
 
   const handleSelect = (day: number) => {
     if (isDisabled(day)) return;
-    setSelected({ year: viewYear, month: viewMonth, day });
+    const s = { year: viewYear, month: viewMonth, day };
+    setSelected(s);
+    onChange?.(toISO(s));
   };
 
   const handleConfirm = () => setOpen(false);
@@ -203,9 +209,10 @@ export function DatePicker({
                     type="button"
                     onClick={() => handleSelect(day)}
                     disabled={isDisabled(day)}
+                    style={isSelected(day) && colorPrimario ? { backgroundColor: colorPrimario } : undefined}
                     className={`w-8 h-8 rounded-full text-sm transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
                       isSelected(day)
-                        ? "bg-gray-900 text-white font-semibold"
+                        ? colorPrimario ? "text-white font-semibold" : "bg-gray-900 text-white font-semibold"
                         : isToday(day)
                         ? "border-2 border-gray-300 text-gray-900 font-medium hover:bg-gray-100"
                         : "text-gray-700 hover:bg-gray-100"
@@ -232,7 +239,8 @@ export function DatePicker({
             <button
               type="button"
               onClick={handleConfirm}
-              className="rounded-lg bg-gray-900 text-white px-4 py-1.5 text-sm font-medium hover:bg-gray-700"
+              style={colorPrimario ? { backgroundColor: colorPrimario } : undefined}
+              className={`rounded-lg text-white px-4 py-1.5 text-sm font-medium hover:opacity-90 transition-opacity ${!colorPrimario ? "bg-gray-900" : ""}`}
             >
               Confirmar
             </button>

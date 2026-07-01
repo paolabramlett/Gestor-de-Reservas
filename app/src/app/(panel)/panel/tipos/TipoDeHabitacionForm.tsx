@@ -29,6 +29,7 @@ export function TipoDeHabitacionForm({
   submitLabel: string;
   cancelHref: string;
 }) {
+  const [modalidad, setModalidad] = useState(tipo?.tarifaBaseModalidad ?? "POR_HABITACION");
   const [fotos, setFotos] = useState<FotoItem[]>(
     (tipo?.fotos ?? []).map((url) => ({ url }))
   );
@@ -277,7 +278,7 @@ export function TipoDeHabitacionForm({
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Modalidad</label>
-          <select name="tarifaBaseModalidad" defaultValue={tipo?.tarifaBaseModalidad ?? "POR_HABITACION"} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+          <select name="tarifaBaseModalidad" value={modalidad} onChange={(e) => setModalidad(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
             <option value="POR_HABITACION">Por habitación</option>
             <option value="POR_PERSONA">Por persona</option>
             <option value="BASE_MAS_SUPLEMENTO">Base + suplemento por persona</option>
@@ -285,11 +286,12 @@ export function TipoDeHabitacionForm({
         </div>
       </div>
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Suplemento por persona adicional (MXN)</label>
-        <input type="number" name="suplementoPorPersona" defaultValue={tipo?.suplementoPorPersona ?? 0} min={0} step="0.01" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-        <p className="text-xs text-gray-400 mt-1">Solo aplica con modalidad "Base + suplemento".</p>
-      </div>
+      {modalidad === "BASE_MAS_SUPLEMENTO" && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Suplemento por persona adicional (MXN)</label>
+          <input type="number" name="suplementoPorPersona" defaultValue={tipo?.suplementoPorPersona ?? 0} min={0} step="0.01" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+        </div>
+      )}
 
       {/* Estado (solo en edición) */}
       {tipo?.id && (

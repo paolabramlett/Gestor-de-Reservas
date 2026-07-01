@@ -49,19 +49,16 @@ export async function crearReservaOnline(input: CrearReservaOnlineInput) {
     });
     if (existente) return existente;
 
-    // Crear o reutilizar Huésped
-    let huesped = await tx.huesped.findFirst({
-      where: { email: input.email },
-    });
-    if (!huesped) {
-      huesped = await tx.huesped.create({
-        data: {
-          nombre: input.nombre,
-          email: input.email,
-          telefono: input.telefono,
-        },
-      });
-    }
+    // Crear o actualizar Huésped — siempre usar el nombre que el cliente proporcionó
+    const huespedExistente = await tx.huesped.findFirst({ where: { email: input.email } });
+    const huesped = huespedExistente
+      ? await tx.huesped.update({
+          where: { id: huespedExistente.id },
+          data: { nombre: input.nombre, telefono: input.telefono ?? undefined },
+        })
+      : await tx.huesped.create({
+          data: { nombre: input.nombre, email: input.email, telefono: input.telefono },
+        });
 
     return tx.reserva.create({
       data: {
@@ -116,18 +113,15 @@ export async function crearReservaManual(input: CrearReservaManualInput) {
       : totalCalculado;
 
   return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-    let huesped = await tx.huesped.findFirst({
-      where: { email: input.email },
-    });
-    if (!huesped) {
-      huesped = await tx.huesped.create({
-        data: {
-          nombre: input.nombre,
-          email: input.email,
-          telefono: input.telefono,
-        },
-      });
-    }
+    const huespedExistente = await tx.huesped.findFirst({ where: { email: input.email } });
+    const huesped = huespedExistente
+      ? await tx.huesped.update({
+          where: { id: huespedExistente.id },
+          data: { nombre: input.nombre, telefono: input.telefono ?? undefined },
+        })
+      : await tx.huesped.create({
+          data: { nombre: input.nombre, email: input.email, telefono: input.telefono },
+        });
 
     const reserva = await tx.reserva.create({
       data: {

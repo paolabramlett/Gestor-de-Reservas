@@ -183,7 +183,7 @@ export default function MiReservaPage() {
                   <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Check-in</p>
                   <p className="text-sm font-semibold text-gray-900">
                     {new Date(reserva.fechaIngreso).toLocaleDateString("es-MX", {
-                      weekday: "short", day: "numeric", month: "short", year: "numeric",
+                      weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "UTC",
                     })}
                   </p>
                 </div>
@@ -191,7 +191,7 @@ export default function MiReservaPage() {
                   <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Check-out</p>
                   <p className="text-sm font-semibold text-gray-900">
                     {new Date(reserva.fechaSalida).toLocaleDateString("es-MX", {
-                      weekday: "short", day: "numeric", month: "short", year: "numeric",
+                      weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "UTC",
                     })}
                   </p>
                 </div>

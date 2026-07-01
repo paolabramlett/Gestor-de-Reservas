@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { getPropiedadBySlug } from "@/lib/auth";
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { AutoRefresh } from "./AutoRefresh";
 
 export default async function ConfirmacionPage({
   params,
@@ -43,6 +44,7 @@ export default async function ConfirmacionPage({
   if (!reserva) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center px-4">
+        <AutoRefresh intervalMs={3000} />
         <div className="max-w-sm w-full text-center">
           <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-5">
             <svg className="w-8 h-8 text-amber-600 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -69,10 +71,10 @@ export default async function ConfirmacionPage({
     (reserva.fechaSalida.getTime() - reserva.fechaIngreso.getTime()) / 86400000
   );
   const fechaInFmt = reserva.fechaIngreso.toLocaleDateString("es-MX", {
-    weekday: "long", day: "numeric", month: "long", year: "numeric",
+    weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC",
   });
   const fechaOutFmt = reserva.fechaSalida.toLocaleDateString("es-MX", {
-    weekday: "long", day: "numeric", month: "long", year: "numeric",
+    weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC",
   });
 
   return (
