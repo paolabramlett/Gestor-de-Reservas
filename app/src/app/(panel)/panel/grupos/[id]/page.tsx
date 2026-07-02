@@ -192,6 +192,8 @@ export default async function GrupoDetallePage({
           <AgregarHabitacionPanel
             grupoId={grupo.id}
             tipos={tipos}
+            fechaIngresoGrupo={fechaMin ? new Date(fechaMin).toISOString().slice(0, 10) : undefined}
+            fechaSalidaGrupo={fechaMax ? new Date(fechaMax).toISOString().slice(0, 10) : undefined}
             emailContacto={contacto?.email}
             nombreContacto={contacto ? (reservasActivas[0]?.nombreHuesped || contacto.nombre) : undefined}
           />
