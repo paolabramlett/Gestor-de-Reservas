@@ -148,7 +148,7 @@ export default async function ReportesPage({
   };
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8">
       <h1 className="text-xl font-semibold text-gray-900 mb-6">Reportes</h1>
 
       {/* Selector de período */}
@@ -183,7 +183,7 @@ export default async function ReportesPage({
       </form>
 
       {/* ── Métricas principales (12.2) ── */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-3 gap-2 md:gap-4 mb-8">
         <MetricCard label="Ingresos totales" value={`$${totalIngresos.toLocaleString("es-MX")} MXN`} sub={`${reservasActivas.length} reservas`} />
         <MetricCard label="Online (Stripe)" value={`$${totalOnline.toLocaleString("es-MX")} MXN`} sub={`${reservasActivas.filter((r) => r.origen === "ONLINE").length} reservas`} />
         <MetricCard label="Manual" value={`$${totalManual.toLocaleString("es-MX")} MXN`} sub={`${reservasActivas.filter((r) => r.origen === "MANUAL").length} reservas`} />
@@ -219,12 +219,13 @@ export default async function ReportesPage({
       {ingresosPorTipo.length > 0 && (
         <div className="bg-white rounded-lg border border-gray-200 p-5 mb-8">
           <h2 className="text-sm font-semibold text-gray-700 mb-4">Ingresos por tipo de habitación</h2>
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[320px]">
             <thead>
               <tr className="border-b border-gray-100">
                 <th className="text-left pb-2 text-gray-500 font-medium">Tipo</th>
-                <th className="text-right pb-2 text-gray-500 font-medium">Online</th>
-                <th className="text-right pb-2 text-gray-500 font-medium">Manual</th>
+                <th className="text-right pb-2 text-gray-500 font-medium px-3">Online</th>
+                <th className="text-right pb-2 text-gray-500 font-medium px-3">Manual</th>
                 <th className="text-right pb-2 text-gray-500 font-medium">Total</th>
               </tr>
             </thead>
@@ -232,13 +233,14 @@ export default async function ReportesPage({
               {ingresosPorTipo.map((r) => (
                 <tr key={r.tipo}>
                   <td className="py-2 text-gray-700">{r.tipo}</td>
-                  <td className="py-2 text-right text-gray-600">${r.online.toLocaleString("es-MX")}</td>
-                  <td className="py-2 text-right text-gray-600">${r.manual.toLocaleString("es-MX")}</td>
+                  <td className="py-2 text-right text-gray-600 px-3">${r.online.toLocaleString("es-MX")}</td>
+                  <td className="py-2 text-right text-gray-600 px-3">${r.manual.toLocaleString("es-MX")}</td>
                   <td className="py-2 text-right font-medium text-gray-900">${(r.online + r.manual).toLocaleString("es-MX")}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -285,7 +287,8 @@ export default async function ReportesPage({
           ))}
         </div>
 
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[560px]">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Código</th>
@@ -329,6 +332,7 @@ export default async function ReportesPage({
           </tbody>
         </table>
 
+        </div>
         {reservas.length > 0 && (
           <div className="px-4 py-3 border-t border-gray-100 text-xs text-gray-400">
             {reservas.length} reservas · Total mostrado: ${reservas.reduce((s, r) => s + Number(r.totalMxn), 0).toLocaleString("es-MX")} MXN
@@ -341,10 +345,10 @@ export default async function ReportesPage({
 
 function MetricCard({ label, value, sub }: { label: string; value: string; sub: string }) {
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-5">
-      <div className="text-xs text-gray-500 mb-1">{label}</div>
-      <div className="text-xl font-bold text-gray-900">{value}</div>
-      <div className="text-xs text-gray-400 mt-1">{sub}</div>
+    <div className="bg-white rounded-lg border border-gray-200 p-3 md:p-5">
+      <div className="text-[10px] md:text-xs text-gray-500 mb-1 leading-tight">{label}</div>
+      <div className="text-sm md:text-xl font-bold text-gray-900 leading-tight">{value}</div>
+      <div className="text-[10px] md:text-xs text-gray-400 mt-1">{sub}</div>
     </div>
   );
 }

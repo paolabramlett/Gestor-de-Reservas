@@ -58,7 +58,7 @@ export default async function ReservasPage({
   ];
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-semibold text-gray-900">Reservas</h1>
         <Link
@@ -70,7 +70,7 @@ export default async function ReservasPage({
       </div>
 
       {/* Filtros */}
-      <div className="flex gap-2 mb-6">
+      <div className="flex gap-2 mb-6 overflow-x-auto pb-1 -mx-1 px-1">
         {filtros.map((f) => (
           <Link
             key={f.value}
@@ -87,7 +87,8 @@ export default async function ReservasPage({
       </div>
 
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[700px]">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Código</th>
@@ -164,6 +165,7 @@ export default async function ReservasPage({
             })}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

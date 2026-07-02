@@ -79,7 +79,7 @@ export default async function PanelPage() {
     new Date(d).toLocaleDateString("es-MX", { weekday: "short", day: "numeric", month: "short" });
 
   return (
-    <main className="p-8 max-w-5xl">
+    <main className="p-4 md:p-8 max-w-5xl">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold text-gray-900">
           {hoy.toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" })}
@@ -101,18 +101,18 @@ export default async function PanelPage() {
       )}
 
       {/* KPIs */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
+      <div className="grid grid-cols-3 gap-2 md:gap-4 mb-6 md:mb-8">
+        <div className="bg-white rounded-xl border border-gray-200 p-3 md:p-5">
           <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Llegadas hoy</p>
-          <p className="text-3xl font-bold text-gray-900">{llegadasHoy.length}</p>
+          <p className="text-2xl md:text-3xl font-bold text-gray-900">{llegadasHoy.length}</p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <div className="bg-white rounded-xl border border-gray-200 p-3 md:p-5">
           <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">En casa</p>
-          <p className="text-3xl font-bold text-gray-900">{enCurso.length}</p>
+          <p className="text-2xl md:text-3xl font-bold text-gray-900">{enCurso.length}</p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <div className="bg-white rounded-xl border border-gray-200 p-3 md:p-5">
           <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Salidas hoy</p>
-          <p className="text-3xl font-bold text-gray-900">{salidasHoy.length}</p>
+          <p className="text-2xl md:text-3xl font-bold text-gray-900">{salidasHoy.length}</p>
         </div>
       </div>
 

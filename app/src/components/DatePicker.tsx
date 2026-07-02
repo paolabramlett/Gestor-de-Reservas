@@ -80,11 +80,16 @@ export function DatePicker({
     }
   }, [value]);
   const [open, setOpen] = useState(false);
+  const [alignRight, setAlignRight] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  // Close on outside click
+  // Close on outside click + detect overflow direction
   useEffect(() => {
     if (!open) return;
+    if (ref.current) {
+      const rect = ref.current.getBoundingClientRect();
+      setAlignRight(rect.left + 288 > window.innerWidth - 8);
+    }
     const handle = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
@@ -158,7 +163,7 @@ export function DatePicker({
 
       {/* Popover */}
       {open && (
-        <div className="absolute top-full left-0 mt-1 z-50 bg-white rounded-xl border border-gray-200 shadow-xl p-4 w-72">
+        <div className={`absolute top-full mt-1 z-50 bg-white rounded-xl border border-gray-200 shadow-xl p-4 w-72 ${alignRight ? "right-0" : "left-0"}`}>
 
           {/* Header: month/year with nav arrows */}
           <div className="flex items-center gap-2 mb-4">
