@@ -14,6 +14,7 @@ import {
   cancelarReservaAction,
 } from "../cicloDeVidaActions";
 import { PropuestaCambioPanel } from "../PropuestaCambioPanel";
+import { BotonesEstadoReserva, CancelarDialogClient } from "../BotonesEstadoReserva";
 
 const ESTADO_LABEL: Record<string, string> = {
   CONFIRMADA: "Confirmada",
@@ -106,44 +107,20 @@ export default async function ReservaDetallePage({
       {/* Acciones de ciclo de vida (task 9.1–9.5) */}
       {esEditable && (
         <div className="flex flex-wrap gap-2 mb-6">
-          {/* Check-in: solo si CONFIRMADA */}
-          {estado === "CONFIRMADA" && (
-            <form action={checkInAction}>
-              <input type="hidden" name="reservaId" value={reserva.id} />
-              <button
-                type="submit"
-                className="rounded-lg bg-green-600 text-white px-4 py-2 text-sm font-medium hover:bg-green-700"
-              >
-                ✓ Check-in
-              </button>
-            </form>
-          )}
-
-          {/* Check-out: solo si EN_CURSO */}
-          {estado === "EN_CURSO" && (
-            <form action={checkOutAction}>
-              <input type="hidden" name="reservaId" value={reserva.id} />
-              <button
-                type="submit"
-                className="rounded-lg bg-gray-700 text-white px-4 py-2 text-sm font-medium hover:bg-gray-900"
-              >
-                ✓ Check-out
-              </button>
-            </form>
-          )}
-
-          {/* No-Show: solo si CONFIRMADA */}
-          {estado === "CONFIRMADA" && (
-            <form action={noShowAction}>
-              <input type="hidden" name="reservaId" value={reserva.id} />
-              <button
-                type="submit"
-                className="rounded-lg border border-orange-300 text-orange-700 bg-orange-50 px-4 py-2 text-sm font-medium hover:bg-orange-100"
-              >
-                No-Show
-              </button>
-            </form>
-          )}
+          <BotonesEstadoReserva
+            reservaId={reserva.id}
+            estado={estado}
+            checkInAction={checkInAction}
+            checkOutAction={checkOutAction}
+            noShowAction={noShowAction}
+            saldoPendiente={
+              reserva.pagoManual?.estadoDePago === "PENDIENTE"
+                ? Number(reserva.totalMxn)
+                : reserva.pagoManual?.estadoDePago === "ANTICIPO_PAGADO" && reserva.pagoManual.montoAnticipo
+                ? Number(reserva.totalMxn) - Number(reserva.pagoManual.montoAnticipo)
+                : null
+            }
+          />
 
           {/* Cancelar */}
           <CancelarDialog reservaId={reserva.id} esOnline={esOnline} totalMxn={Number(reserva.totalMxn)} />
@@ -535,47 +512,5 @@ function CancelarDialog({
   esOnline: boolean;
   totalMxn: number;
 }) {
-  return (
-    <details className="relative">
-      <summary className="list-none cursor-pointer rounded-lg border border-red-300 text-red-600 bg-red-50 px-4 py-2 text-sm font-medium hover:bg-red-100 select-none">
-        Cancelar reserva
-      </summary>
-      <div className="absolute top-full left-0 mt-1 z-10 bg-white border border-gray-200 rounded-lg shadow-lg p-4 w-80">
-        <p className="text-sm font-medium text-gray-800 mb-3">¿Confirmar cancelación?</p>
-        <form action={cancelarReservaAction} className="space-y-3">
-          <input type="hidden" name="reservaId" value={reservaId} />
-          {esOnline ? (
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">Política de reembolso</label>
-              <select name="politicaReembolso" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                <option value="TOTAL">Reembolso total (${totalMxn.toLocaleString("es-MX")} MXN)</option>
-                <option value="PARCIAL">Reembolso parcial</option>
-                <option value="SIN_REEMBOLSO">Sin reembolso</option>
-              </select>
-              <div className="mt-2">
-                <label className="block text-xs text-gray-500 mb-1">Monto a reembolsar (si parcial)</label>
-                <input
-                  type="number"
-                  name="montoParcialMxn"
-                  min={0}
-                  max={totalMxn}
-                  step="0.01"
-                  placeholder="0.00"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                />
-              </div>
-            </div>
-          ) : (
-            <input type="hidden" name="politicaReembolso" value="SIN_REEMBOLSO" />
-          )}
-          <button
-            type="submit"
-            className="w-full rounded-lg bg-red-600 text-white px-4 py-2 text-sm font-medium hover:bg-red-700"
-          >
-            Confirmar cancelación
-          </button>
-        </form>
-      </div>
-    </details>
-  );
+  return <CancelarDialogClient reservaId={reservaId} esOnline={esOnline} totalMxn={totalMxn} cancelarReservaAction={cancelarReservaAction} />;
 }

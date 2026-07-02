@@ -251,6 +251,12 @@ export function CalendarioGrid({
       e.preventDefault();
       e.stopPropagation();
       setTooltip(null);
+
+      if (reserva.origen === "ONLINE") {
+        setError('Las reservas online no se pueden modificar desde el calendario. Usa "Proponer cambio de fechas" en el detalle de la reserva.');
+        return;
+      }
+
       setDrag({
         type: "resizing",
         reservaId: reserva.id,
@@ -645,7 +651,8 @@ export function CalendarioGrid({
                         {/* Left resize handle */}
                         <div
                           className="absolute left-0 top-0 bottom-0 z-10"
-                          style={{ width: HANDLE_W, cursor: "ew-resize" }}
+                          style={{ width: HANDLE_W, cursor: reserva.origen === "ONLINE" ? "not-allowed" : "ew-resize" }}
+                          title={reserva.origen === "ONLINE" ? 'Usa "Proponer cambio de fechas" en el detalle' : undefined}
                           onMouseDown={(e) => handleResizeMouseDown(e, reserva, "left")}
                         />
 
@@ -674,7 +681,8 @@ export function CalendarioGrid({
                         {/* Right resize handle */}
                         <div
                           className="absolute right-0 top-0 bottom-0 z-10"
-                          style={{ width: HANDLE_W, cursor: "ew-resize" }}
+                          style={{ width: HANDLE_W, cursor: reserva.origen === "ONLINE" ? "not-allowed" : "ew-resize" }}
+                          title={reserva.origen === "ONLINE" ? 'Usa "Proponer cambio de fechas" en el detalle' : undefined}
                           onMouseDown={(e) => handleResizeMouseDown(e, reserva, "right")}
                         />
                       </div>

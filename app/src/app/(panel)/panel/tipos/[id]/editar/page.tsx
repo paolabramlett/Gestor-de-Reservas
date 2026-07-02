@@ -50,16 +50,18 @@ export default async function EditarTipoPage({ params }: { params: Promise<{ id:
         cancelHref="/panel/tipos"
       />
 
-      <IcalSection
-        tipoDeHabitacionId={tipo.id}
-        exportUrl={exportUrl}
-        feeds={tipo.icalFeeds.map((f) => ({
-          id: f.id,
-          nombre: f.nombre,
-          url: f.url,
-          lastSyncedAt: f.lastSyncedAt?.toISOString() ?? null,
-        }))}
-      />
+      {tipo.icalToken && (
+        <IcalSection
+          tipoDeHabitacionId={tipo.id}
+          exportUrl={exportUrl}
+          feeds={tipo.icalFeeds.map((f) => ({
+            id: f.id,
+            nombre: f.nombre,
+            url: f.url,
+            lastSyncedAt: f.lastSyncedAt?.toISOString() ?? null,
+          }))}
+        />
+      )}
     </div>
   );
 }
