@@ -3,6 +3,7 @@ import { redirect, notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { actualizarTipoAction } from "../../actions";
 import { TipoDeHabitacionForm } from "../../TipoDeHabitacionForm";
+import { IcalSection } from "./IcalSection";
 
 export default async function EditarTipoPage({ params }: { params: Promise<{ id: string }> }) {
   const usuario = await getCurrentUsuario();
@@ -12,8 +13,15 @@ export default async function EditarTipoPage({ params }: { params: Promise<{ id:
 
   const tipo = await prisma.tipoDeHabitacion.findFirst({
     where: { id, propiedadId: usuario.propiedadId },
+    include: { icalFeeds: { orderBy: { creadoEn: "asc" } } },
   });
   if (!tipo) notFound();
+
+  const baseUrl =
+    process.env.NEXT_PUBLIC_APP_URL ??
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+
+  const exportUrl = `${baseUrl}/api/ical/${tipo.icalToken}`;
 
   return (
     <div className="p-8 max-w-2xl">
@@ -40,6 +48,17 @@ export default async function EditarTipoPage({ params }: { params: Promise<{ id:
         }}
         submitLabel="Guardar cambios"
         cancelHref="/panel/tipos"
+      />
+
+      <IcalSection
+        tipoDeHabitacionId={tipo.id}
+        exportUrl={exportUrl}
+        feeds={tipo.icalFeeds.map((f) => ({
+          id: f.id,
+          nombre: f.nombre,
+          url: f.url,
+          lastSyncedAt: f.lastSyncedAt?.toISOString() ?? null,
+        }))}
       />
     </div>
   );

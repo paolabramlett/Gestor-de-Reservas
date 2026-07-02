@@ -100,6 +100,7 @@ model TipoDeHabitacion {
   tarifaBaseModalidad    ModalidadTarifa
   suplementoPorPersona   Decimal?         @db.Decimal(10, 2)
   activo                 Boolean          @default(true)
+  icalToken           String           @unique @default(cuid())
   creadoEn            DateTime        @default(now())
   actualizadoEn       DateTime        @updatedAt
 
@@ -108,6 +109,7 @@ model TipoDeHabitacion {
   temporadas     Temporada[]
   reservas       Reserva[]
   bloqueosDeTipo BloqueoDetipo[]
+  icalFeeds      IcalFeed[]
 
   @@map("tipos_de_habitacion")
 }
@@ -275,9 +277,26 @@ model BloqueoDetipo {
   fechaInicio        DateTime @db.Date
   fechaFin           DateTime @db.Date
   motivo             String?
+  icalFeedId         String?
   creadoEn           DateTime @default(now())
 
   tipoDeHabitacion TipoDeHabitacion @relation(fields: [tipoDeHabitacionId], references: [id], onDelete: Cascade)
+  icalFeed         IcalFeed?        @relation(fields: [icalFeedId], references: [id], onDelete: SetNull)
 
   @@map("bloqueos_de_tipo")
+}
+
+model IcalFeed {
+  id                 String    @id @default(cuid())
+  propiedadId        String
+  tipoDeHabitacionId String
+  nombre             String
+  url                String
+  lastSyncedAt       DateTime?
+  creadoEn           DateTime  @default(now())
+
+  tipoDeHabitacion TipoDeHabitacion @relation(fields: [tipoDeHabitacionId], references: [id], onDelete: Cascade)
+  bloqueos         BloqueoDetipo[]
+
+  @@map("ical_feeds")
 }
