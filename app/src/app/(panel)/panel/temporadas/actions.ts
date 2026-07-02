@@ -43,6 +43,9 @@ export async function crearTemporadaAction(formData: FormData) {
     throw new Error("Las fechas se solapan con una temporada existente para ese tipo de habitación");
   }
 
+  const modalidad = formData.get("modalidad") as ModalidadTarifa;
+  const suplementoRaw = formData.get("suplementoPorPersona");
+
   await prisma.temporada.create({
     data: {
       propiedadId: usuario.propiedadId,
@@ -51,7 +54,8 @@ export async function crearTemporadaAction(formData: FormData) {
       fechaInicio,
       fechaFin,
       precio: Number(formData.get("precio")),
-      modalidad: formData.get("modalidad") as ModalidadTarifa,
+      modalidad,
+      suplementoPorPersona: modalidad === "BASE_MAS_SUPLEMENTO" && suplementoRaw ? Number(suplementoRaw) : null,
     },
   });
 
@@ -78,6 +82,9 @@ export async function actualizarTemporadaAction(formData: FormData) {
     throw new Error("Las fechas se solapan con una temporada existente para ese tipo de habitación");
   }
 
+  const modalidad = formData.get("modalidad") as ModalidadTarifa;
+  const suplementoRaw = formData.get("suplementoPorPersona");
+
   await prisma.temporada.updateMany({
     where: { id, propiedadId: usuario.propiedadId },
     data: {
@@ -86,7 +93,8 @@ export async function actualizarTemporadaAction(formData: FormData) {
       fechaInicio,
       fechaFin,
       precio: Number(formData.get("precio")),
-      modalidad: formData.get("modalidad") as ModalidadTarifa,
+      modalidad,
+      suplementoPorPersona: modalidad === "BASE_MAS_SUPLEMENTO" && suplementoRaw ? Number(suplementoRaw) : null,
     },
   });
 
