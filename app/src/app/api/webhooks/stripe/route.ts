@@ -59,7 +59,8 @@ export async function POST(req: NextRequest) {
           colorPrimario: propiedad.colorPrimario ?? undefined,
         };
 
-        await Promise.allSettled([
+        // Fire-and-forget: no bloqueamos la respuesta a Stripe
+        Promise.allSettled([
           enviarConfirmacion({ emailHuesped: meta.email, ...emailParams }),
           propiedad.email
             ? enviarAlertaEquipo({
@@ -70,7 +71,7 @@ export async function POST(req: NextRequest) {
                 ...emailParams,
               })
             : Promise.resolve(),
-        ]);
+        ]).catch(() => {});
       }
     } catch (err: unknown) {
       if (err instanceof Error && err.message === "SIN_DISPONIBILIDAD") {
@@ -89,7 +90,7 @@ export async function POST(req: NextRequest) {
         where: { id: meta.propiedadId },
       });
       if (propiedad) {
-        await enviarPagoFallido({
+        enviarPagoFallido({
           emailHuesped: meta.email,
           nombreHuesped: meta.nombre,
           nombreHotel: propiedad.nombre,

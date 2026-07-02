@@ -312,7 +312,7 @@ export default async function ReportesPage({
                     {r.codigoReserva}
                   </Link>
                 </td>
-                <td className="px-4 py-3 text-gray-700">{r.huesped.nombre}</td>
+                <td className="px-4 py-3 text-gray-700">{r.nombreHuesped || r.huesped.nombre}</td>
                 <td className="px-4 py-3 text-gray-500 text-xs">{r.tipoDeHabitacion.nombre}</td>
                 <td className="px-4 py-3 text-gray-500 text-xs">{new Date(r.fechaIngreso).toLocaleDateString("es-MX")}</td>
                 <td className="px-4 py-3 text-gray-700">${Number(r.totalMxn).toLocaleString("es-MX")}</td>

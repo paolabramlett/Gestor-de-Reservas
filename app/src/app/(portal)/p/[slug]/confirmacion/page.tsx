@@ -149,7 +149,7 @@ export default async function ConfirmacionPage({
             </div>
             <div className="border-t border-gray-100 pt-3">
               <p className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Huésped</p>
-              <p className="text-gray-800 font-medium">{reserva.huesped.nombre}</p>
+              <p className="text-gray-800 font-medium">{reserva.nombreHuesped || reserva.huesped.nombre}</p>
             </div>
           </div>
         </div>

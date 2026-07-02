@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
       enviarRecordatorio({
         emailHuesped: r.huesped.email,
         codigoReserva: r.codigoReserva,
-        nombreHuesped: r.huesped.nombre,
+        nombreHuesped: r.nombreHuesped || r.huesped.nombre,
         nombreHotel: r.propiedad.nombre,
         tipoHabitacion: r.tipoDeHabitacion.nombre,
         fechaIngreso: r.fechaIngreso,

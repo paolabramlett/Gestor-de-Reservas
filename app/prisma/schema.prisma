@@ -179,6 +179,7 @@ model Reserva {
   fechaIngreso          DateTime      @db.Date
   fechaSalida           DateTime      @db.Date
   numPersonas           Int
+  nombreHuesped         String        @default("")
   totalMxn              Decimal       @db.Decimal(10, 2)
   desglosePorNoche      Json
   stripePaymentIntentId String?       @unique
@@ -191,6 +192,7 @@ model Reserva {
   huesped          Huesped          @relation(fields: [huespedId], references: [id])
   asignacion       AsignacionDeHabitacion?
   pagoManual       PagoManual?
+  solicitudesCambio SolicitudCambio[]
 
   @@map("reservas")
 }
@@ -221,6 +223,36 @@ model PagoManual {
 }
 
 // ─── Bloqueos ────────────────────────────────────────────────────────────────
+
+// ─── Solicitudes de cambio ───────────────────────────────────────────────────
+
+enum EstadoCambio {
+  PENDIENTE
+  ACEPTADA
+  RECHAZADA
+  EXPIRADA
+  CANCELADA
+}
+
+model SolicitudCambio {
+  id                String       @id @default(cuid())
+  reservaId         String
+  token             String       @unique @default(cuid())
+
+  fechaIngresoNueva DateTime     @db.Date
+  fechaSalidaNueva  DateTime     @db.Date
+  totalActual       Decimal      @db.Decimal(10, 2)
+  totalNuevo        Decimal      @db.Decimal(10, 2)
+  diferencia        Decimal      @db.Decimal(10, 2)
+
+  estado            EstadoCambio @default(PENDIENTE)
+  expiresAt         DateTime
+  creadoEn          DateTime     @default(now())
+
+  reserva Reserva @relation(fields: [reservaId], references: [id], onDelete: Cascade)
+
+  @@map("solicitudes_cambio")
+}
 
 model BloqueoDeHabitacion {
   id           String   @id @default(cuid())

@@ -42,6 +42,7 @@ function formatDisplay(s: SelectedDate | null): string {
 export function DatePicker({
   name,
   defaultValue,
+  value,
   required,
   min,
   max,
@@ -50,6 +51,7 @@ export function DatePicker({
 }: {
   name: string;
   defaultValue?: string;
+  value?: string;
   required?: boolean;
   min?: string;
   max?: string;
@@ -63,9 +65,20 @@ export function DatePicker({
     day: today.getDate(),
   };
 
-  const [selected, setSelected] = useState<SelectedDate | null>(parseISO(defaultValue));
+  const [selected, setSelected] = useState<SelectedDate | null>(parseISO(value ?? defaultValue));
   const [viewYear, setViewYear] = useState(selected?.year ?? todayObj.year);
   const [viewMonth, setViewMonth] = useState(selected?.month ?? todayObj.month);
+
+  // Sync internal state when controlled value changes from parent
+  useEffect(() => {
+    if (value === undefined) return;
+    const parsed = parseISO(value);
+    setSelected(parsed);
+    if (parsed) {
+      setViewYear(parsed.year);
+      setViewMonth(parsed.month);
+    }
+  }, [value]);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 

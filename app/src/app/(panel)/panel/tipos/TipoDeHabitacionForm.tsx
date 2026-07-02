@@ -47,16 +47,27 @@ export function TipoDeHabitacionForm({
 
     await Promise.all(
       arr.map(async (file, i) => {
+        if (file.size > 4 * 1024 * 1024) {
+          setFotos((prev) => {
+            const next = [...prev];
+            const idx = next.findIndex((f, fi) => f.uploading && fi >= next.length - arr.length + i);
+            if (idx !== -1) next[idx] = { url: "", error: "Imagen muy grande (máx. 4MB)" };
+            return next;
+          });
+          return;
+        }
         const fd = new FormData();
         fd.append("file", file);
         try {
           const res = await fetch("/api/upload", { method: "POST", body: fd });
-          const data = await res.json();
+          const text = await res.text();
+          let data: { url?: string; error?: string } = {};
+          try { data = JSON.parse(text); } catch { data = { error: res.status === 413 ? "Imagen muy grande (máx. 4MB)" : "Error del servidor" }; }
           setFotos((prev) => {
             const idx = prev.findIndex((f, fi) => f.uploading && fi >= prev.length - arr.length + i);
             if (idx === -1) return prev;
             const next = [...prev];
-            next[idx] = res.ok ? { url: data.url } : { url: "", error: data.error ?? "Error al subir" };
+            next[idx] = res.ok ? { url: data.url! } : { url: "", error: data.error ?? `Error ${res.status}` };
             return next;
           });
         } catch {
@@ -152,7 +163,7 @@ export function TipoDeHabitacionForm({
           <p className="text-sm text-gray-500">
             Arrastra imágenes aquí o <span className="font-medium text-gray-700 underline underline-offset-2">selecciona archivos</span>
           </p>
-          <p className="text-xs text-gray-400 mt-1">JPG, PNG, WebP · máx. 5MB por imagen</p>
+          <p className="text-xs text-gray-400 mt-1">JPG, PNG, WebP · máx. 4MB por imagen</p>
           <input
             ref={fileInputRef}
             type="file"

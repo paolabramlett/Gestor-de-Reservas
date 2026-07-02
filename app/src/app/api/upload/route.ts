@@ -7,32 +7,36 @@ const supabase = createClient(
 );
 
 const BUCKET = "habitaciones";
-const MAX_SIZE_MB = 5;
+const MAX_SIZE_MB = 4;
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif"];
 
 export async function POST(req: NextRequest) {
+  try {
+    const formData = await req.formData();
+    const file = formData.get("file") as File | null;
 
-  const formData = await req.formData();
-  const file = formData.get("file") as File | null;
+    if (!file) return NextResponse.json({ error: "No se recibió archivo" }, { status: 400 });
+    if (!ALLOWED_TYPES.includes(file.type))
+      return NextResponse.json({ error: "Formato no permitido. Usa JPG, PNG, WebP o AVIF." }, { status: 400 });
+    if (file.size > MAX_SIZE_MB * 1024 * 1024)
+      return NextResponse.json({ error: `El archivo supera el límite de ${MAX_SIZE_MB}MB` }, { status: 400 });
 
-  if (!file) return NextResponse.json({ error: "No se recibió archivo" }, { status: 400 });
-  if (!ALLOWED_TYPES.includes(file.type))
-    return NextResponse.json({ error: "Formato no permitido. Usa JPG, PNG, WebP o AVIF." }, { status: 400 });
-  if (file.size > MAX_SIZE_MB * 1024 * 1024)
-    return NextResponse.json({ error: `El archivo supera el límite de ${MAX_SIZE_MB}MB` }, { status: 400 });
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
+    const path = `uploads/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
 
-  const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
-  const path = `uploads/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const bytes = await file.arrayBuffer();
 
-  const bytes = await file.arrayBuffer();
+    const { error } = await supabase.storage
+      .from(BUCKET)
+      .upload(path, bytes, { contentType: file.type, upsert: false });
 
-  const { error } = await supabase.storage
-    .from(BUCKET)
-    .upload(path, bytes, { contentType: file.type, upsert: false });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
 
-  const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
-
-  return NextResponse.json({ url: data.publicUrl });
+    return NextResponse.json({ url: data.publicUrl });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Error interno";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

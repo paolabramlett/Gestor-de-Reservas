@@ -128,7 +128,7 @@ export default async function PanelPage() {
               key={r.id}
               id={r.id}
               codigo={r.codigoReserva}
-              nombre={r.huesped.nombre}
+              nombre={r.nombreHuesped || r.huesped.nombre}
               subtitulo={`${r.tipoDeHabitacion.nombre}${r.asignacion ? ` · Hab. ${r.asignacion.habitacion.numero}` : ""} · ${r.numPersonas} pax`}
               badge={!r.asignacion ? { text: "Sin hab.", color: "amber" } : undefined}
             />
@@ -141,7 +141,7 @@ export default async function PanelPage() {
               key={r.id}
               id={r.id}
               codigo={r.codigoReserva}
-              nombre={r.huesped.nombre}
+              nombre={r.nombreHuesped || r.huesped.nombre}
               subtitulo={`${r.tipoDeHabitacion.nombre}${r.asignacion ? ` · Hab. ${r.asignacion.habitacion.numero}` : ""}`}
             />
           ))}
@@ -153,7 +153,7 @@ export default async function PanelPage() {
               key={r.id}
               id={r.id}
               codigo={r.codigoReserva}
-              nombre={r.huesped.nombre}
+              nombre={r.nombreHuesped || r.huesped.nombre}
               subtitulo={`${r.tipoDeHabitacion.nombre}${r.asignacion ? ` · Hab. ${r.asignacion.habitacion.numero}` : ""} · Sale ${fmt(r.fechaSalida)}`}
             />
           ))}
@@ -165,7 +165,7 @@ export default async function PanelPage() {
               key={r.id}
               id={r.id}
               codigo={r.codigoReserva}
-              nombre={r.huesped.nombre}
+              nombre={r.nombreHuesped || r.huesped.nombre}
               subtitulo={`${r.tipoDeHabitacion.nombre} · Llega ${fmt(r.fechaIngreso)}`}
             />
           ))}

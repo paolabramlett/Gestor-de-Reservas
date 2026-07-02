@@ -122,7 +122,7 @@ export default async function ReservasPage({
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="font-medium text-gray-900">{r.huesped.nombre}</div>
+                    <div className="font-medium text-gray-900">{r.nombreHuesped || r.huesped.nombre}</div>
                     <div className="text-gray-400 text-xs">{r.huesped.email}</div>
                   </td>
                   <td className="px-4 py-3 text-gray-700">{r.tipoDeHabitacion.nombre}</td>

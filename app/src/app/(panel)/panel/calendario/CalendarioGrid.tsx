@@ -24,6 +24,7 @@ type ReservaData = {
   origen: string;
   tipoEspecial: string | null;
   tipoDeHabitacionId: string;
+  nombreHuesped: string;
   huesped: { nombre: string; email: string; telefono: string | null };
   asignacion: { habitacionId: string } | null;
   pagoManual: { estadoDePago: string; montoAnticipo: number | null } | null;
@@ -652,7 +653,7 @@ export function CalendarioGrid({
                         <div className="flex-1 px-2 truncate min-w-0" style={{ paddingLeft: HANDLE_W + 4 }}>
                           {blockW > 50 && (
                             <span className="font-medium truncate">
-                              {reserva.huesped.nombre.split(" ")[0]}
+                              {reserva.nombreHuesped || reserva.huesped.nombre.split(" ")[0]}
                             </span>
                           )}
                           {blockW > 80 && nights > 0 && (
@@ -696,7 +697,7 @@ export function CalendarioGrid({
             maxWidth: 200,
           }}
         >
-          <div className="font-semibold mb-1">{tooltip.reserva.huesped.nombre}</div>
+          <div className="font-semibold mb-1">{tooltip.reserva.nombreHuesped || tooltip.reserva.huesped.nombre}</div>
           <div className="text-gray-300 mb-1">{tooltip.reserva.codigoReserva}</div>
           <div>
             {formatDate(tooltip.reserva.fechaIngreso)} → {formatDate(tooltip.reserva.fechaSalida)}

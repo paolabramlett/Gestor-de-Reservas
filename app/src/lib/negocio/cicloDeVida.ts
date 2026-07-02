@@ -69,15 +69,37 @@ export async function cancelarReserva(input: CancelacionInput) {
   // Reembolso Stripe si aplica
   if (reserva.stripePaymentIntentId && input.politicaReembolso !== "SIN_REEMBOLSO") {
     const montoTotal = Number(reserva.totalMxn);
-    montoReembolsadoMxn =
-      input.politicaReembolso === "TOTAL" ? montoTotal : (input.montoParcialMxn ?? 0);
+    const monto = input.politicaReembolso === "TOTAL" ? montoTotal : (input.montoParcialMxn ?? 0);
+
+    // Validar monto: debe ser positivo y no superar el total
+    if (monto < 0) throw new Error("El monto de reembolso no puede ser negativo");
+    if (monto > montoTotal) throw new Error("El monto de reembolso no puede superar el total de la reserva");
+
+    montoReembolsadoMxn = monto;
     const montoCentavos = Math.round(montoReembolsadoMxn * 100);
 
     if (montoCentavos > 0) {
-      await stripe.refunds.create({
-        payment_intent: reserva.stripePaymentIntentId,
-        amount: montoCentavos,
-      });
+      // Verificar que no haya un reembolso ya emitido por el monto completo
+      const refundsExistentes = await stripe.refunds.list({ payment_intent: reserva.stripePaymentIntentId });
+      const totalReembolsado = refundsExistentes.data
+        .filter((r) => r.status === "succeeded")
+        .reduce((sum, r) => sum + r.amount, 0);
+      const disponibleParaReembolso = Math.round(montoTotal * 100) - totalReembolsado;
+
+      if (disponibleParaReembolso <= 0) {
+        throw new Error("Esta reserva ya fue reembolsada completamente");
+      }
+      const montoFinal = Math.min(montoCentavos, disponibleParaReembolso);
+
+      try {
+        await stripe.refunds.create({
+          payment_intent: reserva.stripePaymentIntentId,
+          amount: montoFinal,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Error al procesar reembolso";
+        throw new Error(`Reembolso fallido: ${msg}`);
+      }
     }
   }
 
@@ -90,7 +112,7 @@ export async function cancelarReserva(input: CancelacionInput) {
   await enviarCancelacion({
     emailHuesped: reserva.huesped.email,
     codigoReserva: reserva.codigoReserva,
-    nombreHuesped: reserva.huesped.nombre,
+    nombreHuesped: reserva.nombreHuesped || reserva.huesped.nombre,
     nombreHotel: reserva.propiedad.nombre,
     fechaIngreso: reserva.fechaIngreso,
     fechaSalida: reserva.fechaSalida,

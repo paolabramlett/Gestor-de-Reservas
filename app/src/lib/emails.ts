@@ -5,6 +5,9 @@ import CancelacionReserva from "@/emails/CancelacionReserva";
 import RecordatorioCheckIn from "@/emails/RecordatorioCheckIn";
 import AlertaNuevaReserva from "@/emails/AlertaNuevaReserva";
 import PagoFallido from "@/emails/PagoFallido";
+import PropuestaCambio from "@/emails/PropuestaCambio";
+import RespuestaCambioHotel from "@/emails/RespuestaCambioHotel";
+import CambioAceptadoHuesped from "@/emails/CambioAceptadoHuesped";
 
 const FROM = process.env.RESEND_FROM_EMAIL ?? "onboarding@resend.dev";
 
@@ -171,6 +174,126 @@ export async function enviarAlertaEquipo(params: {
     from: FROM,
     to: params.emailEquipo,
     subject: `Nueva reserva ${params.codigoReserva} — ${params.nombreHuesped}`,
+    html,
+  });
+}
+
+export async function enviarPropuestaCambio(params: {
+  emailHuesped: string;
+  codigoReserva: string;
+  nombreHuesped: string;
+  nombreHotel: string;
+  fechaIngresoActual: Date;
+  fechaSalidaActual: Date;
+  fechaIngresoNueva: Date;
+  fechaSalidaNueva: Date;
+  totalActual: number;
+  totalNuevo: number;
+  diferencia: number;
+  esCobro: boolean;
+  urlAceptar: string;
+  urlRechazar: string;
+  expiresAt: Date;
+  colorPrimario?: string;
+}) {
+  const html = await render(
+    PropuestaCambio({
+      codigoReserva: params.codigoReserva,
+      nombreHuesped: params.nombreHuesped,
+      nombreHotel: params.nombreHotel,
+      fechaIngresoActual: fmtFecha(params.fechaIngresoActual),
+      fechaSalidaActual: fmtFecha(params.fechaSalidaActual),
+      fechaIngresoNueva: fmtFecha(params.fechaIngresoNueva),
+      fechaSalidaNueva: fmtFecha(params.fechaSalidaNueva),
+      totalActual: params.totalActual.toLocaleString("es-MX"),
+      totalNuevo: params.totalNuevo.toLocaleString("es-MX"),
+      diferencia: Math.abs(params.diferencia).toLocaleString("es-MX"),
+      esCobro: params.esCobro,
+      urlAceptar: params.urlAceptar,
+      urlRechazar: params.urlRechazar,
+      expiresAt: fmtFecha(params.expiresAt),
+      colorPrimario: params.colorPrimario,
+    })
+  );
+  return resend.emails.send({
+    from: FROM,
+    to: params.emailHuesped,
+    subject: `Propuesta de cambio en tu reserva ${params.codigoReserva} — ${params.nombreHotel}`,
+    html,
+  });
+}
+
+export async function enviarRespuestaCambioHotel(params: {
+  emailHotel: string;
+  codigoReserva: string;
+  nombreHuesped: string;
+  nombreHotel: string;
+  fechaIngresoNueva: Date;
+  fechaSalidaNueva: Date;
+  totalNuevo: number;
+  diferencia: number;
+  esCobro: boolean;
+  respuesta: "ACEPTADA" | "RECHAZADA" | "EXPIRADA";
+  colorPrimario?: string;
+}) {
+  const html = await render(
+    RespuestaCambioHotel({
+      codigoReserva: params.codigoReserva,
+      nombreHuesped: params.nombreHuesped,
+      nombreHotel: params.nombreHotel,
+      fechaIngresoNueva: fmtFecha(params.fechaIngresoNueva),
+      fechaSalidaNueva: fmtFecha(params.fechaSalidaNueva),
+      totalNuevo: params.totalNuevo.toLocaleString("es-MX"),
+      diferencia: Math.abs(params.diferencia).toLocaleString("es-MX"),
+      esCobro: params.esCobro,
+      respuesta: params.respuesta,
+      colorPrimario: params.colorPrimario,
+    })
+  );
+  const subjectMap = {
+    ACEPTADA: `✅ Cambio aceptado — Reserva ${params.codigoReserva}`,
+    RECHAZADA: `❌ Cambio rechazado — Reserva ${params.codigoReserva}`,
+    EXPIRADA: `⏰ Propuesta expirada — Reserva ${params.codigoReserva}`,
+  };
+  return resend.emails.send({
+    from: FROM,
+    to: params.emailHotel,
+    subject: subjectMap[params.respuesta],
+    html,
+  });
+}
+
+export async function enviarCambioAceptadoHuesped(params: {
+  emailHuesped: string;
+  codigoReserva: string;
+  nombreHuesped: string;
+  nombreHotel: string;
+  fechaIngresoNueva: Date;
+  fechaSalidaNueva: Date;
+  totalNuevo: number;
+  diferencia: number;
+  esCobro: boolean;
+  cobroManual: boolean;
+  colorPrimario?: string;
+}) {
+  const html = await render(
+    CambioAceptadoHuesped({
+      codigoReserva: params.codigoReserva,
+      nombreHuesped: params.nombreHuesped,
+      nombreHotel: params.nombreHotel,
+      fechaIngresoNueva: fmtFecha(params.fechaIngresoNueva),
+      fechaSalidaNueva: fmtFecha(params.fechaSalidaNueva),
+      totalNuevo: params.totalNuevo.toLocaleString("es-MX"),
+      diferencia: Math.abs(params.diferencia).toLocaleString("es-MX"),
+      esCobro: params.esCobro,
+      cobroManual: params.cobroManual,
+      colorPrimario: params.colorPrimario,
+    })
+  );
+  return resend.emails.send({
+    from: FROM,
+    to: params.emailHuesped,
+    subject: `✅ Tu reserva ${params.codigoReserva} ha sido actualizada — ${params.nombreHotel}`,
     html,
   });
 }

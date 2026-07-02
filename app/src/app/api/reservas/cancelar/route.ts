@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
+import { enviarCancelacion } from "@/lib/emails";
 
 const STRIPE_COMISION_PORCENTAJE = 0.036;
 const STRIPE_COMISION_FIJA = 3;
@@ -60,13 +61,32 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // Actualizar estado
-  await prisma.reserva.update({
+  // Actualizar estado y obtener datos para el correo
+  const reservaActualizada = await prisma.reserva.update({
     where: { id: reserva.id },
     data: { estado: "CANCELADA" },
+    include: {
+      huesped: true,
+      propiedad: true,
+    },
   });
 
-  // TODO: email de confirmación de cancelación (tarea 11.2)
+  // Enviar correo de confirmación de cancelación
+  try {
+    await enviarCancelacion({
+      emailHuesped: reservaActualizada.huesped.email,
+      codigoReserva: reservaActualizada.codigoReserva,
+      nombreHuesped: reservaActualizada.nombreHuesped || reservaActualizada.huesped.nombre,
+      nombreHotel: reservaActualizada.propiedad.nombre,
+      fechaIngreso: reservaActualizada.fechaIngreso,
+      fechaSalida: reservaActualizada.fechaSalida,
+      totalMxn: Number(reservaActualizada.totalMxn),
+      montoReembolsadoMxn: reserva.stripePaymentIntentId ? montoReembolso : undefined,
+      colorPrimario: reservaActualizada.propiedad.colorPrimario ?? undefined,
+    });
+  } catch {
+    // El correo falla silenciosamente — la cancelación ya fue procesada
+  }
 
   return NextResponse.json({ cancelada: true, montoReembolso, comisionRetenida: comision });
 }

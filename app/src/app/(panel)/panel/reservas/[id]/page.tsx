@@ -13,6 +13,7 @@ import {
   noShowAction,
   cancelarReservaAction,
 } from "../cicloDeVidaActions";
+import { PropuestaCambioPanel } from "../PropuestaCambioPanel";
 
 const ESTADO_LABEL: Record<string, string> = {
   CONFIRMADA: "Confirmada",
@@ -54,7 +55,7 @@ export default async function ReservaDetallePage({
   });
   if (!reserva) notFound();
 
-  const [habitacionesDelTipo, tiposDeHabitacion] = await Promise.all([
+  const [habitacionesDelTipo, tiposDeHabitacion, solicitudPendiente, ultimaSolicitudResuelta] = await Promise.all([
     prisma.habitacion.findMany({
       where: {
         propiedadId: usuario.propiedadId,
@@ -66,6 +67,14 @@ export default async function ReservaDetallePage({
     prisma.tipoDeHabitacion.findMany({
       where: { propiedadId: usuario.propiedadId, activo: true },
       orderBy: { nombre: "asc" },
+    }),
+    prisma.solicitudCambio.findFirst({
+      where: { reservaId: id, estado: "PENDIENTE" },
+      orderBy: { creadoEn: "desc" },
+    }),
+    prisma.solicitudCambio.findFirst({
+      where: { reservaId: id, estado: { in: ["RECHAZADA", "CANCELADA", "EXPIRADA"] } },
+      orderBy: { creadoEn: "desc" },
     }),
   ]);
 
@@ -141,6 +150,36 @@ export default async function ReservaDetallePage({
         </div>
       )}
 
+      {/* Proponer cambio de fechas — solo reservas online confirmadas */}
+      {estado === "CONFIRMADA" && esOnline && (
+        <div className="mb-6">
+          <PropuestaCambioPanel
+            reservaId={reserva.id}
+            fechaIngresoActual={reserva.fechaIngreso.toISOString().split("T")[0]}
+            fechaSalidaActual={reserva.fechaSalida.toISOString().split("T")[0]}
+            numPersonas={reserva.numPersonas}
+            tipoDeHabitacionId={reserva.tipoDeHabitacionId}
+            totalActual={Number(reserva.totalMxn)}
+            solicitudPendiente={solicitudPendiente ? {
+              id: solicitudPendiente.id,
+              token: solicitudPendiente.token,
+              fechaIngresoNueva: solicitudPendiente.fechaIngresoNueva.toISOString().split("T")[0],
+              fechaSalidaNueva: solicitudPendiente.fechaSalidaNueva.toISOString().split("T")[0],
+              totalActual: Number(solicitudPendiente.totalActual),
+              totalNuevo: Number(solicitudPendiente.totalNuevo),
+              diferencia: Number(solicitudPendiente.diferencia),
+              expiresAt: solicitudPendiente.expiresAt.toISOString(),
+            } : null}
+            ultimaSolicitudResuelta={ultimaSolicitudResuelta ? {
+              estado: ultimaSolicitudResuelta.estado,
+              fechaIngresoNueva: ultimaSolicitudResuelta.fechaIngresoNueva.toISOString().split("T")[0],
+              fechaSalidaNueva: ultimaSolicitudResuelta.fechaSalidaNueva.toISOString().split("T")[0],
+              creadoEn: ultimaSolicitudResuelta.creadoEn.toISOString(),
+            } : null}
+          />
+        </div>
+      )}
+
       {/* Datos editables de la reserva */}
       {esEditable ? (
         <form action={actualizarDatosReservaAction} className="bg-white rounded-lg border border-gray-200 p-5 mb-6">
@@ -177,22 +216,32 @@ export default async function ReservaDetallePage({
               </div>
             </div>
 
-            {/* Fechas */}
+            {/* Fechas — solo lectura para reservas online (usar "Proponer cambio") */}
             <div>
               <label className="block text-xs text-gray-500 mb-1">Fecha de ingreso</label>
-              <DatePicker
-                name="fechaIngreso"
-                defaultValue={reserva.fechaIngreso.toISOString().slice(0, 10)}
-                required
-              />
+              {esOnline ? (
+                <>
+                  <input type="hidden" name="fechaIngreso" value={reserva.fechaIngreso.toISOString().slice(0, 10)} />
+                  <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 text-sm">
+                    {new Date(reserva.fechaIngreso).toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}
+                  </div>
+                </>
+              ) : (
+                <DatePicker name="fechaIngreso" defaultValue={reserva.fechaIngreso.toISOString().slice(0, 10)} required />
+              )}
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">Fecha de salida</label>
-              <DatePicker
-                name="fechaSalida"
-                defaultValue={reserva.fechaSalida.toISOString().slice(0, 10)}
-                required
-              />
+              {esOnline ? (
+                <>
+                  <input type="hidden" name="fechaSalida" value={reserva.fechaSalida.toISOString().slice(0, 10)} />
+                  <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 text-sm">
+                    {new Date(reserva.fechaSalida).toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}
+                  </div>
+                </>
+              ) : (
+                <DatePicker name="fechaSalida" defaultValue={reserva.fechaSalida.toISOString().slice(0, 10)} required />
+              )}
             </div>
 
             {/* Personas */}
@@ -331,7 +380,7 @@ export default async function ReservaDetallePage({
             <dl className="space-y-2 text-sm">
               <div>
                 <dt className="text-gray-500">Nombre</dt>
-                <dd className="text-gray-900 font-medium">{reserva.huesped.nombre}</dd>
+                <dd className="text-gray-900 font-medium">{reserva.nombreHuesped || reserva.huesped.nombre}</dd>
               </div>
               <div>
                 <dt className="text-gray-500">Email</dt>

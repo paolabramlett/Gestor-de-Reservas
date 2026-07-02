@@ -66,8 +66,9 @@ export default async function CalendarioPage({
     origen: r.origen as string,
     tipoEspecial: r.tipoEspecial as string | null,
     tipoDeHabitacionId: r.tipoDeHabitacionId,
+    nombreHuesped: r.nombreHuesped || r.huesped.nombre,
     huesped: {
-      nombre: r.huesped.nombre,
+      nombre: r.nombreHuesped || r.huesped.nombre,
       email: r.huesped.email,
       telefono: r.huesped.telefono,
     },
