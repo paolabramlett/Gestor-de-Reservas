@@ -31,41 +31,60 @@ export async function crearGrupoConHabitacionesAction(
   notas: string,
   habitaciones: HabitacionInput[]
 ): Promise<{ ok: true; grupoId: string } | { ok: false; error: string }> {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) return { ok: false, error: "No autenticado" };
-  if (!nombre.trim()) return { ok: false, error: "El nombre del grupo es obligatorio" };
-  if (habitaciones.length === 0) return { ok: false, error: "Agrega al menos una habitación" };
+  try {
+    const usuario = await getCurrentUsuario();
+    if (!usuario) return { ok: false, error: "No autenticado" };
+    if (!nombre.trim()) return { ok: false, error: "El nombre del grupo es obligatorio" };
+    if (habitaciones.length === 0) return { ok: false, error: "Agrega al menos una habitación" };
 
-  const grupo = await prisma.grupoReserva.create({
-    data: {
-      propiedadId: usuario.propiedadId,
-      codigoGrupo: generarCodigoGrupo(),
-      nombre: nombre.trim(),
-      notas: notas.trim() || null,
-    },
-  });
-
-  for (const h of habitaciones) {
-    const reserva = await crearReservaManual({
-      propiedadId: usuario.propiedadId,
-      tipoDeHabitacionId: h.tipoDeHabitacionId,
-      nombre: h.nombre,
-      email: h.email,
-      telefono: h.telefono || undefined,
-      fechaIngreso: new Date(h.fechaIngreso),
-      fechaSalida: new Date(h.fechaSalida),
-      numPersonas: h.numPersonas,
-      estadoDePago: h.estadoDePago,
-      notas: h.notas || undefined,
+    const grupo = await prisma.grupoReserva.create({
+      data: {
+        propiedadId: usuario.propiedadId,
+        codigoGrupo: generarCodigoGrupo(),
+        nombre: nombre.trim(),
+        notas: notas.trim() || null,
+      },
     });
 
-    await prisma.reserva.update({
-      where: { id: reserva.id },
-      data: { grupoId: grupo.id },
-    });
+    for (let i = 0; i < habitaciones.length; i++) {
+      const h = habitaciones[i];
+      try {
+        const reserva = await crearReservaManual({
+          propiedadId: usuario.propiedadId,
+          tipoDeHabitacionId: h.tipoDeHabitacionId,
+          nombre: h.nombre,
+          email: h.email,
+          telefono: h.telefono || undefined,
+          fechaIngreso: new Date(h.fechaIngreso),
+          fechaSalida: new Date(h.fechaSalida),
+          numPersonas: h.numPersonas,
+          estadoDePago: h.estadoDePago,
+          notas: h.notas || undefined,
+        });
+
+        await prisma.reserva.update({
+          where: { id: reserva.id },
+          data: { grupoId: grupo.id },
+        });
+      } catch (err: unknown) {
+        // Si una habitación falla, elimina el grupo recién creado (y las reservas ya vinculadas)
+        await prisma.reserva.updateMany({ where: { grupoId: grupo.id }, data: { grupoId: null } });
+        await prisma.grupoReserva.delete({ where: { id: grupo.id } });
+
+        const msg = err instanceof Error ? err.message : String(err);
+        const label = `Habitación ${i + 1}`;
+        if (msg === "SIN_DISPONIBILIDAD") {
+          return { ok: false, error: `${label}: no hay disponibilidad para las fechas seleccionadas` };
+        }
+        return { ok: false, error: `${label}: ${msg}` };
+      }
+    }
+
+    return { ok: true, grupoId: grupo.id };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Error inesperado al crear el grupo";
+    return { ok: false, error: msg };
   }
-
-  return { ok: true, grupoId: grupo.id };
 }
 
 // ── Editar datos del grupo ──────────────────────────────────────────────────
@@ -117,25 +136,32 @@ export async function agregarHabitacionAlGrupoAction(formData: FormData) {
   const grupo = await prisma.grupoReserva.findFirst({
     where: { id: grupoId, propiedadId: usuario.propiedadId },
   });
-  if (!grupo) throw new Error("Grupo no encontrado");
+  if (!grupo) redirect(`/panel/grupos/${grupoId}?error=${encodeURIComponent("Grupo no encontrado")}`);
 
-  const reserva = await crearReservaManual({
-    propiedadId: usuario.propiedadId,
-    tipoDeHabitacionId: formData.get("tipoDeHabitacionId") as string,
-    nombre: formData.get("nombre") as string,
-    email: formData.get("email") as string,
-    telefono: (formData.get("telefono") as string) || undefined,
-    fechaIngreso: new Date(formData.get("fechaIngreso") as string),
-    fechaSalida: new Date(formData.get("fechaSalida") as string),
-    numPersonas: Number(formData.get("numPersonas")),
-    estadoDePago: (formData.get("estadoDePago") as EstadoDePago) || EstadoDePago.PENDIENTE,
-    notas: (formData.get("notas") as string) || undefined,
-  });
+  try {
+    const reserva = await crearReservaManual({
+      propiedadId: usuario.propiedadId,
+      tipoDeHabitacionId: formData.get("tipoDeHabitacionId") as string,
+      nombre: formData.get("nombre") as string,
+      email: formData.get("email") as string,
+      telefono: (formData.get("telefono") as string) || undefined,
+      fechaIngreso: new Date(formData.get("fechaIngreso") as string),
+      fechaSalida: new Date(formData.get("fechaSalida") as string),
+      numPersonas: Number(formData.get("numPersonas")),
+      estadoDePago: (formData.get("estadoDePago") as EstadoDePago) || EstadoDePago.PENDIENTE,
+      notas: (formData.get("notas") as string) || undefined,
+    });
 
-  await prisma.reserva.update({
-    where: { id: reserva.id },
-    data: { grupoId },
-  });
+    await prisma.reserva.update({
+      where: { id: reserva.id },
+      data: { grupoId },
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error && err.message === "SIN_DISPONIBILIDAD"
+      ? "No hay disponibilidad para ese tipo y fechas"
+      : err instanceof Error ? err.message : "Error al agregar la habitación";
+    redirect(`/panel/grupos/${grupoId}?error=${encodeURIComponent(msg)}`);
+  }
 
   redirect(`/panel/grupos/${grupoId}?success=${encodeURIComponent("Habitación agregada")}`);
 }
