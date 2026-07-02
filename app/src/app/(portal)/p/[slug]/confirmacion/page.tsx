@@ -9,7 +9,7 @@ export default async function ConfirmacionPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ payment_intent?: string }>;
+  searchParams: Promise<{ payment_intent?: string; session_id?: string }>;
 }) {
   const { slug } = await params;
   const sp = await searchParams;
@@ -19,9 +19,10 @@ export default async function ConfirmacionPage({
 
   const colorPrimario = propiedad.colorPrimario ?? "#111827";
   const paymentIntentId = sp.payment_intent;
+  const sessionId = sp.session_id;
 
   // Pago inválido
-  if (!paymentIntentId) {
+  if (!paymentIntentId && !sessionId) {
     return (
       <div className="max-w-md mx-auto px-4 py-20 text-center">
         <p className="text-gray-500">Enlace de confirmación inválido.</p>
@@ -32,13 +33,15 @@ export default async function ConfirmacionPage({
     );
   }
 
-  const reserva = await prisma.reserva.findUnique({
-    where: { stripePaymentIntentId: paymentIntentId },
-    include: {
-      huesped: true,
-      tipoDeHabitacion: true,
-    },
-  });
+  const reserva = await (sessionId
+    ? prisma.reserva.findUnique({
+        where: { stripeCheckoutSessionId: sessionId },
+        include: { huesped: true, tipoDeHabitacion: true },
+      })
+    : prisma.reserva.findUnique({
+        where: { stripePaymentIntentId: paymentIntentId! },
+        include: { huesped: true, tipoDeHabitacion: true },
+      }));
 
   // Pago recibido pero webhook aún procesando
   if (!reserva) {
