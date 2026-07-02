@@ -75,7 +75,7 @@ export default async function ReservasPage({
           <Link
             key={f.value}
             href={f.value ? `/panel/reservas?estado=${f.value}` : "/panel/reservas"}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium ${
+            className={`px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap ${
               (estado ?? "") === f.value
                 ? "bg-gray-900 text-white"
                 : "bg-white border border-gray-300 text-gray-600 hover:bg-gray-50"
