@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
 import { getCurrentUsuario } from "@/lib/auth";
-import Link from "next/link";
 import { RolUsuario } from "@prisma/client";
 import { SuccessToast } from "@/components/SuccessToast";
 import { ClerkProvider } from "@clerk/nextjs";
+import { Sidebar } from "./Sidebar";
 
 // Rutas restringidas por rol:
 // - Configuración y tipos/habitaciones/temporadas: solo ADMIN y SUPER_ADMIN
@@ -53,24 +53,12 @@ export default async function PanelLayout({
   return (
     <ClerkProvider>
     <div className="min-h-screen flex bg-gray-50">
-      <aside className="w-56 bg-white border-r border-gray-200 flex flex-col">
-        <div className="px-4 py-5 border-b border-gray-200">
-          <div className="text-sm font-semibold text-gray-900 truncate">{usuario.propiedad.nombre}</div>
-          <div className="text-xs text-gray-400 mt-0.5">{ROL_LABEL[rol]}</div>
-        </div>
-        <nav className="flex-1 py-4">
-          {navVisible.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900"
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
-      </aside>
-      <main className="flex-1 overflow-auto">
+      <Sidebar
+        nombre={usuario.propiedad.nombre}
+        rolLabel={ROL_LABEL[rol]}
+        nav={navVisible}
+      />
+      <main className="flex-1 overflow-auto pt-14 md:pt-0">
         <RolGuard rol={rol} rutasAdmin={RUTAS_ADMIN} rutasFinanzas={RUTAS_FINANZAS}>
           {children}
         </RolGuard>
