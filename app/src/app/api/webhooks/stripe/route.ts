@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { crearReservaOnline } from "@/lib/negocio/reservas";
 import { enviarConfirmacion, enviarAlertaEquipo, enviarPagoFallido } from "@/lib/emails";
+import { EstadoReserva, EstadoDePago } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import Stripe from "stripe";
 
@@ -79,6 +80,58 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ reembolsado: true });
       }
       throw err;
+    }
+  }
+
+  if (event.type === "checkout.session.completed") {
+    const session = event.data.object as Stripe.Checkout.Session;
+    if (session.metadata?.tipo === "MANUAL_PAGO" && session.metadata?.reservaId) {
+      const reservaId = session.metadata.reservaId;
+      const esPagoCompleto = session.metadata.esPagoCompleto === "true";
+
+      const reserva = await prisma.reserva.findUnique({
+        where: { id: reservaId },
+        include: { huesped: true, tipoDeHabitacion: true, propiedad: true, pagoManual: true },
+      });
+
+      if (reserva && reserva.estado === EstadoReserva.PENDIENTE_PAGO) {
+        await prisma.reserva.update({
+          where: { id: reservaId },
+          data: {
+            estado: EstadoReserva.CONFIRMADA,
+            pagoManual: {
+              update: {
+                estadoDePago: esPagoCompleto ? EstadoDePago.PAGADO_COMPLETO : EstadoDePago.ANTICIPO_PAGADO,
+              },
+            },
+          },
+        });
+
+        const emailParams = {
+          codigoReserva: reserva.codigoReserva,
+          nombreHuesped: reserva.huesped.nombre,
+          nombreHotel: reserva.propiedad.nombre,
+          tipoHabitacion: reserva.tipoDeHabitacion.nombre,
+          fechaIngreso: reserva.fechaIngreso,
+          fechaSalida: reserva.fechaSalida,
+          numPersonas: reserva.numPersonas,
+          totalMxn: Number(reserva.totalMxn),
+          colorPrimario: reserva.propiedad.colorPrimario ?? undefined,
+        };
+
+        Promise.allSettled([
+          enviarConfirmacion({ emailHuesped: reserva.huesped.email, ...emailParams }),
+          reserva.propiedad.email
+            ? enviarAlertaEquipo({
+                emailEquipo: reserva.propiedad.email,
+                emailHuesped: reserva.huesped.email,
+                telefonoHuesped: reserva.huesped.telefono ?? undefined,
+                origen: "MANUAL",
+                ...emailParams,
+              })
+            : Promise.resolve(),
+        ]).catch(() => {});
+      }
     }
   }
 

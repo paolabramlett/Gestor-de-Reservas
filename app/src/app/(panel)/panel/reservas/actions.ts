@@ -2,7 +2,7 @@
 
 import { getCurrentUsuario } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { crearReservaManual } from "@/lib/negocio/reservas";
+import { crearReservaManual, crearReservaConLinkDePago } from "@/lib/negocio/reservas";
 import { EstadoDePago, EstadoReserva, TipoEspecialReserva } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { calcularTotalReserva } from "@/lib/negocio/tarifas";
@@ -54,6 +54,54 @@ export async function crearReservaManualAction(formData: FormData) {
     redirect(`/panel/calendario?mes=${mes}&año=${año}&success=${encodeURIComponent("Reserva creada")}`);
   }
   redirect(`/panel/reservas/${reserva.id}?success=${encodeURIComponent("Reserva creada")}`);
+}
+
+export async function crearReservaConPagoAction(formData: FormData) {
+  const usuario = await getCurrentUsuario();
+  if (!usuario) redirect("/sign-in");
+
+  const tipoDeHabitacionId = formData.get("tipoDeHabitacionId") as string;
+  const nombre = formData.get("nombre") as string;
+  const email = formData.get("email") as string;
+  const telefono = (formData.get("telefono") as string) || undefined;
+  const fechaIngreso = new Date(formData.get("fechaIngreso") as string);
+  const fechaSalida = new Date(formData.get("fechaSalida") as string);
+  const numPersonas = Number(formData.get("numPersonas"));
+  const notas = (formData.get("notas") as string) || undefined;
+  const from = formData.get("from") as string;
+  const tipoEspecialRaw = formData.get("tipoEspecial") as string;
+  const tipoEspecial = tipoEspecialRaw ? (tipoEspecialRaw as TipoEspecialReserva) : null;
+  const totalOverrideRaw = formData.get("totalOverride") as string;
+  const totalOverride = totalOverrideRaw ? Number(totalOverrideRaw) : null;
+  const montoCobrar = Number(formData.get("montoCobrar") as string);
+  const esPagoCompleto = formData.get("esPagoCompleto") === "true";
+
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ??
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+
+  const reserva = await crearReservaConLinkDePago({
+    propiedadId: usuario.propiedadId,
+    tipoDeHabitacionId,
+    nombre,
+    email,
+    telefono,
+    fechaIngreso,
+    fechaSalida,
+    numPersonas,
+    notas,
+    tipoEspecial,
+    totalOverride,
+    montoCobrar,
+    esPagoCompleto,
+    baseUrl,
+  });
+
+  if (from === "calendario") {
+    const mes = fechaIngreso.getMonth() + 1;
+    const año = fechaIngreso.getFullYear();
+    redirect(`/panel/calendario?mes=${mes}&año=${año}&success=${encodeURIComponent("Link de pago enviado al huésped")}`);
+  }
+  redirect(`/panel/reservas/${reserva.id}?success=${encodeURIComponent("Link de pago enviado al huésped")}`);
 }
 
 export async function asignarHabitacionAction(formData: FormData) {

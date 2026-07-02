@@ -1,6 +1,7 @@
 import { resend } from "./resend";
 import { render } from "@react-email/render";
 import ConfirmacionReserva from "@/emails/ConfirmacionReserva";
+import SolicitudPago from "@/emails/SolicitudPago";
 import CancelacionReserva from "@/emails/CancelacionReserva";
 import RecordatorioCheckIn from "@/emails/RecordatorioCheckIn";
 import AlertaNuevaReserva from "@/emails/AlertaNuevaReserva";
@@ -294,6 +295,45 @@ export async function enviarCambioAceptadoHuesped(params: {
     from: FROM,
     to: params.emailHuesped,
     subject: `✅ Tu reserva ${params.codigoReserva} ha sido actualizada — ${params.nombreHotel}`,
+    html,
+  });
+}
+
+export async function enviarSolicitudPago(params: {
+  emailHuesped: string;
+  codigoReserva: string;
+  nombreHuesped: string;
+  nombreHotel: string;
+  tipoHabitacion: string;
+  fechaIngreso: Date;
+  fechaSalida: Date;
+  numPersonas: number;
+  montoCobrar: number;
+  esPagoCompleto: boolean;
+  linkPago: string;
+  expiraEn: Date;
+  colorPrimario?: string;
+}) {
+  const html = await render(
+    SolicitudPago({
+      codigoReserva: params.codigoReserva,
+      nombreHuesped: params.nombreHuesped,
+      nombreHotel: params.nombreHotel,
+      tipoHabitacion: params.tipoHabitacion,
+      fechaIngreso: fmtFecha(params.fechaIngreso),
+      fechaSalida: fmtFecha(params.fechaSalida),
+      numPersonas: params.numPersonas,
+      montoCobrar: params.montoCobrar.toLocaleString("es-MX"),
+      esPagoCompleto: params.esPagoCompleto,
+      linkPago: params.linkPago,
+      expiraEn: fmtFecha(params.expiraEn),
+      colorPrimario: params.colorPrimario,
+    })
+  );
+  return resend.emails.send({
+    from: FROM,
+    to: params.emailHuesped,
+    subject: `💳 Completa el pago de tu reserva ${params.codigoReserva} — ${params.nombreHotel}`,
     html,
   });
 }

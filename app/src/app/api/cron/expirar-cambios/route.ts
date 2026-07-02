@@ -42,5 +42,20 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ procesadas: expiradas.length });
+  // Expirar reservas PENDIENTE_PAGO con link vencido
+  const reservasExpiradas = await prisma.reserva.findMany({
+    where: {
+      estado: "PENDIENTE_PAGO",
+      linkExpiraEn: { lt: new Date() },
+    },
+  });
+
+  if (reservasExpiradas.length > 0) {
+    await prisma.reserva.updateMany({
+      where: { id: { in: reservasExpiradas.map((r) => r.id) } },
+      data: { estado: "CANCELADA" },
+    });
+  }
+
+  return NextResponse.json({ procesadas: expiradas.length, pagosExpirados: reservasExpiradas.length });
 }

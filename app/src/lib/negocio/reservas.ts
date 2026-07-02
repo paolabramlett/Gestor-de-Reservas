@@ -3,7 +3,8 @@ import { Prisma, OrigenReserva, EstadoReserva, EstadoDePago, TipoEspecialReserva
 import { ulid } from "ulid";
 import { calcularTotalReserva } from "./tarifas";
 import { verificarDisponibilidadAtómica } from "./disponibilidad";
-import { enviarConfirmacion, enviarAlertaEquipo } from "@/lib/emails";
+import { enviarConfirmacion, enviarAlertaEquipo, enviarSolicitudPago } from "@/lib/emails";
+import { stripe } from "@/lib/stripe";
 
 export function generarCodigoReserva(): string {
   const id = ulid();
@@ -180,4 +181,125 @@ export async function crearReservaManual(input: CrearReservaManualInput) {
 
     return reserva;
   });
+}
+
+type CrearReservaConLinkInput = Omit<CrearReservaManualInput, "estadoDePago" | "montoAnticipo"> & {
+  montoCobrar: number;
+  esPagoCompleto: boolean;
+  baseUrl: string;
+};
+
+export async function crearReservaConLinkDePago(input: CrearReservaConLinkInput) {
+  const { total: totalCalculado, desglose } = await calcularTotalReserva(
+    input.tipoDeHabitacionId,
+    input.fechaIngreso,
+    input.fechaSalida,
+    input.numPersonas
+  );
+
+  const total =
+    input.totalOverride != null
+      ? input.totalOverride
+      : input.tipoEspecial === "CORTESIA"
+      ? 0
+      : totalCalculado;
+
+  // Create reservation in PENDIENTE_PAGO state
+  const reserva = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    const huespedExistente = await tx.huesped.findFirst({ where: { email: input.email } });
+    const huesped = huespedExistente
+      ? await tx.huesped.update({
+          where: { id: huespedExistente.id },
+          data: { nombre: input.nombre, telefono: input.telefono ?? undefined },
+        })
+      : await tx.huesped.create({
+          data: { nombre: input.nombre, email: input.email, telefono: input.telefono },
+        });
+
+    const expiraEn = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    const reserva = await tx.reserva.create({
+      data: {
+        codigoReserva: generarCodigoReserva(),
+        propiedadId: input.propiedadId,
+        tipoDeHabitacionId: input.tipoDeHabitacionId,
+        huespedId: huesped.id,
+        nombreHuesped: input.nombre,
+        origen: OrigenReserva.MANUAL,
+        estado: EstadoReserva.PENDIENTE_PAGO,
+        fechaIngreso: input.fechaIngreso,
+        fechaSalida: input.fechaSalida,
+        numPersonas: input.numPersonas,
+        totalMxn: total,
+        desglosePorNoche: desglose,
+        tipoEspecial: input.tipoEspecial ?? null,
+        linkExpiraEn: expiraEn,
+        pagoManual: {
+          create: {
+            estadoDePago: EstadoDePago.PENDIENTE,
+            montoAnticipo: input.esPagoCompleto ? null : input.montoCobrar,
+            notas: input.notas,
+          },
+        },
+      },
+      include: { huesped: true, tipoDeHabitacion: true, propiedad: true, pagoManual: true },
+    });
+
+    return reserva;
+  });
+
+  // Create Stripe Checkout Session
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    payment_method_types: ["card"],
+    line_items: [
+      {
+        quantity: 1,
+        price_data: {
+          currency: "mxn",
+          unit_amount: Math.round(input.montoCobrar * 100),
+          product_data: {
+            name: input.esPagoCompleto
+              ? `Reserva completa — ${reserva.tipoDeHabitacion.nombre}`
+              : `Anticipo de reserva — ${reserva.tipoDeHabitacion.nombre}`,
+            description: `${reserva.codigoReserva} · ${reserva.propiedad.nombre}`,
+          },
+        },
+      },
+    ],
+    customer_email: input.email,
+    metadata: {
+      reservaId: reserva.id,
+      tipo: "MANUAL_PAGO",
+      esPagoCompleto: input.esPagoCompleto ? "true" : "false",
+    },
+    expires_at: Math.floor((Date.now() + 24 * 60 * 60 * 1000) / 1000),
+    success_url: `${input.baseUrl}/p/${reserva.propiedad.slug}/confirmacion?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${input.baseUrl}/p/${reserva.propiedad.slug}`,
+  });
+
+  // Save checkout session ID
+  await prisma.reserva.update({
+    where: { id: reserva.id },
+    data: { stripeCheckoutSessionId: session.id },
+  });
+
+  // Send payment request email (fire-and-forget)
+  enviarSolicitudPago({
+    emailHuesped: input.email,
+    codigoReserva: reserva.codigoReserva,
+    nombreHuesped: input.nombre,
+    nombreHotel: reserva.propiedad.nombre,
+    tipoHabitacion: reserva.tipoDeHabitacion.nombre,
+    fechaIngreso: reserva.fechaIngreso,
+    fechaSalida: reserva.fechaSalida,
+    numPersonas: reserva.numPersonas,
+    montoCobrar: input.montoCobrar,
+    esPagoCompleto: input.esPagoCompleto,
+    linkPago: session.url!,
+    expiraEn: reserva.linkExpiraEn!,
+    colorPrimario: reserva.propiedad.colorPrimario ?? undefined,
+  }).catch(() => {});
+
+  return reserva;
 }

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { DatePicker } from "@/components/DatePicker";
-import { crearReservaManualAction } from "../actions";
+import { crearReservaManualAction, crearReservaConPagoAction } from "../actions";
 import DisponibilidadCheck from "./DisponibilidadCheck";
 
 type Tipo = {
@@ -31,12 +31,16 @@ export function NuevaReservaForm({
 }) {
   const [estadoDePago, setEstadoDePago] = useState("PENDIENTE");
   const [tipoEspecial, setTipoEspecial] = useState("");
+  const [solicitarPago, setSolicitarPago] = useState(false);
+  const [esPagoCompleto, setEsPagoCompleto] = useState(false);
 
   const showAnticipo = estadoDePago === "ANTICIPO_PAGADO";
   const showPrecioAcordado = tipoEspecial === "PRECIO_ACORDADO" || tipoEspecial === "PROMOCION";
 
+  const action = solicitarPago ? crearReservaConPagoAction : crearReservaManualAction;
+
   return (
-    <form action={crearReservaManualAction} className="space-y-5 bg-white rounded-lg border border-gray-200 p-6">
+    <form action={action} className="space-y-5 bg-white rounded-lg border border-gray-200 p-6">
       <input type="hidden" name="from" value={from ?? ""} />
 
       {/* Tipo de habitación */}
@@ -153,38 +157,106 @@ export function NuevaReservaForm({
         </div>
       )}
 
-      {/* Estado de pago */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Estado de pago</label>
-        <select
-          name="estadoDePago"
-          value={estadoDePago}
-          onChange={(e) => setEstadoDePago(e.target.value)}
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-        >
-          <option value="PENDIENTE">Pendiente</option>
-          <option value="ANTICIPO_PAGADO">Anticipo pagado</option>
-          <option value="PAGADO_COMPLETO">Pagado completo</option>
-        </select>
+      {/* Solicitar pago con tarjeta */}
+      <div className="rounded-lg border border-gray-200 p-4 space-y-4">
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={solicitarPago}
+            onChange={(e) => setSolicitarPago(e.target.checked)}
+            className="w-4 h-4 rounded border-gray-300 text-gray-900"
+          />
+          <div>
+            <span className="text-sm font-medium text-gray-800">Solicitar pago con tarjeta</span>
+            <p className="text-xs text-gray-500 mt-0.5">
+              El huésped recibirá un link de pago por email. La reserva se confirma automáticamente al pagar. El link expira en 24 horas.
+            </p>
+          </div>
+        </label>
+
+        {solicitarPago && (
+          <div className="space-y-3 pl-7">
+            <div className="flex gap-3">
+              <label className={`flex-1 flex items-center gap-2 border rounded-lg px-3 py-2.5 cursor-pointer text-sm ${!esPagoCompleto ? "border-gray-900 bg-gray-50" : "border-gray-200"}`}>
+                <input
+                  type="radio"
+                  name="esPagoCompleto"
+                  value="false"
+                  checked={!esPagoCompleto}
+                  onChange={() => setEsPagoCompleto(false)}
+                  className="text-gray-900"
+                />
+                Anticipo
+              </label>
+              <label className={`flex-1 flex items-center gap-2 border rounded-lg px-3 py-2.5 cursor-pointer text-sm ${esPagoCompleto ? "border-gray-900 bg-gray-50" : "border-gray-200"}`}>
+                <input
+                  type="radio"
+                  name="esPagoCompleto"
+                  value="true"
+                  checked={esPagoCompleto}
+                  onChange={() => setEsPagoCompleto(true)}
+                  className="text-gray-900"
+                />
+                Pago completo
+              </label>
+            </div>
+            <input type="hidden" name="esPagoCompleto" value={esPagoCompleto ? "true" : "false"} />
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">
+                {esPagoCompleto ? "Monto total a cobrar (MXN)" : "Monto del anticipo (MXN)"}
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                <input
+                  type="number"
+                  name="montoCobrar"
+                  min={1}
+                  step="0.01"
+                  required
+                  placeholder="0.00"
+                  className="w-full border border-gray-300 rounded-lg pl-7 pr-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Monto de anticipo */}
-      {showAnticipo && (
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Monto de anticipo (MXN)</label>
-          <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-            <input
-              type="number"
-              name="montoAnticipo"
-              min={0}
-              step="0.01"
-              required
-              placeholder="0.00"
-              className="w-full border border-gray-300 rounded-lg pl-7 pr-3 py-2 text-sm"
-            />
+      {/* Estado de pago (solo cuando NO se solicita pago con tarjeta) */}
+      {!solicitarPago && (
+        <>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Estado de pago</label>
+            <select
+              name="estadoDePago"
+              value={estadoDePago}
+              onChange={(e) => setEstadoDePago(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            >
+              <option value="PENDIENTE">Pendiente</option>
+              <option value="ANTICIPO_PAGADO">Anticipo pagado</option>
+              <option value="PAGADO_COMPLETO">Pagado completo</option>
+            </select>
           </div>
-        </div>
+
+          {showAnticipo && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Monto de anticipo (MXN)</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                <input
+                  type="number"
+                  name="montoAnticipo"
+                  min={0}
+                  step="0.01"
+                  required
+                  placeholder="0.00"
+                  className="w-full border border-gray-300 rounded-lg pl-7 pr-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {/* Notas */}

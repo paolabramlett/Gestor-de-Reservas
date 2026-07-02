@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 
 const ESTADO_LABEL: Record<string, string> = {
+  PENDIENTE_PAGO: "Pago pendiente",
   CONFIRMADA: "Confirmada",
   EN_CURSO: "En curso",
   COMPLETADA: "Completada",
@@ -12,6 +13,7 @@ const ESTADO_LABEL: Record<string, string> = {
 };
 
 const ESTADO_COLOR: Record<string, string> = {
+  PENDIENTE_PAGO: "bg-amber-100 text-amber-800",
   CONFIRMADA: "bg-blue-100 text-blue-800",
   EN_CURSO: "bg-green-100 text-green-800",
   COMPLETADA: "bg-gray-100 text-gray-600",
@@ -35,7 +37,7 @@ export default async function ReservasPage({
   const reservas = await prisma.reserva.findMany({
     where: {
       propiedadId: usuario.propiedadId,
-      ...(estado ? { estado: estado as any } : { estado: { in: ["CONFIRMADA", "EN_CURSO"] } }),
+      ...(estado ? { estado: estado as any } : { estado: { in: ["PENDIENTE_PAGO", "CONFIRMADA", "EN_CURSO"] } }),
     },
     include: {
       huesped: true,
@@ -48,6 +50,7 @@ export default async function ReservasPage({
 
   const filtros = [
     { value: "", label: "Activas" },
+    { value: "PENDIENTE_PAGO", label: "Pago pendiente" },
     { value: "CONFIRMADA", label: "Confirmadas" },
     { value: "EN_CURSO", label: "En curso" },
     { value: "COMPLETADA", label: "Completadas" },
