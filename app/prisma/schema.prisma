@@ -68,6 +68,7 @@ model Propiedad {
   habitaciones      Habitacion[]
   temporadas        Temporada[]
   reservas          Reserva[]
+  grupos            GrupoReserva[]
   usuarios          UsuarioPropiedad[]
 
   @@map("propiedades")
@@ -169,6 +170,22 @@ model Huesped {
   @@map("huespedes")
 }
 
+// ─── Grupos de reserva ───────────────────────────────────────────────────────
+
+model GrupoReserva {
+  id          String   @id @default(cuid())
+  propiedadId String
+  codigoGrupo String   @unique
+  nombre      String
+  notas       String?
+  creadoEn    DateTime @default(now())
+
+  propiedad Propiedad @relation(fields: [propiedadId], references: [id], onDelete: Cascade)
+  reservas  Reserva[]
+
+  @@map("grupos_reserva")
+}
+
 // ─── Reservas ────────────────────────────────────────────────────────────────
 
 model Reserva {
@@ -177,6 +194,7 @@ model Reserva {
   propiedadId           String
   tipoDeHabitacionId    String
   huespedId             String
+  grupoId               String?
   origen                OrigenReserva
   estado                EstadoReserva @default(CONFIRMADA)
   fechaIngreso          DateTime      @db.Date
@@ -195,6 +213,7 @@ model Reserva {
   propiedad        Propiedad        @relation(fields: [propiedadId], references: [id], onDelete: Cascade)
   tipoDeHabitacion TipoDeHabitacion @relation(fields: [tipoDeHabitacionId], references: [id])
   huesped          Huesped          @relation(fields: [huespedId], references: [id])
+  grupo            GrupoReserva?    @relation(fields: [grupoId], references: [id])
   asignacion       AsignacionDeHabitacion?
   pagoManual       PagoManual?
   solicitudesCambio SolicitudCambio[]
