@@ -5,6 +5,7 @@ import {
   asignarHabitacionAction,
   actualizarPagoYNotasAction,
   actualizarDatosReservaAction,
+  solicitarPagoAction,
 } from "../actions";
 import { DatePicker } from "@/components/DatePicker";
 import {
@@ -15,6 +16,7 @@ import {
 } from "../cicloDeVidaActions";
 import { PropuestaCambioPanel } from "../PropuestaCambioPanel";
 import { BotonesEstadoReserva, CancelarDialogClient } from "../BotonesEstadoReserva";
+import { SolicitarPagoButton } from "../SolicitarPagoButton";
 
 const ESTADO_LABEL: Record<string, string> = {
   PENDIENTE_PAGO: "Pago pendiente",
@@ -458,7 +460,22 @@ export default async function ReservaDetallePage({
       {/* Pago y notas — solo reservas manuales editables */}
       {esPagoManual && esEditable && (
         <div className="bg-white rounded-lg border border-gray-200 p-5 mb-6">
-          <h2 className="text-sm font-semibold text-gray-700 mb-3">Pago y notas</h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-gray-700">Pago y notas</h2>
+            {reserva.tipoEspecial !== "CORTESIA" && reserva.pagoManual?.estadoDePago !== "PAGADO_COMPLETO" && (
+              <SolicitarPagoButton
+                reservaId={reserva.id}
+                totalMxn={Number(reserva.totalMxn)}
+                emailHuesped={reserva.huesped.email}
+                yaTieneLinkActivo={
+                  reserva.estado === "PENDIENTE_PAGO" &&
+                  !!reserva.linkExpiraEn &&
+                  new Date(reserva.linkExpiraEn) > new Date()
+                }
+                solicitarPagoAction={solicitarPagoAction}
+              />
+            )}
+          </div>
 
           {/* Resumen de saldo */}
           {reserva.pagoManual?.estadoDePago === "ANTICIPO_PAGADO" && reserva.pagoManual.montoAnticipo && (

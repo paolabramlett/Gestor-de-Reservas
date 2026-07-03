@@ -7,6 +7,8 @@ import { EstadoDePago, EstadoReserva, TipoEspecialReserva } from "@prisma/client
 import { redirect } from "next/navigation";
 import { calcularTotalReserva } from "@/lib/negocio/tarifas";
 import { verificarDisponibilidadAtómica } from "@/lib/negocio/disponibilidad";
+import { stripe } from "@/lib/stripe";
+import { enviarSolicitudPago } from "@/lib/emails";
 
 export async function crearReservaManualAction(formData: FormData) {
   const usuario = await getCurrentUsuario();
@@ -278,6 +280,104 @@ export async function actualizarEstadoReservaAction(formData: FormData) {
   });
 
   redirect(`/panel/reservas/${reservaId}?success=${encodeURIComponent("Reserva actualizada")}`);
+}
+
+export async function solicitarPagoAction(reservaId: string) {
+  const usuario = await getCurrentUsuario();
+  if (!usuario) redirect("/sign-in");
+
+  const reserva = await prisma.reserva.findFirst({
+    where: { id: reservaId, propiedadId: usuario.propiedadId },
+    include: {
+      huesped: true,
+      tipoDeHabitacion: true,
+      propiedad: true,
+      pagoManual: true,
+    },
+  });
+
+  if (!reserva) redirect(`/panel/reservas`);
+  if (reserva.origen !== "MANUAL") redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("Solo aplica a reservas manuales")}`);
+  if (reserva.tipoEspecial === "CORTESIA") redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("Las cortesías no requieren pago")}`);
+  if (reserva.pagoManual?.estadoDePago === "PAGADO_COMPLETO") redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("Esta reserva ya está pagada por completo")}`);
+  if (reserva.estado === "CANCELADA" || reserva.estado === "NO_SHOW" || reserva.estado === "COMPLETADA") {
+    redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("No se puede solicitar pago en este estado")}`);
+  }
+
+  // Invalidar el Checkout Session anterior si existe
+  if (reserva.stripeCheckoutSessionId) {
+    try {
+      await stripe.checkout.sessions.expire(reserva.stripeCheckoutSessionId);
+    } catch {
+      // Session ya expiró o fue completada — ignorar
+    }
+  }
+
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ??
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+
+  const montoCobrar = Number(reserva.totalMxn);
+  const expiraEn = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    payment_method_types: ["card"],
+    line_items: [
+      {
+        quantity: 1,
+        price_data: {
+          currency: "mxn",
+          unit_amount: Math.round(montoCobrar * 100),
+          product_data: {
+            name: `Reserva completa — ${reserva.tipoDeHabitacion.nombre}`,
+            description: `${reserva.codigoReserva} · ${reserva.propiedad.nombre}`,
+          },
+        },
+      },
+    ],
+    customer_email: reserva.huesped.email,
+    metadata: {
+      reservaId: reserva.id,
+      tipo: "MANUAL_PAGO",
+      esPagoCompleto: "true",
+    },
+    expires_at: Math.floor(expiraEn.getTime() / 1000),
+    success_url: `${baseUrl}/p/${reserva.propiedad.slug}/confirmacion?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${baseUrl}/p/${reserva.propiedad.slug}`,
+  });
+
+  await prisma.reserva.update({
+    where: { id: reserva.id },
+    data: {
+      stripeCheckoutSessionId: session.id,
+      linkExpiraEn: expiraEn,
+      estado: EstadoReserva.PENDIENTE_PAGO,
+      pagoManual: {
+        upsert: {
+          create: { estadoDePago: EstadoDePago.PENDIENTE },
+          update: {},
+        },
+      },
+    },
+  });
+
+  enviarSolicitudPago({
+    emailHuesped: reserva.huesped.email,
+    codigoReserva: reserva.codigoReserva,
+    nombreHuesped: reserva.huesped.nombre,
+    nombreHotel: reserva.propiedad.nombre,
+    tipoHabitacion: reserva.tipoDeHabitacion.nombre,
+    fechaIngreso: reserva.fechaIngreso,
+    fechaSalida: reserva.fechaSalida,
+    numPersonas: reserva.numPersonas,
+    montoCobrar,
+    esPagoCompleto: true,
+    linkPago: session.url!,
+    expiraEn,
+    colorPrimario: reserva.propiedad.colorPrimario ?? undefined,
+  }).catch(() => {});
+
+  redirect(`/panel/reservas/${reservaId}?success=${encodeURIComponent("Link de pago enviado al huésped")}`);
 }
 
 export async function calcularTotalPreviewAction(
