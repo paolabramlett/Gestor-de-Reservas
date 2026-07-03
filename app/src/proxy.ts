@@ -10,12 +10,20 @@ const isPublicRoute = createRouteMatcher([
   "/api/webhooks/(.*)",
 ]);
 
+const isSetupRoute = createRouteMatcher(["/setup(.*)"]);
+
 const isPanelRoute = createRouteMatcher(["/panel(.*)", "/admin(.*)"]);
 
 export default clerkMiddleware(async (auth, req) => {
   if (isPublicRoute(req)) return NextResponse.next();
 
   const { userId } = await auth();
+
+  // /setup requiere estar autenticado pero no tener propiedad
+  if (isSetupRoute(req)) {
+    if (!userId) return NextResponse.redirect(new URL("/sign-in", req.url));
+    return NextResponse.next();
+  }
 
   if (isPanelRoute(req) && !userId) {
     const signInUrl = new URL("/sign-in", req.url);

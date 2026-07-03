@@ -43,7 +43,12 @@ export default async function PanelLayout({
   children: React.ReactNode;
 }) {
   const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  if (!usuario) {
+    // Usuario autenticado en Clerk pero sin hotel configurado → setup
+    const { userId } = await (await import("@clerk/nextjs/server")).auth();
+    if (userId) redirect("/setup");
+    redirect("/sign-in");
+  }
 
   const rol = usuario.rol;
 

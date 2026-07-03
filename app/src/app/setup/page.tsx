@@ -1,0 +1,64 @@
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
+import { prisma } from "@/lib/prisma";
+import Image from "next/image";
+import { SetupForm } from "./SetupForm";
+
+export default async function SetupPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const { userId } = await auth();
+  if (!userId) redirect("/sign-in");
+
+  // Si ya tiene hotel, va directo al panel
+  const existente = await prisma.usuarioPropiedad.findFirst({
+    where: { clerkUserId: userId },
+  });
+  if (existente) redirect("/panel");
+
+  const { error } = await searchParams;
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4">
+      <div className="w-full max-w-md">
+        {/* Logo */}
+        <div className="flex justify-center mb-8">
+          <Image
+            src="/roomly-logo.png"
+            alt="Roomly"
+            width={140}
+            height={36}
+            priority
+            style={{ objectFit: "contain" }}
+          />
+        </div>
+
+        {/* Card */}
+        <div className="bg-white rounded-2xl border border-gray-200 p-8">
+          <div className="mb-6">
+            <h1 className="text-xl font-semibold text-gray-900 mb-1">
+              Bienvenido a Roomly
+            </h1>
+            <p className="text-sm text-gray-500">
+              Cuéntanos sobre tu hotel para configurar tu cuenta.
+            </p>
+          </div>
+
+          <SetupForm error={error} />
+        </div>
+
+        <p className="text-center text-xs text-gray-400 mt-6">
+          ¿Necesitas ayuda?{" "}
+          <a
+            href="mailto:hola@hello-roomly.com"
+            className="text-gray-600 hover:text-gray-900 underline"
+          >
+            Escríbenos
+          </a>
+        </p>
+      </div>
+    </div>
+  );
+}
