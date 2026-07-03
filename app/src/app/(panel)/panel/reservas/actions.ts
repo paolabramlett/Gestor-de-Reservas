@@ -264,7 +264,8 @@ export async function actualizarDatosReservaAction(formData: FormData) {
     }
   });
 
-  redirect(`/panel/reservas/${reservaId}?success=${encodeURIComponent("Pago guardado")}`);
+  // BUG 12: mensaje correcto — esta acción actualiza datos de la reserva, no pagos
+  redirect(`/panel/reservas/${reservaId}?success=${encodeURIComponent("Datos actualizados")}`);
 }
 
 export async function actualizarEstadoReservaAction(formData: FormData) {
@@ -274,8 +275,19 @@ export async function actualizarEstadoReservaAction(formData: FormData) {
   const reservaId = formData.get("reservaId") as string;
   const estado = formData.get("estado") as EstadoReserva;
 
-  await prisma.reserva.updateMany({
+  // BUG 13: prevenir transiciones desde estados terminales
+  const reserva = await prisma.reserva.findFirst({
     where: { id: reservaId, propiedadId: usuario.propiedadId },
+  });
+  if (!reserva) redirect("/panel/reservas");
+
+  const estadosTerminales: EstadoReserva[] = [EstadoReserva.CANCELADA, EstadoReserva.NO_SHOW, EstadoReserva.COMPLETADA];
+  if (estadosTerminales.includes(reserva.estado)) {
+    redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("No se puede modificar el estado de una reserva completada o cancelada")}`);
+  }
+
+  await prisma.reserva.update({
+    where: { id: reservaId },
     data: { estado },
   });
 
@@ -304,6 +316,15 @@ export async function solicitarPagoAction(reservaId: string) {
     redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("No se puede solicitar pago en este estado")}`);
   }
 
+  // BUG 4: calcular saldo real, no cobrar el total si ya hay un anticipo registrado
+  const anticipoPagado =
+    reserva.pagoManual?.estadoDePago === "ANTICIPO_PAGADO" && reserva.pagoManual.montoAnticipo
+      ? Number(reserva.pagoManual.montoAnticipo)
+      : 0;
+  if (anticipoPagado > 0 && anticipoPagado >= Number(reserva.totalMxn)) {
+    redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("El anticipo registrado cubre el total — marca como Pagado completo")}`);
+  }
+
   // Invalidar el Checkout Session anterior si existe
   if (reserva.stripeCheckoutSessionId) {
     try {
@@ -316,7 +337,7 @@ export async function solicitarPagoAction(reservaId: string) {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ??
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
 
-  const montoCobrar = Number(reserva.totalMxn);
+  const montoCobrar = Number(reserva.totalMxn) - anticipoPagado;
   const expiraEn = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
   const session = await stripe.checkout.sessions.create({

@@ -47,9 +47,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const totalMxn = Number(grupo.totalPagado) || grupo.reservas.reduce((s, r) => s + Number(r.totalMxn), 0);
+    // BUG 1: usar ?? para no caer al reduce cuando totalPagado es legítimamente 0
+    const totalPagado = Number(grupo.totalPagado);
+    const totalMxn = totalPagado > 0
+      ? totalPagado
+      : grupo.reservas.reduce((s, r) => s + Number(r.totalMxn), 0);
     const comision = Math.round((totalMxn * STRIPE_COMISION_PORCENTAJE + STRIPE_COMISION_FIJA) * 100) / 100;
     const montoReembolso = totalMxn - comision;
+
+    // BUG 2: cancelar en DB primero; si el reembolso de Stripe falla después, al menos
+    // el cuarto queda liberado y el error sube para que el hotel lo procese manualmente
+    await prisma.reserva.updateMany({
+      where: { grupoId: grupo.id, estado: { notIn: ["CANCELADA", "NO_SHOW"] } },
+      data: { estado: "CANCELADA" },
+    });
 
     if (grupo.stripePaymentIntentId) {
       await stripe.refunds.create({
@@ -57,12 +68,6 @@ export async function POST(req: NextRequest) {
         amount: Math.round(montoReembolso * 100),
       });
     }
-
-    // Cancel all active reservations in the group
-    await prisma.reserva.updateMany({
-      where: { grupoId: grupo.id, estado: { notIn: ["CANCELADA", "NO_SHOW"] } },
-      data: { estado: "CANCELADA" },
-    });
 
     const contacto = grupo.reservas[0].huesped;
     try {

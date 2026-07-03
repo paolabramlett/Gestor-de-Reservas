@@ -89,6 +89,8 @@ export default async function ReservaDetallePage({
   const estado = reserva.estado;
 
   const esEditable = estado === "CONFIRMADA" || estado === "EN_CURSO";
+  // BUG 7: la sección de pago también se muestra en PENDIENTE_PAGO para poder reenviar el link
+  const esPagoNotasVisible = esPagoManual && (esEditable || estado === "PENDIENTE_PAGO");
 
   return (
     <div className="p-8 max-w-3xl">
@@ -457,8 +459,8 @@ export default async function ReservaDetallePage({
         )}
       </div>
 
-      {/* Pago y notas — solo reservas manuales editables */}
-      {esPagoManual && esEditable && (
+      {/* Pago y notas — reservas manuales editables o esperando pago */}
+      {esPagoNotasVisible && (
         <div className="bg-white rounded-lg border border-gray-200 p-5 mb-6">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-gray-700">Pago y notas</h2>
@@ -495,6 +497,12 @@ export default async function ReservaDetallePage({
             </div>
           )}
 
+          {/* BUG 7: en PENDIENTE_PAGO solo mostrar el resumen; el formulario queda bloqueado hasta que el huesped pague */}
+          {estado === "PENDIENTE_PAGO" ? (
+            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              El formulario de pago está bloqueado mientras el huésped tiene un link activo. Usa el botón de arriba para reenviar o espera a que complete el pago.
+            </p>
+          ) : (
           <form action={actualizarPagoYNotasAction} className="space-y-4">
             <input type="hidden" name="reservaId" value={reserva.id} />
             <div>
@@ -529,6 +537,7 @@ export default async function ReservaDetallePage({
               Guardar cambios
             </button>
           </form>
+          )}
         </div>
       )}
 

@@ -20,8 +20,9 @@ export async function GET(req: NextRequest) {
       select: {
         codigoGrupo: true,
         stripePaymentIntentId: true,
+        // BUG 9: sin filtro de estado — incluir canceladas para que el huésped pueda
+        // confirmar que su cancelación fue procesada
         reservas: {
-          where: { estado: { notIn: ["CANCELADA", "NO_SHOW"] } },
           select: {
             estado: true,
             fechaIngreso: true,
@@ -45,28 +46,35 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(ERROR_GENERICO, { status: 404 });
     }
 
-    const fechaIngreso = grupo.reservas.reduce(
+    const reservasActivas = grupo.reservas.filter((r) => r.estado !== "CANCELADA" && r.estado !== "NO_SHOW");
+    // Para cálculos de fechas/total usamos todas las reservas (activas o canceladas) si no hay activas
+    const reservasParaCalculo = reservasActivas.length > 0 ? reservasActivas : grupo.reservas;
+
+    const fechaIngreso = reservasParaCalculo.reduce(
       (min, r) => (r.fechaIngreso < min ? r.fechaIngreso : min),
-      grupo.reservas[0].fechaIngreso
+      reservasParaCalculo[0].fechaIngreso
     );
-    const fechaSalida = grupo.reservas.reduce(
+    const fechaSalida = reservasParaCalculo.reduce(
       (max, r) => (r.fechaSalida > max ? r.fechaSalida : max),
-      grupo.reservas[0].fechaSalida
+      reservasParaCalculo[0].fechaSalida
     );
-    const totalMxn = grupo.reservas.reduce((s, r) => s + Number(r.totalMxn), 0);
+    const totalMxn = reservasActivas.reduce((s, r) => s + Number(r.totalMxn), 0);
 
     const ahoraGrupo = new Date();
     const limiteGrupo = new Date(fechaIngreso);
     limiteGrupo.setHours(limiteGrupo.getHours() - 48);
-    const grupoConfirmado = grupo.reservas.every((r) => r.estado === "CONFIRMADA");
+    const grupoConfirmado = reservasActivas.length > 0 && reservasActivas.every((r) => r.estado === "CONFIRMADA");
+    const grupoCancelado = reservasActivas.length === 0;
     const cancelableGrupo = grupoConfirmado && !!grupo.stripePaymentIntentId && ahoraGrupo < limiteGrupo;
     const comisionGrupo = cancelableGrupo
       ? Math.round((totalMxn * STRIPE_COMISION_PORCENTAJE + STRIPE_COMISION_FIJA) * 100) / 100
       : 0;
 
+    const estadoGrupo = grupoCancelado ? "CANCELADA" : grupoConfirmado ? "CONFIRMADA" : grupo.reservas[0].estado;
+
     return NextResponse.json({
       codigoReserva: grupo.codigoGrupo,
-      estado: grupoConfirmado ? "CONFIRMADA" : grupo.reservas[0].estado,
+      estado: estadoGrupo,
       fechaIngreso: fechaIngreso.toISOString(),
       fechaSalida: fechaSalida.toISOString(),
       totalMxn,

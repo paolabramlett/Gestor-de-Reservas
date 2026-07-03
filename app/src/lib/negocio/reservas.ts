@@ -115,14 +115,16 @@ export async function crearReservaManual(input: CrearReservaManualInput) {
       : totalCalculado;
 
   return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-    const huespedExistente = await tx.huesped.findFirst({ where: { email: input.email } });
+    // BUG 8: normalizar email a lowercase para evitar duplicados y fallos de lookup
+    const emailNorm = input.email.toLowerCase().trim();
+    const huespedExistente = await tx.huesped.findFirst({ where: { email: emailNorm } });
     const huesped = huespedExistente
       ? await tx.huesped.update({
           where: { id: huespedExistente.id },
           data: { nombre: input.nombre, telefono: input.telefono ?? undefined },
         })
       : await tx.huesped.create({
-          data: { nombre: input.nombre, email: input.email, telefono: input.telefono },
+          data: { nombre: input.nombre, email: emailNorm, telefono: input.telefono },
         });
 
     const reserva = await tx.reserva.create({

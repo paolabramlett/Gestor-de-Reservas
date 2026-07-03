@@ -105,11 +105,18 @@ export async function POST(req: NextRequest) {
         const estadoDePago = esPagoCompleto ? EstadoDePago.PAGADO_COMPLETO : EstadoDePago.ANTICIPO_PAGADO;
 
         const montoCobrado = session.amount_total ? session.amount_total / 100 : 0;
+        // BUG 11: guardar stripePaymentIntentId en el grupo para poder reembolsar después
+        const piId = typeof session.payment_intent === "string"
+          ? session.payment_intent
+          : (session.payment_intent as Stripe.PaymentIntent | null)?.id ?? null;
 
         // Acumular totalPagado en el grupo y determinar si está saldado
         const grupoActualizado = await prisma.grupoReserva.update({
           where: { id: grupoId },
-          data: { totalPagado: { increment: montoCobrado } },
+          data: {
+            totalPagado: { increment: montoCobrado },
+            ...(piId ? { stripePaymentIntentId: piId } : {}),
+          },
           include: { reservas: { where: { estado: { notIn: [EstadoReserva.CANCELADA, EstadoReserva.NO_SHOW] } } } },
         });
 
@@ -135,9 +142,13 @@ export async function POST(req: NextRequest) {
                   r.estado === EstadoReserva.PENDIENTE_PAGO
                     ? EstadoReserva.CONFIRMADA
                     : r.estado,
-                pagoManual: r.pagoManual
-                  ? { update: { estadoDePago: estadoDePagoFinal } }
-                  : { create: { estadoDePago: estadoDePagoFinal } },
+                // BUG 5: upsert para no fallar si pagoManual no existe
+                pagoManual: {
+                  upsert: {
+                    create: { estadoDePago: estadoDePagoFinal },
+                    update: { estadoDePago: estadoDePagoFinal },
+                  },
+                },
               },
             })
           )
@@ -185,62 +196,80 @@ export async function POST(req: NextRequest) {
           ? session.payment_intent : null;
         const montoCobrado = session.amount_total ? session.amount_total / 100 : 0;
 
-        // Create group
-        const grupo = await prisma.grupoReserva.create({
-          data: {
-            propiedadId: meta.propiedadId,
-            codigoGrupo: generarCodigoGrupo(),
-            nombre: meta.nombre,
-            totalPagado: montoCobrado,
-            stripePaymentIntentId,
-          },
-        });
-
-        // Find or create huesped once
-        const huespedExistente = await prisma.huesped.findFirst({ where: { email: meta.email.toLowerCase() } });
-        const huesped = huespedExistente
-          ? await prisma.huesped.update({
-              where: { id: huespedExistente.id },
-              data: { nombre: meta.nombre, telefono: meta.telefono || undefined },
-            })
-          : await prisma.huesped.create({
-              data: { nombre: meta.nombre, email: meta.email.toLowerCase(), telefono: meta.telefono || null },
-            });
-
-        // Create each reservation directly (avoids PaymentIntent deduplication in crearReservaOnline)
+        // BUG 3: pre-calcular totales fuera de la transacción
         let fechaIngresoMin: Date | null = null;
         let fechaSalidaMax: Date | null = null;
         let totalPersonas = 0;
+        const roomsData: { t: string; fechaIn: Date; fechaOut: Date; n: number; total: number; desglose: unknown }[] = [];
 
         for (const h of habsRaw) {
           const fechaIn = new Date(h.i);
           const fechaOut = new Date(h.o);
           const { total, desglose } = await calcularTotalReserva(h.t, fechaIn, fechaOut, h.n);
-
-          await prisma.reserva.create({
-            data: {
-              codigoReserva: generarCodigoReserva(),
-              propiedadId: meta.propiedadId,
-              tipoDeHabitacionId: h.t,
-              huespedId: huesped.id,
-              nombreHuesped: meta.nombre,
-              origen: OrigenReserva.ONLINE,
-              estado: EstadoReserva.CONFIRMADA,
-              fechaIngreso: fechaIn,
-              fechaSalida: fechaOut,
-              numPersonas: h.n,
-              totalMxn: total,
-              desglosePorNoche: desglose,
-              grupoId: grupo.id,
-            },
-          });
-
+          roomsData.push({ t: h.t, fechaIn, fechaOut, n: h.n, total: Number(total), desglose });
           if (!fechaIngresoMin || fechaIn < fechaIngresoMin) fechaIngresoMin = fechaIn;
           if (!fechaSalidaMax || fechaOut > fechaSalidaMax) fechaSalidaMax = fechaOut;
           totalPersonas += h.n;
         }
 
-        // Send single confirmation email for the whole group
+        // BUG 3 + 14: crear grupo y todas las reservas en una sola transacción;
+        // reintentar hasta 3 veces si hay colisión de codigoGrupo (Prisma P2002)
+        let grupo!: { id: string; codigoGrupo: string };
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const codigoGrupo = generarCodigoGrupo();
+            grupo = await prisma.$transaction(async (tx) => {
+              const g = await tx.grupoReserva.create({
+                data: {
+                  propiedadId: meta.propiedadId,
+                  codigoGrupo,
+                  nombre: meta.nombre,
+                  totalPagado: montoCobrado,
+                  stripePaymentIntentId,
+                },
+              });
+
+              const huespedExistente = await tx.huesped.findFirst({ where: { email: meta.email.toLowerCase() } });
+              const huesped = huespedExistente
+                ? await tx.huesped.update({
+                    where: { id: huespedExistente.id },
+                    data: { nombre: meta.nombre, telefono: meta.telefono || undefined },
+                  })
+                : await tx.huesped.create({
+                    data: { nombre: meta.nombre, email: meta.email.toLowerCase(), telefono: meta.telefono || null },
+                  });
+
+              for (const room of roomsData) {
+                await tx.reserva.create({
+                  data: {
+                    codigoReserva: generarCodigoReserva(),
+                    propiedadId: meta.propiedadId,
+                    tipoDeHabitacionId: room.t,
+                    huespedId: huesped.id,
+                    nombreHuesped: meta.nombre,
+                    origen: OrigenReserva.ONLINE,
+                    estado: EstadoReserva.CONFIRMADA,
+                    fechaIngreso: room.fechaIn,
+                    fechaSalida: room.fechaOut,
+                    numPersonas: room.n,
+                    totalMxn: room.total,
+                    desglosePorNoche: room.desglose as import("@prisma/client").Prisma.InputJsonValue,
+                    grupoId: g.id,
+                  },
+                });
+              }
+
+              return { id: g.id, codigoGrupo: g.codigoGrupo };
+            });
+            break;
+          } catch (err: unknown) {
+            const prismaErr = err as { code?: string; meta?: { target?: string[] } };
+            const esColision = prismaErr?.code === "P2002" && prismaErr?.meta?.target?.includes("codigoGrupo");
+            if (attempt < 2 && esColision) continue;
+            throw err;
+          }
+        }
+
         const propiedad = await prisma.propiedad.findUnique({ where: { id: meta.propiedadId } });
         if (propiedad && fechaIngresoMin && fechaSalidaMax) {
           await enviarConfirmacion({
@@ -271,13 +300,15 @@ export async function POST(req: NextRequest) {
       });
 
       if (reserva && reserva.estado === EstadoReserva.PENDIENTE_PAGO) {
+        // BUG 5: upsert para no fallar si pagoManual no existe
         await prisma.reserva.update({
           where: { id: reservaId },
           data: {
             estado: EstadoReserva.CONFIRMADA,
             pagoManual: {
-              update: {
-                estadoDePago: esPagoCompleto ? EstadoDePago.PAGADO_COMPLETO : EstadoDePago.ANTICIPO_PAGADO,
+              upsert: {
+                create: { estadoDePago: esPagoCompleto ? EstadoDePago.PAGADO_COMPLETO : EstadoDePago.ANTICIPO_PAGADO },
+                update: { estadoDePago: esPagoCompleto ? EstadoDePago.PAGADO_COMPLETO : EstadoDePago.ANTICIPO_PAGADO },
               },
             },
           },
