@@ -3,7 +3,8 @@ import { redirect, notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import { AgregarHabitacionPanel } from "./AgregarHabitacionPanel";
-import { actualizarGrupoAction, eliminarGrupoAction, desvincularReservaDelGrupoAction } from "../actions";
+import { actualizarGrupoAction } from "../actions";
+import { BotonDesvincular, BotonEliminarGrupo } from "./BotonesGrupo";
 
 const ESTADO_LABEL: Record<string, string> = {
   PENDIENTE_PAGO: "Pago pendiente",
@@ -170,19 +171,9 @@ export default async function GrupoDetallePage({
                   >
                     Ver reserva completa →
                   </Link>
-                  <form action={desvincularReservaDelGrupoAction} className="ml-auto">
-                    <input type="hidden" name="reservaId" value={r.id} />
-                    <input type="hidden" name="grupoId" value={grupo.id} />
-                    <button
-                      type="submit"
-                      className="text-xs text-gray-400 hover:text-red-600 transition-colors"
-                      onClick={(e) => {
-                        if (!confirm("¿Desvincular esta reserva del grupo?")) e.preventDefault();
-                      }}
-                    >
-                      Desvincular
-                    </button>
-                  </form>
+                  <div className="ml-auto">
+                    <BotonDesvincular reservaId={r.id} grupoId={grupo.id} />
+                  </div>
                 </div>
               </div>
             );
@@ -265,18 +256,7 @@ export default async function GrupoDetallePage({
 
           {/* Delete group */}
           {grupo.reservas.length === 0 && (
-            <form action={eliminarGrupoAction}>
-              <input type="hidden" name="grupoId" value={grupo.id} />
-              <button
-                type="submit"
-                className="w-full rounded-lg border border-red-200 text-red-600 py-2 text-sm font-medium hover:bg-red-50"
-                onClick={(e) => {
-                  if (!confirm("¿Eliminar este grupo? Las reservas no se borrarán.")) e.preventDefault();
-                }}
-              >
-                Eliminar grupo
-              </button>
-            </form>
+            <BotonEliminarGrupo grupoId={grupo.id} />
           )}
         </div>
       </div>
