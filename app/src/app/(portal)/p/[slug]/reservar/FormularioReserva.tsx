@@ -12,6 +12,12 @@ type TipoSimple = {
   capacidadMax: number;
 };
 
+type NocheDesglose = {
+  fecha: string;
+  precio: number;
+  temporadaNombre?: string;
+};
+
 type HabExtra = {
   id: string;
   tipoDeHabitacionId: string;
@@ -30,10 +36,13 @@ type Props = {
   fechaSalida: string;
   numPersonas: number;
   totalMxn: number;
+  desglose: NocheDesglose[];
   stripePublishableKey: string;
   colorPrimario?: string;
   tipos: TipoSimple[];
 };
+
+// ── Embedded Stripe payment form (single room) ──────────────────────────────
 
 function PagoForm({
   slug,
@@ -54,14 +63,10 @@ function PagoForm({
     if (!stripe || !elements) return;
     setCargando(true);
     setError(null);
-
     const { error: stripeError } = await stripe.confirmPayment({
       elements,
-      confirmParams: {
-        return_url: `${window.location.origin}/p/${slug}/confirmacion`,
-      },
+      confirmParams: { return_url: `${window.location.origin}/p/${slug}/confirmacion` },
     });
-
     if (stripeError) setError(stripeError.message ?? "Error al procesar el pago");
     setCargando(false);
   }
@@ -70,9 +75,7 @@ function PagoForm({
     <form onSubmit={handleSubmit} className="space-y-5">
       <PaymentElement />
       {error && (
-        <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
+        <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
       <button
         type="submit"
@@ -117,6 +120,10 @@ function AgregarHabitacionPanel({
   const [calculando, setCalculando] = useState(false);
   const [errorCalculo, setErrorCalculo] = useState<string | null>(null);
 
+  const tipoActual = tipos.find((t) => t.id === tipoId);
+  const capacidadMax = tipoActual?.capacidadMax ?? 99;
+  const capacidadMin = tipoActual?.capacidadMin ?? 1;
+
   async function calcularPrecio(tid: string, fi: string, fo: string, np: number) {
     if (!tid || !fi || !fo || fo <= fi) { setTotal(null); return; }
     setCalculando(true);
@@ -127,32 +134,46 @@ function AgregarHabitacionPanel({
     setCalculando(false);
   }
 
-  function handleChange(
-    tid = tipoId,
-    fi = fechaIngreso,
-    fo = fechaSalida,
-    np = numPersonas
-  ) {
-    if (tid !== tipoId) setTipoId(tid);
-    if (fi !== fechaIngreso) setFechaIngreso(fi);
-    if (fo !== fechaSalida) setFechaSalida(fo);
-    if (np !== numPersonas) setNumPersonas(np);
-    calcularPrecio(tid, fi, fo, np);
+  function handleTipoChange(tid: string) {
+    setTipoId(tid);
+    const t = tipos.find((x) => x.id === tid);
+    // Clamp numPersonas to new tipo's capacity
+    const np = Math.min(Math.max(numPersonas, t?.capacidadMin ?? 1), t?.capacidadMax ?? 99);
+    setNumPersonas(np);
+    calcularPrecio(tid, fechaIngreso, fechaSalida, np);
+  }
+
+  function handlePersonasChange(val: number) {
+    const np = Math.min(Math.max(val, capacidadMin), capacidadMax);
+    setNumPersonas(np);
+    calcularPrecio(tipoId, fechaIngreso, fechaSalida, np);
+  }
+
+  function handleFechaIngreso(fi: string) {
+    setFechaIngreso(fi);
+    calcularPrecio(tipoId, fi, fechaSalida, numPersonas);
+  }
+
+  function handleFechaSalida(fo: string) {
+    setFechaSalida(fo);
+    calcularPrecio(tipoId, fechaIngreso, fo, numPersonas);
   }
 
   function handleAgregar() {
     if (!total || fechaSalida <= fechaIngreso) return;
-    const tipo = tipos.find((t) => t.id === tipoId);
     onAgregar({
       id: Math.random().toString(36).slice(2),
       tipoDeHabitacionId: tipoId,
-      tipoNombre: tipo?.nombre ?? "",
+      tipoNombre: tipoActual?.nombre ?? "",
       fechaIngreso,
       fechaSalida,
       numPersonas,
       totalMxn: total,
     });
   }
+
+  const fmtFecha = (s: string) =>
+    new Date(s + "T12:00:00").toLocaleDateString("es-MX", { day: "numeric", month: "short" });
 
   return (
     <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
@@ -162,7 +183,7 @@ function AgregarHabitacionPanel({
         <label className="block text-xs text-gray-500 mb-1">Tipo de habitación</label>
         <select
           value={tipoId}
-          onChange={(e) => handleChange(e.target.value)}
+          onChange={(e) => handleTipoChange(e.target.value)}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2"
           style={{ "--tw-ring-color": colorPrimario } as React.CSSProperties}
         >
@@ -180,7 +201,7 @@ function AgregarHabitacionPanel({
           <input
             type="date"
             value={fechaIngreso}
-            onChange={(e) => handleChange(tipoId, e.target.value, fechaSalida, numPersonas)}
+            onChange={(e) => handleFechaIngreso(e.target.value)}
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
           />
         </div>
@@ -189,36 +210,48 @@ function AgregarHabitacionPanel({
           <input
             type="date"
             value={fechaSalida}
-            onChange={(e) => handleChange(tipoId, fechaIngreso, e.target.value, numPersonas)}
+            onChange={(e) => handleFechaSalida(e.target.value)}
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
           />
         </div>
       </div>
 
       <div>
-        <label className="block text-xs text-gray-500 mb-1">Personas</label>
+        <label className="block text-xs text-gray-500 mb-1">
+          Personas{" "}
+          <span className="text-gray-400 font-normal">(máx. {capacidadMax})</span>
+        </label>
         <input
           type="number"
-          min={1}
+          min={capacidadMin}
+          max={capacidadMax}
           value={numPersonas}
-          onChange={(e) => handleChange(tipoId, fechaIngreso, fechaSalida, Number(e.target.value))}
+          onChange={(e) => handlePersonasChange(Number(e.target.value))}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
         />
+        {numPersonas > capacidadMax && (
+          <p className="text-xs text-red-500 mt-1">
+            Esta habitación tiene capacidad máxima de {capacidadMax} personas.
+          </p>
+        )}
       </div>
 
       {calculando && <p className="text-xs text-gray-400">Calculando precio...</p>}
       {errorCalculo && <p className="text-xs text-red-500">{errorCalculo}</p>}
       {total !== null && !calculando && (
-        <p className="text-sm font-semibold text-gray-900">
-          Total: ${total.toLocaleString("es-MX")} MXN
-        </p>
+        <div className="rounded-lg bg-white border border-gray-200 px-3 py-2 flex justify-between text-sm">
+          <span className="text-gray-500">
+            {fmtFecha(fechaIngreso)} → {fmtFecha(fechaSalida)} · {numPersonas} persona{numPersonas !== 1 ? "s" : ""}
+          </span>
+          <span className="font-semibold text-gray-900">${total.toLocaleString("es-MX")} MXN</span>
+        </div>
       )}
 
       <div className="flex gap-2 pt-1">
         <button
           type="button"
           onClick={handleAgregar}
-          disabled={!total || fechaSalida <= fechaIngreso}
+          disabled={!total || calculando || fechaSalida <= fechaIngreso || numPersonas > capacidadMax}
           style={{ backgroundColor: colorPrimario }}
           className="flex-1 rounded-lg text-white py-2 text-sm font-semibold hover:opacity-90 disabled:opacity-50"
         >
@@ -242,23 +275,23 @@ export default function FormularioReserva(props: Props) {
   const colorPrimario = props.colorPrimario ?? "#111827";
   const stripePromise = loadStripe(props.stripePublishableKey);
 
-  // Guest info
   const [nombre, setNombre] = useState("");
   const [email, setEmail] = useState("");
   const [telefono, setTelefono] = useState("");
 
-  // Multi-room state
   const [habitacionesExtra, setHabitacionesExtra] = useState<HabExtra[]>([]);
   const [mostrarPanel, setMostrarPanel] = useState(false);
 
   const totalGeneral = props.totalMxn + habitacionesExtra.reduce((s, h) => s + h.totalMxn, 0);
   const isMulti = habitacionesExtra.length > 0;
 
-  // Single-room payment state
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [paso, setPaso] = useState<"datos" | "pago">("datos");
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const fmtFecha = (s: string) =>
+    new Date(s + "T12:00:00").toLocaleDateString("es-MX", { day: "numeric", month: "short" });
 
   function agregarHabitacion(hab: HabExtra) {
     setHabitacionesExtra((prev) => [...prev, hab]);
@@ -275,7 +308,6 @@ export default function FormularioReserva(props: Props) {
     setError(null);
 
     if (isMulti) {
-      // Multi-room: redirect to Stripe Checkout
       const habitaciones = [
         {
           tipoDeHabitacionId: props.tipoDeHabitacionId,
@@ -306,7 +338,6 @@ export default function FormularioReserva(props: Props) {
       return;
     }
 
-    // Single room: PaymentIntent embedded
     const res = await fetch("/api/reservas/checkout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -334,7 +365,7 @@ export default function FormularioReserva(props: Props) {
     setCargando(false);
   }
 
-  // ── Paso de pago (solo habitación única) ───────────────────────────────────
+  // ── Paso pago (single room) ────────────────────────────────────────────────
   if (paso === "pago" && clientSecret) {
     return (
       <div className="space-y-5">
@@ -351,7 +382,6 @@ export default function FormularioReserva(props: Props) {
             Editar
           </button>
         </div>
-
         <Elements stripe={stripePromise} options={{ clientSecret, locale: "es" }}>
           <PagoForm slug={props.slug} totalMxn={props.totalMxn} colorPrimario={colorPrimario} />
         </Elements>
@@ -359,45 +389,58 @@ export default function FormularioReserva(props: Props) {
     );
   }
 
-  // ── Paso de datos ──────────────────────────────────────────────────────────
+  // ── Paso datos ─────────────────────────────────────────────────────────────
   return (
-    <form onSubmit={handleDatos} className="space-y-4">
+    <form onSubmit={handleDatos} className="space-y-5">
 
-      {/* Resumen de habitaciones */}
+      {/* ── Desglose + habitaciones ── */}
       <div className="space-y-2">
-        {/* Habitación principal */}
-        <div className="flex items-center justify-between rounded-xl bg-gray-50 border border-gray-200 px-4 py-3 text-sm">
-          <div>
-            <p className="font-medium text-gray-900">{props.tipoNombre}</p>
-            <p className="text-xs text-gray-500">
-              {new Date(props.fechaIngreso + "T12:00:00").toLocaleDateString("es-MX", { day: "numeric", month: "short" })}
-              {" → "}
-              {new Date(props.fechaSalida + "T12:00:00").toLocaleDateString("es-MX", { day: "numeric", month: "short" })}
-              {" · "}{props.numPersonas} persona{props.numPersonas !== 1 ? "s" : ""}
-            </p>
+
+        {/* Habitación principal con su desglose */}
+        <div className="rounded-xl border border-gray-200 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-100">
+            <div>
+              <p className="text-sm font-semibold text-gray-900">{props.tipoNombre}</p>
+              <p className="text-xs text-gray-500">
+                {fmtFecha(props.fechaIngreso)} → {fmtFecha(props.fechaSalida)}
+                {" · "}{props.numPersonas} persona{props.numPersonas !== 1 ? "s" : ""}
+              </p>
+            </div>
+            <p className="text-sm font-bold text-gray-900">${props.totalMxn.toLocaleString("es-MX")}</p>
           </div>
-          <p className="font-semibold text-gray-900">${props.totalMxn.toLocaleString("es-MX")}</p>
+          {/* Desglose por noche */}
+          <div className="px-4 py-3 space-y-1.5 text-xs text-gray-600">
+            {props.desglose.map((n) => (
+              <div key={n.fecha} className="flex justify-between">
+                <span className="text-gray-500">
+                  {new Date(n.fecha + "T12:00:00").toLocaleDateString("es-MX", { weekday: "short", day: "numeric", month: "short" })}
+                  {n.temporadaNombre && (
+                    <span className="ml-1 text-gray-400">· {n.temporadaNombre}</span>
+                  )}
+                </span>
+                <span>${n.precio.toLocaleString("es-MX")}</span>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Habitaciones extra */}
         {habitacionesExtra.map((h) => (
-          <div key={h.id} className="flex items-center justify-between rounded-xl bg-blue-50 border border-blue-200 px-4 py-3 text-sm">
+          <div key={h.id} className="flex items-center justify-between rounded-xl bg-blue-50 border border-blue-200 px-4 py-3">
             <div>
-              <p className="font-medium text-gray-900">{h.tipoNombre}</p>
+              <p className="text-sm font-semibold text-gray-900">{h.tipoNombre}</p>
               <p className="text-xs text-gray-500">
-                {new Date(h.fechaIngreso + "T12:00:00").toLocaleDateString("es-MX", { day: "numeric", month: "short" })}
-                {" → "}
-                {new Date(h.fechaSalida + "T12:00:00").toLocaleDateString("es-MX", { day: "numeric", month: "short" })}
+                {fmtFecha(h.fechaIngreso)} → {fmtFecha(h.fechaSalida)}
                 {" · "}{h.numPersonas} persona{h.numPersonas !== 1 ? "s" : ""}
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <p className="font-semibold text-gray-900">${h.totalMxn.toLocaleString("es-MX")}</p>
+              <p className="text-sm font-bold text-gray-900">${h.totalMxn.toLocaleString("es-MX")}</p>
               <button
                 type="button"
                 onClick={() => quitarHabitacion(h.id)}
                 className="text-gray-400 hover:text-red-500"
-                title="Quitar habitación"
+                title="Quitar"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -407,7 +450,7 @@ export default function FormularioReserva(props: Props) {
           </div>
         ))}
 
-        {/* Total cuando hay múltiples habitaciones */}
+        {/* Total cuando hay múltiples */}
         {isMulti && (
           <div className="flex justify-between text-sm font-bold text-gray-900 px-1 pt-1 border-t border-gray-200">
             <span>Total {habitacionesExtra.length + 1} habitaciones</span>
@@ -415,7 +458,7 @@ export default function FormularioReserva(props: Props) {
           </div>
         )}
 
-        {/* Panel para agregar */}
+        {/* Botón / panel agregar */}
         {mostrarPanel ? (
           <AgregarHabitacionPanel
             tipos={props.tipos}
@@ -439,8 +482,8 @@ export default function FormularioReserva(props: Props) {
         )}
       </div>
 
-      {/* Datos del huésped */}
-      <div className="pt-2 space-y-4">
+      {/* ── Datos del huésped ── */}
+      <div className="border-t border-gray-100 pt-5 space-y-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Nombre completo</label>
           <input
@@ -483,16 +526,14 @@ export default function FormularioReserva(props: Props) {
       </div>
 
       {error && (
-        <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
+        <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
 
       <button
         type="submit"
         disabled={cargando}
         style={{ backgroundColor: colorPrimario }}
-        className="w-full rounded-xl text-white py-3.5 text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity mt-2"
+        className="w-full rounded-xl text-white py-3.5 text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity"
       >
         {cargando
           ? "Un momento..."
@@ -501,12 +542,11 @@ export default function FormularioReserva(props: Props) {
           : "Continuar al pago"}
       </button>
 
-      {isMulti && (
+      {isMulti ? (
         <p className="text-xs text-gray-400 text-center">
           Serás redirigido a Stripe para completar el pago de {habitacionesExtra.length + 1} habitaciones.
         </p>
-      )}
-      {!isMulti && (
+      ) : (
         <p className="text-xs text-gray-400 text-center">No necesitas crear una cuenta.</p>
       )}
     </form>

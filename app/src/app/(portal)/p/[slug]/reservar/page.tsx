@@ -155,30 +155,6 @@ export default async function ReservarPage({
               </div>
             </div>
 
-            {/* Desglose de precio */}
-            <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm text-sm">
-              <p className="font-semibold text-gray-800 mb-3">Desglose de precio</p>
-              <div className="space-y-1.5">
-                {desglose.map((noche) => (
-                  <div key={noche.fecha} className="flex justify-between text-gray-600">
-                    <span className="text-gray-500">
-                      {new Date(noche.fecha).toLocaleDateString("es-MX", { weekday: "short", day: "numeric", month: "short" })}
-                      {noche.fuente === "TEMPORADA" && (
-                        <span className="ml-1 text-xs text-gray-400">· {noche.temporadaNombre}</span>
-                      )}
-                    </span>
-                    <span>
-                      ${(noche.modalidad === "POR_PERSONA" ? noche.precio * numPersonas : noche.precio).toLocaleString("es-MX")}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <div className="border-t border-gray-100 mt-3 pt-3 flex justify-between font-bold text-gray-900">
-                <span>Total</span>
-                <span>${total.toLocaleString("es-MX")} MXN</span>
-              </div>
-            </div>
-
             {/* Política de cancelación */}
             <div className={`rounded-2xl border p-4 text-xs space-y-1.5 ${cancelable ? "bg-green-50 border-green-200" : "bg-amber-50 border-amber-200"}`}>
               <div className="flex items-center gap-1.5 font-semibold mb-2 text-sm">
@@ -231,6 +207,11 @@ export default async function ReservarPage({
                 fechaSalida={sp.fechaSalida}
                 numPersonas={numPersonas}
                 totalMxn={total}
+                desglose={desglose.map((n) => ({
+                  fecha: n.fecha,
+                  precio: n.modalidad === "POR_PERSONA" ? n.precio * numPersonas : n.precio,
+                  temporadaNombre: n.fuente === "TEMPORADA" ? n.temporadaNombre : undefined,
+                }))}
                 stripePublishableKey={process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!}
                 colorPrimario={colorPrimario}
                 tipos={tipos.map((t) => ({
