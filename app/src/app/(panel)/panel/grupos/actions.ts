@@ -111,6 +111,40 @@ export async function actualizarGrupoAction(formData: FormData) {
     },
   });
 
+  // Si se modificó totalPagado, sincronizar estadoDePago en todas las reservas activas
+  if (totalPagado !== undefined && totalPagado > 0) {
+    const grupo = await prisma.grupoReserva.findFirst({
+      where: { id: grupoId, propiedadId: usuario.propiedadId },
+      include: {
+        reservas: {
+          where: { estado: { notIn: [EstadoReserva.CANCELADA, EstadoReserva.NO_SHOW] } },
+          include: { pagoManual: true },
+        },
+      },
+    });
+
+    if (grupo) {
+      const totalGrupo = grupo.reservas.reduce((s, r) => s + Number(r.totalMxn), 0);
+      const estadoDePago = totalPagado >= totalGrupo
+        ? EstadoDePago.PAGADO_COMPLETO
+        : EstadoDePago.ANTICIPO_PAGADO;
+
+      await Promise.all(
+        grupo.reservas.map((r) =>
+          prisma.reserva.update({
+            where: { id: r.id },
+            data: {
+              estado: r.estado === EstadoReserva.PENDIENTE_PAGO ? EstadoReserva.CONFIRMADA : r.estado,
+              pagoManual: r.pagoManual
+                ? { update: { estadoDePago } }
+                : { create: { estadoDePago } },
+            },
+          })
+        )
+      );
+    }
+  }
+
   redirect(`/panel/grupos/${grupoId}?success=${encodeURIComponent("Grupo actualizado")}`);
 }
 
