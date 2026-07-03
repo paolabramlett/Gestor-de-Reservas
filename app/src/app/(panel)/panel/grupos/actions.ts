@@ -3,9 +3,12 @@
 import { getCurrentUsuario } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { crearReservaManual } from "@/lib/negocio/reservas";
-import { EstadoDePago } from "@prisma/client";
+import { EstadoDePago, EstadoReserva } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { ulid } from "ulid";
+import { stripe } from "@/lib/stripe";
+import { enviarSolicitudPago } from "@/lib/emails";
+import { headers } from "next/headers";
 
 function generarCodigoGrupo(): string {
   const id = ulid();
@@ -210,4 +213,101 @@ export async function desvincularReservaDelGrupoAction(formData: FormData) {
   });
 
   redirect(`/panel/grupos/${grupoId}?success=${encodeURIComponent("Reserva desvinculada")}`);
+}
+
+// ── Solicitar pago del grupo ────────────────────────────────────────────────
+
+export async function solicitarPagoGrupoAction(formData: FormData) {
+  const usuario = await getCurrentUsuario();
+  if (!usuario) redirect("/sign-in");
+
+  const grupoId = formData.get("grupoId") as string;
+  const montoRaw = formData.get("monto") as string;
+  const esPagoCompleto = formData.get("esPagoCompleto") === "true";
+
+  const monto = Number(montoRaw);
+  if (!monto || monto <= 0) {
+    redirect(`/panel/grupos/${grupoId}?error=${encodeURIComponent("Monto inválido")}`);
+  }
+
+  const grupo = await prisma.grupoReserva.findFirst({
+    where: { id: grupoId, propiedadId: usuario.propiedadId },
+    include: {
+      propiedad: true,
+      reservas: {
+        where: { estado: { notIn: [EstadoReserva.CANCELADA, EstadoReserva.NO_SHOW] } },
+        include: { huesped: true, tipoDeHabitacion: true },
+        orderBy: { fechaIngreso: "asc" },
+      },
+    },
+  });
+
+  if (!grupo || grupo.reservas.length === 0) {
+    redirect(`/panel/grupos/${grupoId}?error=${encodeURIComponent("Grupo sin reservas activas")}`);
+  }
+
+  const contacto = grupo.reservas[0].huesped;
+  const fechaMin = grupo.reservas.reduce(
+    (min, r) => (r.fechaIngreso < min ? r.fechaIngreso : min),
+    grupo.reservas[0].fechaIngreso
+  );
+  const fechaMax = grupo.reservas.reduce(
+    (max, r) => (r.fechaSalida > max ? r.fechaSalida : max),
+    grupo.reservas[0].fechaSalida
+  );
+  const totalPersonas = grupo.reservas.reduce((s, r) => s + r.numPersonas, 0);
+
+  const headersList = await headers();
+  const host = headersList.get("host") ?? "";
+  const proto = host.includes("localhost") ? "http" : "https";
+  const baseUrl = `${proto}://${host}`;
+
+  const expiraEn = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    payment_method_types: ["card"],
+    line_items: [
+      {
+        quantity: 1,
+        price_data: {
+          currency: "mxn",
+          unit_amount: Math.round(monto * 100),
+          product_data: {
+            name: esPagoCompleto
+              ? `Pago completo — ${grupo.nombre}`
+              : `Anticipo — ${grupo.nombre}`,
+            description: `${grupo.codigoGrupo} · ${grupo.reservas.length} habitaciones · ${grupo.propiedad.nombre}`,
+          },
+        },
+      },
+    ],
+    customer_email: contacto.email,
+    metadata: {
+      tipo: "GRUPO_PAGO",
+      grupoId: grupo.id,
+      esPagoCompleto: esPagoCompleto ? "true" : "false",
+    },
+    expires_at: Math.floor(expiraEn.getTime() / 1000),
+    success_url: `${baseUrl}/p/${grupo.propiedad.slug}/confirmacion?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${baseUrl}/p/${grupo.propiedad.slug}`,
+  });
+
+  enviarSolicitudPago({
+    emailHuesped: contacto.email,
+    codigoReserva: grupo.codigoGrupo,
+    nombreHuesped: contacto.nombre,
+    nombreHotel: grupo.propiedad.nombre,
+    tipoHabitacion: `${grupo.reservas.length} habitación${grupo.reservas.length !== 1 ? "es" : ""}`,
+    fechaIngreso: fechaMin,
+    fechaSalida: fechaMax,
+    numPersonas: totalPersonas,
+    montoCobrar: monto,
+    esPagoCompleto,
+    linkPago: session.url!,
+    expiraEn,
+    colorPrimario: grupo.propiedad.colorPrimario ?? undefined,
+  }).catch(() => {});
+
+  redirect(`/panel/grupos/${grupoId}?success=${encodeURIComponent(`Link de pago enviado a ${contacto.email}`)}`);
 }

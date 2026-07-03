@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AgregarHabitacionPanel } from "./AgregarHabitacionPanel";
 import { actualizarGrupoAction } from "../actions";
 import { BotonDesvincular, BotonEliminarGrupo } from "./BotonesGrupo";
+import { SolicitarPagoGrupo } from "./SolicitarPagoGrupo";
 
 const ESTADO_LABEL: Record<string, string> = {
   PENDIENTE_PAGO: "Pago pendiente",
@@ -223,6 +224,15 @@ export default async function GrupoDetallePage({
                 </div>
               </div>
             </div>
+          )}
+
+          {/* Payment request */}
+          {reservasActivas.length > 0 && contacto && (
+            <SolicitarPagoGrupo
+              grupoId={grupo.id}
+              totalGrupo={totalGeneral}
+              emailContacto={contacto.email}
+            />
           )}
 
           {/* Edit group */}

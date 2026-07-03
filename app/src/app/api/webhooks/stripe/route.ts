@@ -85,6 +85,38 @@ export async function POST(req: NextRequest) {
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
+
+    if (session.metadata?.tipo === "GRUPO_PAGO" && session.metadata?.grupoId) {
+      const grupoId = session.metadata.grupoId;
+      const esPagoCompleto = session.metadata.esPagoCompleto === "true";
+      const estadoDePago = esPagoCompleto ? EstadoDePago.PAGADO_COMPLETO : EstadoDePago.ANTICIPO_PAGADO;
+
+      const reservas = await prisma.reserva.findMany({
+        where: {
+          grupoId,
+          estado: { notIn: [EstadoReserva.CANCELADA, EstadoReserva.NO_SHOW] },
+        },
+        include: { pagoManual: true },
+      });
+
+      await Promise.all(
+        reservas.map((r) =>
+          prisma.reserva.update({
+            where: { id: r.id },
+            data: {
+              estado:
+                r.estado === EstadoReserva.PENDIENTE_PAGO
+                  ? EstadoReserva.CONFIRMADA
+                  : r.estado,
+              pagoManual: r.pagoManual
+                ? { update: { estadoDePago } }
+                : { create: { estadoDePago } },
+            },
+          })
+        )
+      );
+    }
+
     if (session.metadata?.tipo === "MANUAL_PAGO" && session.metadata?.reservaId) {
       const reservaId = session.metadata.reservaId;
       const esPagoCompleto = session.metadata.esPagoCompleto === "true";
