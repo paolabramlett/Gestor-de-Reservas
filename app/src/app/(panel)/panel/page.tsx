@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import type { TipoDeHabitacion, Temporada } from "@prisma/client";
+import { OnboardingChecklist } from "@/components/OnboardingChecklist";
 
 export default async function PanelPage() {
   const usuario = await getCurrentUsuario();
@@ -17,7 +18,7 @@ export default async function PanelPage() {
   const en90dias = new Date(hoy);
   en90dias.setDate(en90dias.getDate() + 90);
 
-  const [llegadasHoy, salidasHoy, enCurso, proximasLlegadas, tipos] = await Promise.all([
+  const [llegadasHoy, salidasHoy, enCurso, proximasLlegadas, tipos, onboardingCounts] = await Promise.all([
     prisma.reserva.findMany({
       where: {
         propiedadId: usuario.propiedadId,
@@ -69,6 +70,20 @@ export default async function PanelPage() {
       where: { propiedadId: usuario.propiedadId, activo: true },
       include: { temporadas: { where: { fechaFin: { gte: hoy } } } },
     }),
+    prisma.propiedad.findUnique({
+      where: { id: usuario.propiedadId },
+      select: {
+        email: true,
+        telefono: true,
+        _count: {
+          select: {
+            tiposDeHabitacion: true,
+            habitaciones: true,
+            reservas: true,
+          },
+        },
+      },
+    }),
   ]);
 
   const tiposSinCobertura = tipos.filter((tipo: TipoDeHabitacion & { temporadas: Temporada[] }) =>
@@ -78,8 +93,45 @@ export default async function PanelPage() {
   const fmt = (d: Date) =>
     new Date(d).toLocaleDateString("es-MX", { weekday: "short", day: "numeric", month: "short" });
 
+  const pasos = [
+    {
+      id: "hotel",
+      label: "Configura los datos de tu hotel",
+      descripcion: "Agrega email y teléfono para que tus huéspedes puedan contactarte.",
+      completado: !!(onboardingCounts?.email || onboardingCounts?.telefono),
+      href: "/panel/configuracion",
+      cta: "Ir a configuración",
+    },
+    {
+      id: "tipo",
+      label: "Crea tu primer tipo de habitación",
+      descripcion: "Define los tipos de habitación que ofrece tu hotel (Estándar, Suite, etc.).",
+      completado: (onboardingCounts?._count.tiposDeHabitacion ?? 0) > 0,
+      href: "/panel/tipos",
+      cta: "Crear tipo",
+    },
+    {
+      id: "habitacion",
+      label: "Agrega tus habitaciones",
+      descripcion: "Registra las habitaciones físicas de tu hotel con su número y tipo.",
+      completado: (onboardingCounts?._count.habitaciones ?? 0) > 0,
+      href: "/panel/habitaciones",
+      cta: "Agregar habitación",
+    },
+    {
+      id: "reserva",
+      label: "Haz tu primera reserva",
+      descripcion: "Crea una reserva manual para familiarizarte con el flujo.",
+      completado: (onboardingCounts?._count.reservas ?? 0) > 0,
+      href: "/panel/reservas/nueva",
+      cta: "Nueva reserva",
+    },
+  ];
+
   return (
     <main className="p-4 md:p-8 max-w-5xl">
+      <OnboardingChecklist pasos={pasos} />
+
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold text-gray-900">
           {hoy.toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" })}
