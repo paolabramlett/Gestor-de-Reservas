@@ -2,6 +2,14 @@
 
 import { useState } from "react";
 
+type HabitacionGrupo = {
+  tipoNombre: string;
+  fechaIngreso: string;
+  fechaSalida: string;
+  numPersonas: number;
+  totalMxn: number;
+};
+
 type ReservaDetalle = {
   codigoReserva: string;
   estado: string;
@@ -14,6 +22,7 @@ type ReservaDetalle = {
   cancelable: boolean;
   montoReembolso: number;
   comisionRetenida: number;
+  habitaciones?: HabitacionGrupo[];
 };
 
 const ESTADO_CONFIG: Record<string, { label: string; bg: string; text: string }> = {
@@ -103,7 +112,7 @@ export default function MiReservaPage() {
               </label>
               <input
                 type="text"
-                placeholder="RES-XXXX-XXXX"
+                placeholder="RES-XXXX-XXXX o GRP-XXXX-XXXX"
                 value={codigo}
                 onChange={(e) => setCodigo(e.target.value.toUpperCase())}
                 className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-1"
@@ -197,20 +206,51 @@ export default function MiReservaPage() {
                 </div>
               </div>
 
-              {/* Habitación, noches y total */}
-              <div className="px-5 py-4 flex items-start justify-between">
-                <div>
-                  <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Habitación</p>
-                  <p className="text-sm font-semibold text-gray-900">{reserva.tipoDeHabitacion.nombre}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{noches} noche{noches !== 1 ? "s" : ""}</p>
+              {/* Habitación(es) y total */}
+              {reserva.habitaciones && reserva.habitaciones.length > 0 ? (
+                <div className="px-5 py-4 space-y-3">
+                  <p className="text-xs text-gray-400 uppercase tracking-wide">Habitaciones</p>
+                  {reserva.habitaciones.map((h, i) => {
+                    const n = Math.round(
+                      (new Date(h.fechaSalida).getTime() - new Date(h.fechaIngreso).getTime()) / 86400000
+                    );
+                    return (
+                      <div key={i} className="flex items-start justify-between text-sm">
+                        <div>
+                          <p className="font-semibold text-gray-900">{h.tipoNombre}</p>
+                          <p className="text-xs text-gray-400">
+                            {new Date(h.fechaIngreso).toLocaleDateString("es-MX", { day: "numeric", month: "short", timeZone: "UTC" })}
+                            {" → "}
+                            {new Date(h.fechaSalida).toLocaleDateString("es-MX", { day: "numeric", month: "short", timeZone: "UTC" })}
+                            {" · "}{n} noche{n !== 1 ? "s" : ""} · {h.numPersonas} persona{h.numPersonas !== 1 ? "s" : ""}
+                          </p>
+                        </div>
+                        <p className="font-semibold text-gray-900 shrink-0 ml-4">
+                          ${h.totalMxn.toLocaleString("es-MX")}
+                        </p>
+                      </div>
+                    );
+                  })}
+                  <div className="border-t border-gray-100 pt-3 flex justify-between font-bold text-gray-900">
+                    <span>Total</span>
+                    <span>${Number(reserva.totalMxn).toLocaleString("es-MX")} MXN</span>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Total</p>
-                  <p className="text-sm font-bold text-gray-900">
-                    ${Number(reserva.totalMxn).toLocaleString("es-MX")} MXN
-                  </p>
+              ) : (
+                <div className="px-5 py-4 flex items-start justify-between">
+                  <div>
+                    <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Habitación</p>
+                    <p className="text-sm font-semibold text-gray-900">{reserva.tipoDeHabitacion.nombre}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{noches} noche{noches !== 1 ? "s" : ""}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Total</p>
+                    <p className="text-sm font-bold text-gray-900">
+                      ${Number(reserva.totalMxn).toLocaleString("es-MX")} MXN
+                    </p>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* Acciones */}
