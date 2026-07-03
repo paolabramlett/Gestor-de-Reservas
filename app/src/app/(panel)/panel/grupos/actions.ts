@@ -99,10 +99,16 @@ export async function actualizarGrupoAction(formData: FormData) {
   const grupoId = formData.get("grupoId") as string;
   const nombre = formData.get("nombre") as string;
   const notas = (formData.get("notas") as string) || null;
+  const totalPagadoRaw = formData.get("totalPagado");
+  const totalPagado = totalPagadoRaw !== null && totalPagadoRaw !== "" ? Number(totalPagadoRaw) : undefined;
 
   await prisma.grupoReserva.updateMany({
     where: { id: grupoId, propiedadId: usuario.propiedadId },
-    data: { nombre, notas },
+    data: {
+      nombre,
+      notas,
+      ...(totalPagado !== undefined ? { totalPagado } : {}),
+    },
   });
 
   redirect(`/panel/grupos/${grupoId}?success=${encodeURIComponent("Grupo actualizado")}`);

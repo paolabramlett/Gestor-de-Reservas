@@ -277,6 +277,24 @@ export default async function GrupoDetallePage({
                 />
               </div>
               <div>
+                <label className="block text-xs text-gray-500 mb-1">
+                  Total pagado (MXN)
+                  <span className="ml-1 text-gray-400 font-normal">— efectivo, transferencia o ajuste</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">$</span>
+                  <input
+                    name="totalPagado"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    defaultValue={totalPagado}
+                    className="w-full border border-gray-300 rounded-lg pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  />
+                </div>
+                <p className="text-xs text-gray-400 mt-1">Stripe actualiza este campo automáticamente. Edítalo para registrar pagos en efectivo o corregir el saldo.</p>
+              </div>
+              <div>
                 <label className="block text-xs text-gray-500 mb-1">Notas</label>
                 <textarea
                   name="notas"
