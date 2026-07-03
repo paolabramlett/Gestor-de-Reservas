@@ -289,7 +289,7 @@ export async function solicitarPagoGrupoAction(formData: FormData) {
       esPagoCompleto: esPagoCompleto ? "true" : "false",
     },
     expires_at: Math.floor(expiraEn.getTime() / 1000),
-    success_url: `${baseUrl}/p/${grupo.propiedad.slug}/confirmacion?session_id={CHECKOUT_SESSION_ID}`,
+    success_url: `${baseUrl}/p/${grupo.propiedad.slug}/pago-grupo-recibido`,
     cancel_url: `${baseUrl}/p/${grupo.propiedad.slug}`,
   });
 

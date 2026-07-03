@@ -115,6 +115,27 @@ export async function POST(req: NextRequest) {
           })
         )
       );
+
+      // Enviar email de confirmación al contacto del grupo (primera reserva)
+      const grupo = await prisma.grupoReserva.findUnique({
+        where: { id: grupoId },
+        include: { propiedad: true, reservas: { include: { huesped: true, tipoDeHabitacion: true }, orderBy: { fechaIngreso: "asc" }, take: 1 } },
+      });
+      if (grupo && grupo.reservas[0]) {
+        const r0 = grupo.reservas[0];
+        enviarConfirmacion({
+          emailHuesped: r0.huesped.email,
+          codigoReserva: grupo.codigoGrupo,
+          nombreHuesped: r0.huesped.nombre,
+          nombreHotel: grupo.propiedad.nombre,
+          tipoHabitacion: `Grupo ${grupo.nombre} (${reservas.length} habitación${reservas.length !== 1 ? "es" : ""})`,
+          fechaIngreso: r0.fechaIngreso,
+          fechaSalida: r0.fechaSalida,
+          numPersonas: reservas.reduce((s, r) => s + r.numPersonas, 0),
+          totalMxn: reservas.reduce((s, r) => s + Number(r.totalMxn), 0),
+          colorPrimario: grupo.propiedad.colorPrimario ?? undefined,
+        }).catch(() => {});
+      }
     }
 
     if (session.metadata?.tipo === "MANUAL_PAGO" && session.metadata?.reservaId) {
