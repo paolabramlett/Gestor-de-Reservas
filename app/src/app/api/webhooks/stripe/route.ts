@@ -87,54 +87,65 @@ export async function POST(req: NextRequest) {
     const session = event.data.object as Stripe.Checkout.Session;
 
     if (session.metadata?.tipo === "GRUPO_PAGO" && session.metadata?.grupoId) {
-      const grupoId = session.metadata.grupoId;
-      const esPagoCompleto = session.metadata.esPagoCompleto === "true";
-      const estadoDePago = esPagoCompleto ? EstadoDePago.PAGADO_COMPLETO : EstadoDePago.ANTICIPO_PAGADO;
+      try {
+        const grupoId = session.metadata.grupoId;
+        const esPagoCompleto = session.metadata.esPagoCompleto === "true";
+        const estadoDePago = esPagoCompleto ? EstadoDePago.PAGADO_COMPLETO : EstadoDePago.ANTICIPO_PAGADO;
 
-      const reservas = await prisma.reserva.findMany({
-        where: {
-          grupoId,
-          estado: { notIn: [EstadoReserva.CANCELADA, EstadoReserva.NO_SHOW] },
-        },
-        include: { pagoManual: true },
-      });
+        const reservas = await prisma.reserva.findMany({
+          where: {
+            grupoId,
+            estado: { notIn: [EstadoReserva.CANCELADA, EstadoReserva.NO_SHOW] },
+          },
+          include: { pagoManual: true },
+        });
 
-      await Promise.all(
-        reservas.map((r) =>
-          prisma.reserva.update({
-            where: { id: r.id },
-            data: {
-              estado:
-                r.estado === EstadoReserva.PENDIENTE_PAGO
-                  ? EstadoReserva.CONFIRMADA
-                  : r.estado,
-              pagoManual: r.pagoManual
-                ? { update: { estadoDePago } }
-                : { create: { estadoDePago } },
+        await Promise.all(
+          reservas.map((r) =>
+            prisma.reserva.update({
+              where: { id: r.id },
+              data: {
+                estado:
+                  r.estado === EstadoReserva.PENDIENTE_PAGO
+                    ? EstadoReserva.CONFIRMADA
+                    : r.estado,
+                pagoManual: r.pagoManual
+                  ? { update: { estadoDePago } }
+                  : { create: { estadoDePago } },
+              },
+            })
+          )
+        );
+
+        const grupo = await prisma.grupoReserva.findUnique({
+          where: { id: grupoId },
+          include: {
+            propiedad: true,
+            reservas: {
+              include: { huesped: true, tipoDeHabitacion: true },
+              orderBy: { fechaIngreso: "asc" },
+              take: 1,
             },
-          })
-        )
-      );
+          },
+        });
 
-      // Enviar email de confirmación al contacto del grupo (primera reserva)
-      const grupo = await prisma.grupoReserva.findUnique({
-        where: { id: grupoId },
-        include: { propiedad: true, reservas: { include: { huesped: true, tipoDeHabitacion: true }, orderBy: { fechaIngreso: "asc" }, take: 1 } },
-      });
-      if (grupo && grupo.reservas[0]) {
-        const r0 = grupo.reservas[0];
-        enviarConfirmacion({
-          emailHuesped: r0.huesped.email,
-          codigoReserva: grupo.codigoGrupo,
-          nombreHuesped: r0.huesped.nombre,
-          nombreHotel: grupo.propiedad.nombre,
-          tipoHabitacion: `Grupo ${grupo.nombre} (${reservas.length} habitación${reservas.length !== 1 ? "es" : ""})`,
-          fechaIngreso: r0.fechaIngreso,
-          fechaSalida: r0.fechaSalida,
-          numPersonas: reservas.reduce((s, r) => s + r.numPersonas, 0),
-          totalMxn: reservas.reduce((s, r) => s + Number(r.totalMxn), 0),
-          colorPrimario: grupo.propiedad.colorPrimario ?? undefined,
-        }).catch(() => {});
+        if (grupo && grupo.reservas[0]) {
+          const r0 = grupo.reservas[0];
+          await enviarConfirmacion({
+            emailHuesped: r0.huesped.email,
+            codigoReserva: grupo.codigoGrupo,
+            nombreHuesped: r0.huesped.nombre,
+            nombreHotel: grupo.propiedad.nombre,
+            tipoHabitacion: `Grupo ${grupo.nombre} (${reservas.length} habitación${reservas.length !== 1 ? "es" : ""})`,
+            fechaIngreso: r0.fechaIngreso,
+            fechaSalida: r0.fechaSalida,
+            numPersonas: reservas.reduce((s, r) => s + r.numPersonas, 0),
+            totalMxn: reservas.reduce((s, r) => s + Number(r.totalMxn), 0),
+            colorPrimario: grupo.propiedad.colorPrimario ?? undefined,
+          });
+        }
+      } catch (err) {
+        console.error("[webhook] GRUPO_PAGO error:", err);
       }
     }
 
