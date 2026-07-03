@@ -27,6 +27,11 @@ export async function POST(req: NextRequest) {
     const intent = event.data.object as Stripe.PaymentIntent;
     const meta = intent.metadata;
 
+    // Solo procesar si es un pago directo de reserva online (tiene propiedadId en metadata)
+    if (!meta?.propiedadId || !meta?.tipoDeHabitacionId) {
+      return NextResponse.json({ received: true });
+    }
+
     try {
       const reserva = await crearReservaOnline({
         propiedadId: meta.propiedadId,
