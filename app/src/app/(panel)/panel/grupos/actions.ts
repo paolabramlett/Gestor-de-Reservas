@@ -246,6 +246,18 @@ export async function solicitarPagoGrupoAction(formData: FormData) {
     redirect(`/panel/grupos/${grupoId}?error=${encodeURIComponent("Grupo sin reservas activas")}`);
   }
 
+  const totalGrupo = grupo.reservas.reduce((s, r) => s + Number(r.totalMxn), 0);
+  const totalPagado = Number(grupo.totalPagado);
+  const restante = totalGrupo - totalPagado;
+
+  if (restante <= 0) {
+    redirect(`/panel/grupos/${grupoId}?error=${encodeURIComponent("El grupo ya está pagado completamente")}`);
+  }
+
+  if (monto > restante) {
+    redirect(`/panel/grupos/${grupoId}?error=${encodeURIComponent(`El monto no puede superar el restante de $${restante.toLocaleString("es-MX")} MXN`)}`);
+  }
+
   const contacto = grupo.reservas[0].huesped;
   const fechaMin = grupo.reservas.reduce(
     (min, r) => (r.fechaIngreso < min ? r.fechaIngreso : min),

@@ -97,6 +97,20 @@ export async function POST(req: NextRequest) {
         const esPagoCompleto = session.metadata.esPagoCompleto === "true";
         const estadoDePago = esPagoCompleto ? EstadoDePago.PAGADO_COMPLETO : EstadoDePago.ANTICIPO_PAGADO;
 
+        const montoCobrado = session.amount_total ? session.amount_total / 100 : 0;
+
+        // Acumular totalPagado en el grupo y determinar si está saldado
+        const grupoActualizado = await prisma.grupoReserva.update({
+          where: { id: grupoId },
+          data: { totalPagado: { increment: montoCobrado } },
+          include: { reservas: { where: { estado: { notIn: [EstadoReserva.CANCELADA, EstadoReserva.NO_SHOW] } } } },
+        });
+
+        const totalGrupo = grupoActualizado.reservas.reduce((s, r) => s + Number(r.totalMxn), 0);
+        const nuevoTotalPagado = Number(grupoActualizado.totalPagado);
+        const saldado = nuevoTotalPagado >= totalGrupo;
+        const estadoDePagoFinal = saldado ? EstadoDePago.PAGADO_COMPLETO : EstadoDePago.ANTICIPO_PAGADO;
+
         const reservas = await prisma.reserva.findMany({
           where: {
             grupoId,
@@ -115,8 +129,8 @@ export async function POST(req: NextRequest) {
                     ? EstadoReserva.CONFIRMADA
                     : r.estado,
                 pagoManual: r.pagoManual
-                  ? { update: { estadoDePago } }
-                  : { create: { estadoDePago } },
+                  ? { update: { estadoDePago: estadoDePagoFinal } }
+                  : { create: { estadoDePago: estadoDePagoFinal } },
               },
             })
           )
@@ -136,7 +150,6 @@ export async function POST(req: NextRequest) {
 
         if (grupo && grupo.reservas[0]) {
           const r0 = grupo.reservas[0];
-          const montoCobrado = session.amount_total ? session.amount_total / 100 : reservas.reduce((s, r) => s + Number(r.totalMxn), 0);
           await enviarConfirmacion({
             emailHuesped: r0.huesped.email,
             codigoReserva: grupo.codigoGrupo,
@@ -146,7 +159,7 @@ export async function POST(req: NextRequest) {
             fechaIngreso: r0.fechaIngreso,
             fechaSalida: r0.fechaSalida,
             numPersonas: reservas.reduce((s, r) => s + r.numPersonas, 0),
-            totalMxn: montoCobrado,
+            totalMxn: montoCobrado > 0 ? montoCobrado : nuevoTotalPagado,
             colorPrimario: grupo.propiedad.colorPrimario ?? undefined,
           });
         }

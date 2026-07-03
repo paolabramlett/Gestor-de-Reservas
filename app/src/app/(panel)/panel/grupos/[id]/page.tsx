@@ -61,6 +61,8 @@ export default async function GrupoDetallePage({
   });
 
   const totalGeneral = grupo.reservas.reduce((s, r) => s + Number(r.totalMxn), 0);
+  const totalPagado = Number(grupo.totalPagado);
+  const restante = totalGeneral - totalPagado;
   const reservasActivas = grupo.reservas.filter((r) => !["CANCELADA", "NO_SHOW"].includes(r.estado));
 
   // Use first active reservation's guest as default contact
@@ -218,21 +220,46 @@ export default async function GrupoDetallePage({
                     {new Date(fechaMax).toLocaleDateString("es-MX", { day: "numeric", month: "short", timeZone: "UTC" })}
                   </span>
                 </div>
-                <div className="border-t border-gray-100 pt-2 flex justify-between">
-                  <span className="text-gray-700 font-medium">Total grupo</span>
-                  <span className="font-bold text-gray-900">${totalGeneral.toLocaleString("es-MX")} MXN</span>
+                <div className="border-t border-gray-100 pt-2 space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-gray-700 font-medium">Total grupo</span>
+                    <span className="font-bold text-gray-900">${totalGeneral.toLocaleString("es-MX")} MXN</span>
+                  </div>
+                  {totalPagado > 0 && (
+                    <>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-green-700">Pagado</span>
+                        <span className="font-semibold text-green-700">${totalPagado.toLocaleString("es-MX")} MXN</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className={restante <= 0 ? "text-gray-400" : "text-amber-700"}>
+                          {restante <= 0 ? "Saldado ✓" : "Restante"}
+                        </span>
+                        <span className={`font-semibold ${restante <= 0 ? "text-gray-400" : "text-amber-700"}`}>
+                          {restante <= 0 ? "—" : `$${restante.toLocaleString("es-MX")} MXN`}
+                        </span>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
           )}
 
           {/* Payment request */}
-          {reservasActivas.length > 0 && contacto && (
+          {reservasActivas.length > 0 && contacto && restante > 0 && (
             <SolicitarPagoGrupo
               grupoId={grupo.id}
               totalGrupo={totalGeneral}
+              totalPagado={totalPagado}
+              restante={restante}
               emailContacto={contacto.email}
             />
+          )}
+          {restante <= 0 && totalPagado > 0 && (
+            <div className="rounded-xl bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-800 text-center font-medium">
+              Grupo saldado completamente ✓
+            </div>
           )}
 
           {/* Edit group */}

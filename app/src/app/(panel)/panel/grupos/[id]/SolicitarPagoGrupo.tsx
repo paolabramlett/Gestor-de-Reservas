@@ -6,16 +6,31 @@ import { solicitarPagoGrupoAction } from "../actions";
 export function SolicitarPagoGrupo({
   grupoId,
   totalGrupo,
+  totalPagado,
+  restante,
   emailContacto,
 }: {
   grupoId: string;
   totalGrupo: number;
+  totalPagado: number;
+  restante: number;
   emailContacto: string;
 }) {
   const [open, setOpen] = useState(false);
   const [esPagoCompleto, setEsPagoCompleto] = useState(false);
+  const [monto, setMonto] = useState<string>("");
   const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
+
+  const montoNum = Number(monto);
+  const montoInvalido = montoNum <= 0 || montoNum > restante;
+
+  function handleTipoChange(completo: boolean) {
+    setEsPagoCompleto(completo);
+    setMonto(completo ? String(restante) : "");
+    setError(null);
+  }
 
   if (!open) {
     return (
@@ -42,10 +57,32 @@ export function SolicitarPagoGrupo({
         </button>
       </div>
 
+      {totalPagado > 0 && (
+        <div className="mb-3 rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-xs space-y-1">
+          <div className="flex justify-between text-gray-500">
+            <span>Total grupo</span>
+            <span>${totalGrupo.toLocaleString("es-MX")} MXN</span>
+          </div>
+          <div className="flex justify-between text-green-700">
+            <span>Ya pagado</span>
+            <span>${totalPagado.toLocaleString("es-MX")} MXN</span>
+          </div>
+          <div className="flex justify-between text-amber-700 font-semibold border-t border-gray-200 pt-1">
+            <span>Restante</span>
+            <span>${restante.toLocaleString("es-MX")} MXN</span>
+          </div>
+        </div>
+      )}
+
       <form
         ref={formRef}
         action={async (fd) => {
+          if (montoInvalido) {
+            setError(`El monto debe ser entre $1 y $${restante.toLocaleString("es-MX")} MXN`);
+            return;
+          }
           setPending(true);
+          setError(null);
           await solicitarPagoGrupoAction(fd);
           setPending(false);
         }}
@@ -59,12 +96,12 @@ export function SolicitarPagoGrupo({
           <div className="flex border border-gray-200 rounded-lg p-1 gap-1">
             {[
               { value: false, label: "Anticipo" },
-              { value: true, label: "Pago completo" },
+              { value: true, label: "Liquidar saldo" },
             ].map(({ value, label }) => (
               <button
                 key={label}
                 type="button"
-                onClick={() => setEsPagoCompleto(value)}
+                onClick={() => handleTipoChange(value)}
                 className={`flex-1 text-sm py-1.5 rounded-md font-medium transition-colors ${
                   esPagoCompleto === value
                     ? "bg-gray-900 text-white"
@@ -86,16 +123,22 @@ export function SolicitarPagoGrupo({
               type="number"
               required
               min={1}
+              max={restante}
               step="0.01"
-              defaultValue={esPagoCompleto ? totalGrupo : undefined}
+              value={monto}
+              onChange={(e) => { setMonto(e.target.value); setError(null); }}
               placeholder="0.00"
               className="w-full border border-gray-300 rounded-lg pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
             />
           </div>
           <p className="text-xs text-gray-400 mt-1">
-            Total del grupo: <span className="font-medium">${totalGrupo.toLocaleString("es-MX")} MXN</span>
+            Máximo cobrable: <span className="font-medium">${restante.toLocaleString("es-MX")} MXN</span>
           </p>
         </div>
+
+        {error && (
+          <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
+        )}
 
         <div className="rounded-lg bg-blue-50 border border-blue-100 px-3 py-2 text-xs text-blue-700">
           Se enviará un link de Stripe a <span className="font-medium">{emailContacto}</span>. Expira en 24 horas.
@@ -103,7 +146,7 @@ export function SolicitarPagoGrupo({
 
         <button
           type="submit"
-          disabled={pending}
+          disabled={pending || !monto || montoNum <= 0}
           className="w-full rounded-lg bg-gray-900 text-white py-2 text-sm font-semibold hover:bg-gray-700 disabled:opacity-50"
         >
           {pending ? "Enviando link..." : "Enviar link de pago"}
