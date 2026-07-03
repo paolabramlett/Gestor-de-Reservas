@@ -9,6 +9,82 @@ const ERROR_GENERICO = { error: "No encontramos una reserva con esos datos" };
 
 export async function POST(req: NextRequest) {
   const { codigo, email } = await req.json();
+  const codigoNorm = (codigo as string)?.trim().toUpperCase();
+  const emailNorm = (email as string)?.trim().toLowerCase();
+
+  // ── Cancelar grupo ──────────────────────────────────────────────────────
+  if (codigoNorm?.startsWith("GRP-")) {
+    const grupo = await prisma.grupoReserva.findFirst({
+      where: { codigoGrupo: codigoNorm },
+      include: {
+        propiedad: true,
+        reservas: {
+          where: { estado: { notIn: ["CANCELADA", "NO_SHOW"] } },
+          include: { huesped: true },
+        },
+      },
+    });
+
+    if (!grupo || grupo.reservas.length === 0) {
+      return NextResponse.json(ERROR_GENERICO, { status: 404 });
+    }
+
+    const emailMatch = grupo.reservas.some((r) => r.huesped.email.toLowerCase() === emailNorm);
+    if (!emailMatch) return NextResponse.json(ERROR_GENERICO, { status: 404 });
+
+    const fechaIngreso = grupo.reservas.reduce(
+      (min, r) => (r.fechaIngreso < min ? r.fechaIngreso : min),
+      grupo.reservas[0].fechaIngreso
+    );
+
+    const ahora = new Date();
+    const limite = new Date(fechaIngreso);
+    limite.setHours(limite.getHours() - 48);
+    if (ahora >= limite) {
+      return NextResponse.json(
+        { error: "La ventana de cancelación ha cerrado (48h antes del check-in)" },
+        { status: 400 }
+      );
+    }
+
+    const totalMxn = Number(grupo.totalPagado) || grupo.reservas.reduce((s, r) => s + Number(r.totalMxn), 0);
+    const comision = Math.round((totalMxn * STRIPE_COMISION_PORCENTAJE + STRIPE_COMISION_FIJA) * 100) / 100;
+    const montoReembolso = totalMxn - comision;
+
+    if (grupo.stripePaymentIntentId) {
+      await stripe.refunds.create({
+        payment_intent: grupo.stripePaymentIntentId,
+        amount: Math.round(montoReembolso * 100),
+      });
+    }
+
+    // Cancel all active reservations in the group
+    await prisma.reserva.updateMany({
+      where: { grupoId: grupo.id, estado: { notIn: ["CANCELADA", "NO_SHOW"] } },
+      data: { estado: "CANCELADA" },
+    });
+
+    const contacto = grupo.reservas[0].huesped;
+    try {
+      await enviarCancelacion({
+        emailHuesped: contacto.email,
+        codigoReserva: grupo.codigoGrupo,
+        nombreHuesped: contacto.nombre,
+        nombreHotel: grupo.propiedad.nombre,
+        fechaIngreso,
+        fechaSalida: grupo.reservas.reduce(
+          (max, r) => (r.fechaSalida > max ? r.fechaSalida : max),
+          grupo.reservas[0].fechaSalida
+        ),
+        totalMxn,
+        montoReembolsadoMxn: grupo.stripePaymentIntentId ? montoReembolso : undefined,
+        colorPrimario: grupo.propiedad.colorPrimario ?? undefined,
+      });
+    } catch { /* silently ignore email errors */ }
+
+    return NextResponse.json({ cancelada: true, montoReembolso, comisionRetenida: comision });
+  }
+  // ── Fin cancelar grupo ──────────────────────────────────────────────────
 
   if (!codigo || !email) {
     return NextResponse.json(ERROR_GENERICO, { status: 404 });

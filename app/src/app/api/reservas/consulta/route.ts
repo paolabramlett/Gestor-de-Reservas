@@ -17,10 +17,17 @@ export async function GET(req: NextRequest) {
   if (codigo.startsWith("GRP-")) {
     const grupo = await prisma.grupoReserva.findFirst({
       where: { codigoGrupo: codigo },
-      include: {
+      select: {
+        codigoGrupo: true,
+        stripePaymentIntentId: true,
         reservas: {
           where: { estado: { notIn: ["CANCELADA", "NO_SHOW"] } },
-          include: {
+          select: {
+            estado: true,
+            fechaIngreso: true,
+            fechaSalida: true,
+            numPersonas: true,
+            totalMxn: true,
             huesped: { select: { nombre: true, email: true } },
             tipoDeHabitacion: { select: { nombre: true } },
           },
@@ -48,18 +55,27 @@ export async function GET(req: NextRequest) {
     );
     const totalMxn = grupo.reservas.reduce((s, r) => s + Number(r.totalMxn), 0);
 
+    const ahoraGrupo = new Date();
+    const limiteGrupo = new Date(fechaIngreso);
+    limiteGrupo.setHours(limiteGrupo.getHours() - 48);
+    const grupoConfirmado = grupo.reservas.every((r) => r.estado === "CONFIRMADA");
+    const cancelableGrupo = grupoConfirmado && !!grupo.stripePaymentIntentId && ahoraGrupo < limiteGrupo;
+    const comisionGrupo = cancelableGrupo
+      ? Math.round((totalMxn * STRIPE_COMISION_PORCENTAJE + STRIPE_COMISION_FIJA) * 100) / 100
+      : 0;
+
     return NextResponse.json({
       codigoReserva: grupo.codigoGrupo,
-      estado: grupo.reservas.every((r) => r.estado === "CONFIRMADA") ? "CONFIRMADA" : grupo.reservas[0].estado,
+      estado: grupoConfirmado ? "CONFIRMADA" : grupo.reservas[0].estado,
       fechaIngreso: fechaIngreso.toISOString(),
       fechaSalida: fechaSalida.toISOString(),
       totalMxn,
       tipoDeHabitacion: { nombre: `${grupo.reservas.length} habitación${grupo.reservas.length !== 1 ? "es" : ""}` },
       huesped: grupo.reservas[0].huesped,
       origen: "ONLINE",
-      cancelable: false,
-      montoReembolso: 0,
-      comisionRetenida: 0,
+      cancelable: cancelableGrupo,
+      montoReembolso: cancelableGrupo ? totalMxn - comisionGrupo : 0,
+      comisionRetenida: comisionGrupo,
       habitaciones: grupo.reservas.map((r) => ({
         tipoNombre: r.tipoDeHabitacion.nombre,
         fechaIngreso: r.fechaIngreso.toISOString(),

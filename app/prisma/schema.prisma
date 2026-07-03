@@ -178,8 +178,9 @@ model GrupoReserva {
   codigoGrupo String   @unique
   nombre      String
   notas       String?
-  totalPagado Decimal  @default(0) @db.Decimal(10, 2)
-  creadoEn    DateTime @default(now())
+  totalPagado           Decimal  @default(0) @db.Decimal(10, 2)
+  stripePaymentIntentId String?
+  creadoEn              DateTime @default(now())
 
   propiedad Propiedad @relation(fields: [propiedadId], references: [id], onDelete: Cascade)
   reservas  Reserva[]
