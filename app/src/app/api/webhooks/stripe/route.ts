@@ -136,6 +136,7 @@ export async function POST(req: NextRequest) {
 
         if (grupo && grupo.reservas[0]) {
           const r0 = grupo.reservas[0];
+          const montoCobrado = session.amount_total ? session.amount_total / 100 : reservas.reduce((s, r) => s + Number(r.totalMxn), 0);
           await enviarConfirmacion({
             emailHuesped: r0.huesped.email,
             codigoReserva: grupo.codigoGrupo,
@@ -145,7 +146,7 @@ export async function POST(req: NextRequest) {
             fechaIngreso: r0.fechaIngreso,
             fechaSalida: r0.fechaSalida,
             numPersonas: reservas.reduce((s, r) => s + r.numPersonas, 0),
-            totalMxn: reservas.reduce((s, r) => s + Number(r.totalMxn), 0),
+            totalMxn: montoCobrado,
             colorPrimario: grupo.propiedad.colorPrimario ?? undefined,
           });
         }
