@@ -55,6 +55,12 @@ export default async function ReservasPage({
               ],
             },
           },
+          // Buscar por código de grupo (multi-habitación)
+          {
+            grupo: {
+              codigoGrupo: { contains: busqueda, mode: "insensitive" as const },
+            },
+          },
         ],
       }
     : {};
@@ -70,6 +76,7 @@ export default async function ReservasPage({
       tipoDeHabitacion: true,
       asignacion: { include: { habitacion: true } },
       pagoManual: true,
+      grupo: { select: { codigoGrupo: true } },
     },
     orderBy: { fechaIngreso: "asc" },
     take: 200,
@@ -170,8 +177,15 @@ export default async function ReservasPage({
                       <Link href={`/panel/reservas/${r.id}`} className="font-mono text-blue-600 hover:underline">
                         {r.codigoReserva}
                       </Link>
-                      {r.origen === "ONLINE" && (
+                      {r.origen === "ONLINE" && !r.grupoId && (
                         <span className="ml-1 text-xs text-gray-400">online</span>
+                      )}
+                      {r.grupoId && r.grupo && (
+                        <div className="mt-0.5">
+                          <span className="font-mono text-xs bg-indigo-50 text-indigo-600 border border-indigo-200 rounded px-1.5 py-0.5">
+                            {r.grupo.codigoGrupo}
+                          </span>
+                        </div>
                       )}
                     </td>
                     <td className="px-4 py-3">
