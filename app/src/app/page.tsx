@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import Image from "next/image";
 import Link from "next/link";
 
 const SIGN_IN_URL = "/sign-in";
@@ -149,9 +150,8 @@ export default function LandingPage() {
 
       {/* NAV */}
       <nav style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"18px 48px",background:"#fff",borderBottom:"1px solid #e5e7eb",position:"sticky",top:0,zIndex:50}}>
-        <Link href="/" style={{display:"flex",alignItems:"center",gap:"8px"}}>
-          <div style={{width:36,height:36,background:"#FFBC1A",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.1rem"}}>🚪</div>
-          <span style={{fontSize:"1.6rem",fontWeight:700,color:"#041B42",letterSpacing:"-0.03em"}}>Roomly</span>
+        <Link href="/">
+          <Image src="/roomly-logo.png" alt="Roomly" width={140} height={36} priority style={{objectFit:"contain"}} />
         </Link>
         <ul style={{display:"flex",gap:28,alignItems:"center",listStyle:"none"}}>
           <li><a href="#funciones" style={{fontSize:"0.82rem",fontWeight:500,color:"#64748b"}}>Funciones</a></li>
@@ -357,10 +357,7 @@ export default function LandingPage() {
 
       {/* FOOTER */}
       <footer style={{background:"#041B42",padding:"32px 48px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <div style={{width:28,height:28,background:"#FFBC1A",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.9rem"}}>🚪</div>
-          <span style={{fontSize:"1.2rem",fontWeight:700,color:"#fff"}}>Roomly</span>
-        </div>
+        <Image src="/roomly-logo.png" alt="Roomly" width={110} height={28} style={{objectFit:"contain",filter:"brightness(0) invert(1)"}} />
         <span style={{fontSize:"0.78rem",color:"#94a3b8"}}>© 2025 Roomly · Hecho en México</span>
         <div style={{display:"flex",gap:20}}>
           <a href="#" style={{fontSize:"0.78rem",color:"#94a3b8"}}>Privacidad</a>
