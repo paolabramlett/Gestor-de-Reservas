@@ -3,16 +3,36 @@
 import { useState } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
+import { calcularTotalPreviewAction } from "@/app/(panel)/panel/reservas/actions";
+
+type TipoSimple = {
+  id: string;
+  nombre: string;
+  capacidadMin: number;
+  capacidadMax: number;
+};
+
+type HabExtra = {
+  id: string;
+  tipoDeHabitacionId: string;
+  tipoNombre: string;
+  fechaIngreso: string;
+  fechaSalida: string;
+  numPersonas: number;
+  totalMxn: number;
+};
 
 type Props = {
   slug: string;
   tipoDeHabitacionId: string;
+  tipoNombre: string;
   fechaIngreso: string;
   fechaSalida: string;
   numPersonas: number;
   totalMxn: number;
   stripePublishableKey: string;
   colorPrimario?: string;
+  tipos: TipoSimple[];
 };
 
 function PagoForm({
@@ -64,7 +84,7 @@ function PagoForm({
       </button>
       <div className="flex items-center justify-center gap-1.5 text-xs text-gray-400">
         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
         </svg>
         Pago seguro procesado por Stripe
       </div>
@@ -72,23 +92,221 @@ function PagoForm({
   );
 }
 
+// ── Panel para agregar una habitación extra ─────────────────────────────────
+
+function AgregarHabitacionPanel({
+  tipos,
+  fechaIngresoPrincipal,
+  fechaSalidaPrincipal,
+  colorPrimario,
+  onAgregar,
+  onCancelar,
+}: {
+  tipos: TipoSimple[];
+  fechaIngresoPrincipal: string;
+  fechaSalidaPrincipal: string;
+  colorPrimario: string;
+  onAgregar: (hab: HabExtra) => void;
+  onCancelar: () => void;
+}) {
+  const [tipoId, setTipoId] = useState(tipos[0]?.id ?? "");
+  const [fechaIngreso, setFechaIngreso] = useState(fechaIngresoPrincipal);
+  const [fechaSalida, setFechaSalida] = useState(fechaSalidaPrincipal);
+  const [numPersonas, setNumPersonas] = useState(2);
+  const [total, setTotal] = useState<number | null>(null);
+  const [calculando, setCalculando] = useState(false);
+  const [errorCalculo, setErrorCalculo] = useState<string | null>(null);
+
+  async function calcularPrecio(tid: string, fi: string, fo: string, np: number) {
+    if (!tid || !fi || !fo || fo <= fi) { setTotal(null); return; }
+    setCalculando(true);
+    setErrorCalculo(null);
+    const result = await calcularTotalPreviewAction(tid, fi, fo, np);
+    if (result.error) setErrorCalculo("No se pudo calcular el precio");
+    else setTotal(result.total);
+    setCalculando(false);
+  }
+
+  function handleChange(
+    tid = tipoId,
+    fi = fechaIngreso,
+    fo = fechaSalida,
+    np = numPersonas
+  ) {
+    if (tid !== tipoId) setTipoId(tid);
+    if (fi !== fechaIngreso) setFechaIngreso(fi);
+    if (fo !== fechaSalida) setFechaSalida(fo);
+    if (np !== numPersonas) setNumPersonas(np);
+    calcularPrecio(tid, fi, fo, np);
+  }
+
+  function handleAgregar() {
+    if (!total || fechaSalida <= fechaIngreso) return;
+    const tipo = tipos.find((t) => t.id === tipoId);
+    onAgregar({
+      id: Math.random().toString(36).slice(2),
+      tipoDeHabitacionId: tipoId,
+      tipoNombre: tipo?.nombre ?? "",
+      fechaIngreso,
+      fechaSalida,
+      numPersonas,
+      totalMxn: total,
+    });
+  }
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
+      <p className="text-sm font-semibold text-gray-800">Habitación adicional</p>
+
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">Tipo de habitación</label>
+        <select
+          value={tipoId}
+          onChange={(e) => handleChange(e.target.value)}
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2"
+          style={{ "--tw-ring-color": colorPrimario } as React.CSSProperties}
+        >
+          {tipos.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.nombre} (cap. {t.capacidadMin}–{t.capacidadMax})
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">Check-in</label>
+          <input
+            type="date"
+            value={fechaIngreso}
+            onChange={(e) => handleChange(tipoId, e.target.value, fechaSalida, numPersonas)}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">Check-out</label>
+          <input
+            type="date"
+            value={fechaSalida}
+            onChange={(e) => handleChange(tipoId, fechaIngreso, e.target.value, numPersonas)}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">Personas</label>
+        <input
+          type="number"
+          min={1}
+          value={numPersonas}
+          onChange={(e) => handleChange(tipoId, fechaIngreso, fechaSalida, Number(e.target.value))}
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        />
+      </div>
+
+      {calculando && <p className="text-xs text-gray-400">Calculando precio...</p>}
+      {errorCalculo && <p className="text-xs text-red-500">{errorCalculo}</p>}
+      {total !== null && !calculando && (
+        <p className="text-sm font-semibold text-gray-900">
+          Total: ${total.toLocaleString("es-MX")} MXN
+        </p>
+      )}
+
+      <div className="flex gap-2 pt-1">
+        <button
+          type="button"
+          onClick={handleAgregar}
+          disabled={!total || fechaSalida <= fechaIngreso}
+          style={{ backgroundColor: colorPrimario }}
+          className="flex-1 rounded-lg text-white py-2 text-sm font-semibold hover:opacity-90 disabled:opacity-50"
+        >
+          Confirmar habitación
+        </button>
+        <button
+          type="button"
+          onClick={onCancelar}
+          className="rounded-lg border border-gray-300 text-gray-600 px-4 py-2 text-sm hover:bg-gray-100"
+        >
+          Cancelar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Componente principal ────────────────────────────────────────────────────
+
 export default function FormularioReserva(props: Props) {
   const colorPrimario = props.colorPrimario ?? "#111827";
-  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const stripePromise = loadStripe(props.stripePublishableKey);
+
+  // Guest info
   const [nombre, setNombre] = useState("");
   const [email, setEmail] = useState("");
   const [telefono, setTelefono] = useState("");
+
+  // Multi-room state
+  const [habitacionesExtra, setHabitacionesExtra] = useState<HabExtra[]>([]);
+  const [mostrarPanel, setMostrarPanel] = useState(false);
+
+  const totalGeneral = props.totalMxn + habitacionesExtra.reduce((s, h) => s + h.totalMxn, 0);
+  const isMulti = habitacionesExtra.length > 0;
+
+  // Single-room payment state
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [paso, setPaso] = useState<"datos" | "pago">("datos");
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const stripePromise = loadStripe(props.stripePublishableKey);
+  function agregarHabitacion(hab: HabExtra) {
+    setHabitacionesExtra((prev) => [...prev, hab]);
+    setMostrarPanel(false);
+  }
+
+  function quitarHabitacion(id: string) {
+    setHabitacionesExtra((prev) => prev.filter((h) => h.id !== id));
+  }
 
   async function handleDatos(e: React.FormEvent) {
     e.preventDefault();
     setCargando(true);
     setError(null);
 
+    if (isMulti) {
+      // Multi-room: redirect to Stripe Checkout
+      const habitaciones = [
+        {
+          tipoDeHabitacionId: props.tipoDeHabitacionId,
+          fechaIngreso: props.fechaIngreso,
+          fechaSalida: props.fechaSalida,
+          numPersonas: props.numPersonas,
+        },
+        ...habitacionesExtra.map((h) => ({
+          tipoDeHabitacionId: h.tipoDeHabitacionId,
+          fechaIngreso: h.fechaIngreso,
+          fechaSalida: h.fechaSalida,
+          numPersonas: h.numPersonas,
+        })),
+      ];
+
+      const res = await fetch("/api/reservas/checkout-grupo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: props.slug, nombre, email, telefono, habitaciones }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Error al iniciar el pago");
+        setCargando(false);
+        return;
+      }
+      window.location.href = data.url;
+      return;
+    }
+
+    // Single room: PaymentIntent embedded
     const res = await fetch("/api/reservas/checkout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -116,10 +334,10 @@ export default function FormularioReserva(props: Props) {
     setCargando(false);
   }
 
+  // ── Paso de pago (solo habitación única) ───────────────────────────────────
   if (paso === "pago" && clientSecret) {
     return (
       <div className="space-y-5">
-        {/* Mini resumen del huésped */}
         <div className="rounded-xl bg-gray-50 border border-gray-200 px-4 py-3 text-sm flex items-center justify-between">
           <div>
             <p className="font-medium text-gray-900">{nombre}</p>
@@ -141,46 +359,127 @@ export default function FormularioReserva(props: Props) {
     );
   }
 
+  // ── Paso de datos ──────────────────────────────────────────────────────────
   return (
     <form onSubmit={handleDatos} className="space-y-4">
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Nombre completo</label>
-        <input
-          type="text"
-          value={nombre}
-          onChange={(e) => setNombre(e.target.value)}
-          className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-offset-1"
-          style={{ "--tw-ring-color": colorPrimario } as React.CSSProperties}
-          placeholder="Tu nombre completo"
-          required
-          minLength={2}
-        />
+
+      {/* Resumen de habitaciones */}
+      <div className="space-y-2">
+        {/* Habitación principal */}
+        <div className="flex items-center justify-between rounded-xl bg-gray-50 border border-gray-200 px-4 py-3 text-sm">
+          <div>
+            <p className="font-medium text-gray-900">{props.tipoNombre}</p>
+            <p className="text-xs text-gray-500">
+              {new Date(props.fechaIngreso + "T12:00:00").toLocaleDateString("es-MX", { day: "numeric", month: "short" })}
+              {" → "}
+              {new Date(props.fechaSalida + "T12:00:00").toLocaleDateString("es-MX", { day: "numeric", month: "short" })}
+              {" · "}{props.numPersonas} persona{props.numPersonas !== 1 ? "s" : ""}
+            </p>
+          </div>
+          <p className="font-semibold text-gray-900">${props.totalMxn.toLocaleString("es-MX")}</p>
+        </div>
+
+        {/* Habitaciones extra */}
+        {habitacionesExtra.map((h) => (
+          <div key={h.id} className="flex items-center justify-between rounded-xl bg-blue-50 border border-blue-200 px-4 py-3 text-sm">
+            <div>
+              <p className="font-medium text-gray-900">{h.tipoNombre}</p>
+              <p className="text-xs text-gray-500">
+                {new Date(h.fechaIngreso + "T12:00:00").toLocaleDateString("es-MX", { day: "numeric", month: "short" })}
+                {" → "}
+                {new Date(h.fechaSalida + "T12:00:00").toLocaleDateString("es-MX", { day: "numeric", month: "short" })}
+                {" · "}{h.numPersonas} persona{h.numPersonas !== 1 ? "s" : ""}
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <p className="font-semibold text-gray-900">${h.totalMxn.toLocaleString("es-MX")}</p>
+              <button
+                type="button"
+                onClick={() => quitarHabitacion(h.id)}
+                className="text-gray-400 hover:text-red-500"
+                title="Quitar habitación"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        ))}
+
+        {/* Total cuando hay múltiples habitaciones */}
+        {isMulti && (
+          <div className="flex justify-between text-sm font-bold text-gray-900 px-1 pt-1 border-t border-gray-200">
+            <span>Total {habitacionesExtra.length + 1} habitaciones</span>
+            <span>${totalGeneral.toLocaleString("es-MX")} MXN</span>
+          </div>
+        )}
+
+        {/* Panel para agregar */}
+        {mostrarPanel ? (
+          <AgregarHabitacionPanel
+            tipos={props.tipos}
+            fechaIngresoPrincipal={props.fechaIngreso}
+            fechaSalidaPrincipal={props.fechaSalida}
+            colorPrimario={colorPrimario}
+            onAgregar={agregarHabitacion}
+            onCancelar={() => setMostrarPanel(false)}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setMostrarPanel(true)}
+            className="w-full rounded-xl border-2 border-dashed border-gray-300 text-gray-500 py-2.5 text-sm font-medium hover:border-gray-400 hover:text-gray-700 flex items-center justify-center gap-2 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            Agregar otra habitación
+          </button>
+        )}
       </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Correo electrónico</label>
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-offset-1"
-          style={{ "--tw-ring-color": colorPrimario } as React.CSSProperties}
-          placeholder="correo@ejemplo.com"
-          required
-        />
-        <p className="text-xs text-gray-400 mt-1">Aquí recibirás tu código de confirmación.</p>
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Teléfono <span className="text-gray-400 font-normal">(opcional)</span>
-        </label>
-        <input
-          type="tel"
-          value={telefono}
-          onChange={(e) => setTelefono(e.target.value)}
-          className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-offset-1"
-          style={{ "--tw-ring-color": colorPrimario } as React.CSSProperties}
-          placeholder="+52 000 000 0000"
-        />
+
+      {/* Datos del huésped */}
+      <div className="pt-2 space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Nombre completo</label>
+          <input
+            type="text"
+            value={nombre}
+            onChange={(e) => setNombre(e.target.value)}
+            className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-offset-1"
+            style={{ "--tw-ring-color": colorPrimario } as React.CSSProperties}
+            placeholder="Tu nombre completo"
+            required
+            minLength={2}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Correo electrónico</label>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-offset-1"
+            style={{ "--tw-ring-color": colorPrimario } as React.CSSProperties}
+            placeholder="correo@ejemplo.com"
+            required
+          />
+          <p className="text-xs text-gray-400 mt-1">Aquí recibirás tu código de confirmación.</p>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Teléfono <span className="text-gray-400 font-normal">(opcional)</span>
+          </label>
+          <input
+            type="tel"
+            value={telefono}
+            onChange={(e) => setTelefono(e.target.value)}
+            className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-offset-1"
+            style={{ "--tw-ring-color": colorPrimario } as React.CSSProperties}
+            placeholder="+52 000 000 0000"
+          />
+        </div>
       </div>
 
       {error && (
@@ -195,12 +494,21 @@ export default function FormularioReserva(props: Props) {
         style={{ backgroundColor: colorPrimario }}
         className="w-full rounded-xl text-white py-3.5 text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity mt-2"
       >
-        {cargando ? "Un momento..." : "Continuar al pago"}
+        {cargando
+          ? "Un momento..."
+          : isMulti
+          ? `Pagar $${totalGeneral.toLocaleString("es-MX")} MXN`
+          : "Continuar al pago"}
       </button>
 
-      <p className="text-xs text-gray-400 text-center">
-        No necesitas crear una cuenta.
-      </p>
+      {isMulti && (
+        <p className="text-xs text-gray-400 text-center">
+          Serás redirigido a Stripe para completar el pago de {habitacionesExtra.length + 1} habitaciones.
+        </p>
+      )}
+      {!isMulti && (
+        <p className="text-xs text-gray-400 text-center">No necesitas crear una cuenta.</p>
+      )}
     </form>
   );
 }

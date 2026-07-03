@@ -5,6 +5,12 @@ import { enviarConfirmacion, enviarAlertaEquipo, enviarPagoFallido } from "@/lib
 import { EstadoReserva, EstadoDePago } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import Stripe from "stripe";
+import { ulid } from "ulid";
+
+function generarCodigoGrupo(): string {
+  const id = ulid();
+  return `GRP-${id.slice(-8, -4)}-${id.slice(-4)}`;
+}
 
 export async function POST(req: NextRequest) {
   const body = await req.text();
@@ -165,6 +171,70 @@ export async function POST(req: NextRequest) {
         }
       } catch (err) {
         console.error("[webhook] GRUPO_PAGO error:", err);
+      }
+    }
+
+    if (session.metadata?.tipo === "GRUPO_ONLINE" && session.metadata?.propiedadId) {
+      try {
+        const meta = session.metadata;
+        const habsRaw = JSON.parse(meta.habitaciones) as {
+          t: string; i: string; o: string; n: number;
+        }[];
+
+        const grupo = await prisma.grupoReserva.create({
+          data: {
+            propiedadId: meta.propiedadId,
+            codigoGrupo: generarCodigoGrupo(),
+            nombre: meta.nombre,
+            totalPagado: session.amount_total ? session.amount_total / 100 : 0,
+          },
+        });
+
+        const reservasCreadas: { id: string; codigoReserva: string }[] = [];
+        for (const h of habsRaw) {
+          const reserva = await crearReservaOnline({
+            propiedadId: meta.propiedadId,
+            tipoDeHabitacionId: h.t,
+            nombre: meta.nombre,
+            email: meta.email,
+            telefono: meta.telefono || undefined,
+            fechaIngreso: new Date(h.i),
+            fechaSalida: new Date(h.o),
+            numPersonas: h.n,
+            stripePaymentIntentId: typeof session.payment_intent === "string"
+              ? session.payment_intent
+              : String(session.payment_intent ?? ""),
+          });
+          await prisma.reserva.update({
+            where: { id: reserva.id },
+            data: { grupoId: grupo.id },
+          });
+          reservasCreadas.push({ id: reserva.id, codigoReserva: reserva.codigoReserva });
+        }
+
+        const propiedad = await prisma.propiedad.findUnique({ where: { id: meta.propiedadId } });
+        if (propiedad) {
+          const primeraReserva = await prisma.reserva.findUnique({
+            where: { id: reservasCreadas[0].id },
+            include: { tipoDeHabitacion: true },
+          });
+          if (primeraReserva) {
+            await enviarConfirmacion({
+              emailHuesped: meta.email,
+              codigoReserva: grupo.codigoGrupo,
+              nombreHuesped: meta.nombre,
+              nombreHotel: propiedad.nombre,
+              tipoHabitacion: `${habsRaw.length} habitación${habsRaw.length !== 1 ? "es" : ""}`,
+              fechaIngreso: primeraReserva.fechaIngreso,
+              fechaSalida: primeraReserva.fechaSalida,
+              numPersonas: habsRaw.reduce((s, h) => s + h.n, 0),
+              totalMxn: session.amount_total ? session.amount_total / 100 : 0,
+              colorPrimario: propiedad.colorPrimario ?? undefined,
+            });
+          }
+        }
+      } catch (err) {
+        console.error("[webhook] GRUPO_ONLINE error:", err);
       }
     }
 

@@ -66,6 +66,12 @@ export default async function ReservarPage({
   });
   if (!tipo) notFound();
 
+  const tipos = await prisma.tipoDeHabitacion.findMany({
+    where: { propiedadId: propiedad.id, activo: true },
+    orderBy: { nombre: "asc" },
+    select: { id: true, nombre: true, capacidadMin: true, capacidadMax: true },
+  });
+
   const fechaIn = new Date(sp.fechaIngreso);
   const fechaOut = new Date(sp.fechaSalida);
   const numPersonas = Number(sp.numPersonas ?? 2);
@@ -220,12 +226,19 @@ export default async function ReservarPage({
               <FormularioReserva
                 slug={slug}
                 tipoDeHabitacionId={tipo.id}
+                tipoNombre={tipo.nombre}
                 fechaIngreso={sp.fechaIngreso}
                 fechaSalida={sp.fechaSalida}
                 numPersonas={numPersonas}
                 totalMxn={total}
                 stripePublishableKey={process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!}
                 colorPrimario={colorPrimario}
+                tipos={tipos.map((t) => ({
+                  id: t.id,
+                  nombre: t.nombre,
+                  capacidadMin: t.capacidadMin,
+                  capacidadMax: t.capacidadMax,
+                }))}
               />
             </div>
           </div>
