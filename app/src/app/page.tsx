@@ -27,6 +27,29 @@ const FOTOS = [
   },
 ];
 
+const FAQS = [
+  {
+    q: "¿Cuánto cuesta Roomly?",
+    a: "Roomly tiene dos planes: Esencial desde $399 MXN al mes y Pro desde $999 MXN al mes. Ambos son mensuales, sin contrato de permanencia y puedes cambiar de plan o cancelar cuando quieras.",
+  },
+  {
+    q: "¿Qué diferencia hay entre el plan Esencial y el plan Pro?",
+    a: "El plan Esencial incluye el panel de reservas, calendario, registro manual de pagos y reportes de ocupación. El plan Pro agrega el portal de reservas online para tus huéspedes y la posibilidad de cobrar con tarjeta a través de Stripe.",
+  },
+  {
+    q: "¿Necesito instalar algo o contratar a un técnico?",
+    a: "No. Roomly funciona completamente en el navegador, sin instalaciones ni servidores propios. La mayoría de los hoteles quedan operando en menos de 48 horas configurándolo ellos mismos.",
+  },
+  {
+    q: "¿Puedo cancelar mi suscripción cuando quiera?",
+    a: "Sí. No hay contratos de permanencia. Puedes subir de plan, bajar de plan o cancelar tu suscripción en cualquier momento desde la sección de Configuración del panel.",
+  },
+  {
+    q: "¿Roomly funciona en México y cobra en pesos mexicanos?",
+    a: "Sí. Roomly está diseñado específicamente para hoteles pequeños y boutique en México, y todos los cobros —tanto tu suscripción como los pagos de tus huéspedes— se procesan en pesos mexicanos (MXN) a través de Stripe.",
+  },
+];
+
 export default function LandingPage() {
   useEffect(() => {
     const rooms = ["Suite 101", "Deluxe 102", "Est. 103", "Est. 104", "Junior 105", "Suite 106"];
@@ -143,6 +166,7 @@ export default function LandingPage() {
         .steps-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:32px;position:relative}
         .steps-line{position:absolute;top:28px;left:calc(16.67% + 28px);right:calc(16.67% + 28px);height:1px;background:#BFDBFE}
         .fotos-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+        .pricing-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}
         .section-pad{padding:80px 48px}
         .hero-cal-notif{position:absolute;top:56px;right:-18px}
         .hero-cal-badge{position:absolute;bottom:32px;left:-18px}
@@ -155,6 +179,7 @@ export default function LandingPage() {
           .feat-grid{grid-template-columns:1fr;gap:12px}
           .feat-head{grid-template-columns:1fr;gap:16px}
           .steps-grid{grid-template-columns:1fr;gap:24px}
+          .pricing-grid{grid-template-columns:1fr;gap:16px}
           .steps-line{display:none}
           .fotos-grid{grid-template-columns:repeat(2,1fr)}
           .section-pad{padding:56px 24px}
@@ -188,6 +213,7 @@ export default function LandingPage() {
         <ul className="nav-links-desktop">
           <li><a href="#funciones" style={{fontSize:"0.82rem",fontWeight:500,color:"#64748b"}}>Funciones</a></li>
           <li><a href="#como-funciona" style={{fontSize:"0.82rem",fontWeight:500,color:"#64748b"}}>Cómo funciona</a></li>
+          <li><a href="#precios" style={{fontSize:"0.82rem",fontWeight:500,color:"#64748b"}}>Precios</a></li>
           <li style={{width:1,height:20,background:"#e2e8f0"}}></li>
           <li>
             <Link href={SIGN_IN_URL} className="nav-sign-in" style={{fontSize:"0.82rem",fontWeight:500,color:"#041B42",border:"1px solid #CBD5E1",padding:"8px 18px",borderRadius:8,display:"flex",alignItems:"center",gap:6}}>
@@ -413,6 +439,118 @@ export default function LandingPage() {
           </p>
         </div>
       </div>
+
+      {/* PRICING */}
+      <section id="precios" style={{background:"#fff"}} className="section-pad">
+        <div style={{maxWidth:1000,margin:"0 auto",textAlign:"center"}}>
+          <div style={{display:"inline-flex",alignItems:"center",gap:6,background:"#EFF6FF",border:"1px solid #BFDBFE",color:"#0C48AD",fontSize:"0.7rem",fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",padding:"4px 12px",borderRadius:20,marginBottom:20}}>
+            Precios
+          </div>
+          <h2 style={{fontSize:"clamp(1.8rem,2.8vw,2.8rem)",fontWeight:700,letterSpacing:"-0.02em",color:"#041B42",marginBottom:12}}>
+            Un precio simple, sin sorpresas
+          </h2>
+          <p style={{fontSize:"0.9rem",color:"#64748b",marginBottom:56}}>
+            Sin contratos de permanencia. Cambia de plan o cancela cuando quieras desde tu panel.
+          </p>
+
+          <div className="pricing-grid" style={{textAlign:"left"}}>
+            {/* Esencial */}
+            <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:16,padding:"36px 32px"}}>
+              <h3 style={{fontSize:"1.1rem",fontWeight:700,color:"#041B42",marginBottom:4}}>Esencial</h3>
+              <p style={{fontSize:"0.85rem",color:"#64748b",marginBottom:20}}>Para gestionar tu hotel desde un solo panel.</p>
+              <p style={{marginBottom:24}}>
+                <span style={{fontSize:"2.4rem",fontWeight:800,color:"#041B42"}}>$399</span>
+                <span style={{fontSize:"0.85rem",color:"#64748b"}}> MXN/mes</span>
+              </p>
+              <ul style={{marginBottom:28}}>
+                {[
+                  "Panel de reservas y calendario",
+                  "Registro manual de pagos",
+                  "Reportes de ocupación",
+                  "Hasta 3 usuarios",
+                ].map((f)=>(
+                  <li key={f} style={{display:"flex",gap:8,alignItems:"flex-start",fontSize:"0.85rem",color:"#475569",marginBottom:12}}>
+                    <span style={{color:"#16a34a",fontWeight:700}}>✓</span>{f}
+                  </li>
+                ))}
+              </ul>
+              <Link href="/setup" style={{display:"block",textAlign:"center",background:"#fff",color:"#041B42",border:"1px solid #CBD5E1",padding:"12px 24px",borderRadius:10,fontSize:"0.9rem",fontWeight:600}}>
+                Empezar con Esencial
+              </Link>
+            </div>
+
+            {/* Pro */}
+            <div style={{background:"#041B42",border:"2px solid #FFBC1A",borderRadius:16,padding:"36px 32px",position:"relative"}}>
+              <span style={{position:"absolute",top:-14,left:32,background:"#FFBC1A",color:"#041B42",fontSize:"0.65rem",fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",padding:"4px 12px",borderRadius:20}}>
+                Recomendado
+              </span>
+              <h3 style={{fontSize:"1.1rem",fontWeight:700,color:"#fff",marginBottom:4}}>Pro</h3>
+              <p style={{fontSize:"0.85rem",color:"rgba(255,255,255,0.7)",marginBottom:20}}>Todo lo de Esencial + cobros online para tus huéspedes.</p>
+              <p style={{marginBottom:24}}>
+                <span style={{fontSize:"2.4rem",fontWeight:800,color:"#fff"}}>$999</span>
+                <span style={{fontSize:"0.85rem",color:"rgba(255,255,255,0.7)"}}> MXN/mes</span>
+              </p>
+              <ul style={{marginBottom:28}}>
+                {[
+                  "Todo lo del plan Esencial",
+                  "Portal de reservas online",
+                  "Pagos con tarjeta (Stripe)",
+                  "Links de pago por WhatsApp",
+                ].map((f)=>(
+                  <li key={f} style={{display:"flex",gap:8,alignItems:"flex-start",fontSize:"0.85rem",color:"rgba(255,255,255,0.85)",marginBottom:12}}>
+                    <span style={{color:"#FFBC1A",fontWeight:700}}>✓</span>{f}
+                  </li>
+                ))}
+              </ul>
+              <Link href="/setup" style={{display:"block",textAlign:"center",background:"#FFBC1A",color:"#041B42",padding:"12px 24px",borderRadius:10,fontSize:"0.9rem",fontWeight:700}}>
+                Empezar con Pro
+              </Link>
+            </div>
+          </div>
+
+          <p style={{fontSize:"0.8rem",color:"#94a3b8",marginTop:32}}>
+            ¿Tienes un hotel con necesidades especiales? <a href={WA_URL} target="_blank" rel="noopener noreferrer" style={{color:"#0C48AD",fontWeight:600}}>Escríbenos por WhatsApp</a>.
+          </p>
+        </div>
+      </section>
+
+      {/* FAQ — respuestas directas y citables (SEO + GEO) */}
+      <section id="preguntas-frecuentes" style={{background:"#EEEEEE"}} className="section-pad">
+        <div style={{maxWidth:800,margin:"0 auto"}}>
+          <div style={{textAlign:"center",marginBottom:48}}>
+            <div style={{display:"inline-flex",alignItems:"center",gap:6,background:"#EFF6FF",border:"1px solid #BFDBFE",color:"#0C48AD",fontSize:"0.7rem",fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",padding:"4px 12px",borderRadius:20,marginBottom:20}}>
+              Preguntas frecuentes
+            </div>
+            <h2 style={{fontSize:"clamp(1.8rem,2.8vw,2.8rem)",fontWeight:700,letterSpacing:"-0.02em",color:"#041B42"}}>
+              Lo que más nos preguntan
+            </h2>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:16}}>
+            {FAQS.map(({q,a})=>(
+              <div key={q} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:14,padding:"24px 28px"}}>
+                <h3 style={{fontSize:"0.95rem",fontWeight:700,color:"#041B42",marginBottom:8}}>{q}</h3>
+                <p style={{fontSize:"0.88rem",lineHeight:1.7,color:"#475569"}}>{a}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* JSON-LD FAQPage — permite que Google y motores de IA generativa (ChatGPT, Perplexity) citen estas respuestas directamente */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            mainEntity: FAQS.map(({ q, a }) => ({
+              "@type": "Question",
+              name: q,
+              acceptedAnswer: { "@type": "Answer", text: a },
+            })),
+          }),
+        }}
+      />
 
       {/* CTA */}
       <section style={{background:"#0C48AD",padding:"80px 48px",textAlign:"center",color:"#fff"}}>

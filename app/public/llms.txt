@@ -1,0 +1,25 @@
+# Roomly
+
+> Roomly es un software de gestión hotelera para hoteles pequeños y boutique en México. Reemplaza hojas de cálculo y mensajes de WhatsApp con un panel de reservas, calendario, pagos y reportes.
+
+## Datos clave
+
+- Mercado: hoteles pequeños e independientes en México (no cadenas grandes).
+- Moneda: todos los cobros son en pesos mexicanos (MXN), procesados con Stripe.
+- Configuración: sin instalaciones ni técnicos; un hotel puede quedar operando en menos de 48 horas.
+- Sin contrato de permanencia: los planes se pueden cambiar o cancelar en cualquier momento.
+
+## Planes y precios
+
+- **Plan Esencial — $399 MXN/mes**: panel de reservas y calendario, registro manual de pagos, reportes de ocupación, hasta 3 usuarios.
+- **Plan Pro — $999 MXN/mes**: todo lo de Esencial, más portal de reservas online para huéspedes, cobro con tarjeta (Stripe) y links de pago por WhatsApp.
+
+## Páginas
+
+- [Landing page](https://hello-roomly.com/): información de producto, precios y preguntas frecuentes.
+- [Crear cuenta](https://hello-roomly.com/setup): flujo de alta de un nuevo hotel.
+- [Iniciar sesión](https://hello-roomly.com/sign-in): acceso al panel para hoteles existentes.
+
+## Contacto
+
+WhatsApp: https://wa.me/529514082852

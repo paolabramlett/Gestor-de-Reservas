@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { crearReservaOnline, generarCodigoReserva } from "@/lib/negocio/reservas";
 import { enviarConfirmacion, enviarAlertaEquipo, enviarPagoFallido } from "@/lib/emails";
-import { EstadoReserva, EstadoDePago, OrigenReserva } from "@prisma/client";
+import { EstadoReserva, EstadoDePago, OrigenReserva, PlanRoomly } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import Stripe from "stripe";
 import { ulid } from "ulid";
@@ -367,6 +367,28 @@ export async function POST(req: NextRequest) {
     await prisma.propiedad.updateMany({
       where: { stripeSubscriptionId: subscription.id },
       data: { suscripcionActiva: false },
+    });
+  }
+
+  // Cambios de plan/estado hechos fuera de la app (ej. portal de Stripe) —
+  // mantiene la DB sincronizada como fuente de verdad secundaria.
+  if (event.type === "customer.subscription.updated") {
+    const subscription = event.data.object as Stripe.Subscription;
+    const priceId = subscription.items.data[0]?.price?.id;
+    const plan =
+      priceId === process.env.STRIPE_PRICE_PRO ? PlanRoomly.PRO : PlanRoomly.ESENCIAL;
+    const periodoTs =
+      (subscription.items.data[0] as { current_period_end?: number } | undefined)
+        ?.current_period_end ?? (subscription as unknown as { current_period_end?: number }).current_period_end;
+
+    await prisma.propiedad.updateMany({
+      where: { stripeSubscriptionId: subscription.id },
+      data: {
+        planActivo: plan,
+        suscripcionActiva: subscription.status === "active" || subscription.status === "trialing",
+        canceladaAlFinalDePeriodo: subscription.cancel_at_period_end,
+        finDePeriodoActual: periodoTs ? new Date(periodoTs * 1000) : null,
+      },
     });
   }
 

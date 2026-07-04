@@ -70,6 +70,8 @@ model Propiedad {
   stripeSubscriptionId  String?
   planActivo            PlanRoomly @default(ESENCIAL)
   suscripcionActiva     Boolean    @default(false)
+  canceladaAlFinalDePeriodo Boolean  @default(false)
+  finDePeriodoActual        DateTime?
   creadoEn        DateTime @default(now())
   actualizadoEn   DateTime @updatedAt
 

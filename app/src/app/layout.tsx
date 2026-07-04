@@ -75,13 +75,34 @@ const jsonLd = {
   operatingSystem: "Web",
   url: SITE_URL,
   description: DESCRIPTION,
-  offers: {
-    "@type": "AggregateOffer",
-    priceCurrency: "MXN",
-    lowPrice: "399",
-    highPrice: "999",
-    offerCount: "2",
-  },
+  offers: [
+    {
+      "@type": "Offer",
+      name: "Plan Esencial",
+      price: "399",
+      priceCurrency: "MXN",
+      description: "Panel de reservas, calendario, registro manual de pagos y reportes de ocupación.",
+      priceSpecification: {
+        "@type": "UnitPriceSpecification",
+        price: "399",
+        priceCurrency: "MXN",
+        billingDuration: "P1M",
+      },
+    },
+    {
+      "@type": "Offer",
+      name: "Plan Pro",
+      price: "999",
+      priceCurrency: "MXN",
+      description: "Todo lo del plan Esencial, más portal de reservas online y pagos con tarjeta.",
+      priceSpecification: {
+        "@type": "UnitPriceSpecification",
+        price: "999",
+        priceCurrency: "MXN",
+        billingDuration: "P1M",
+      },
+    },
+  ],
   provider: {
     "@type": "Organization",
     name: "Roomly",
