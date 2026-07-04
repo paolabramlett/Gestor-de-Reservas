@@ -307,9 +307,9 @@ export default function LandingPage() {
           </p>
           <div className="pain-cards">
             {[
-              {icon:"📋",color:"#77B9FF",bg:"rgba(119,185,255,0.18)",title:"Reservas perdidas en correos",body:"Confirmar manualmente cada reserva toma horas. Una habitación doble-reservada arruina la experiencia de dos familias y la reputación de tu hotel."},
-              {icon:"💱",color:"#FFBC1A",bg:"rgba(255,188,26,0.18)",title:"Cobros sin trazabilidad",body:"Transferencias no identificadas, anticipos sin registro y saldos pendientes generan fricciones con los huéspedes y dolor de cabeza en finanzas."},
-              {icon:"📉",color:"#77B9FF",bg:"rgba(119,185,255,0.18)",title:"Sin visibilidad de la operación",body:"¿Cuánto ingresaste el mes pasado? ¿Qué habitación vende más? Sin datos, cada decisión es una apuesta. Con Roomly, son certezas."},
+              {icon:"📋",color:"#77B9FF",bg:"rgba(119,185,255,0.45)",title:"Reservas perdidas en correos",body:"Confirmar manualmente cada reserva toma horas. Una habitación doble-reservada arruina la experiencia de dos familias y la reputación de tu hotel."},
+              {icon:"💱",color:"#FFBC1A",bg:"rgba(255,188,26,0.45)",title:"Cobros sin trazabilidad",body:"Transferencias no identificadas, anticipos sin registro y saldos pendientes generan fricciones con los huéspedes y dolor de cabeza en finanzas."},
+              {icon:"📉",color:"#77B9FF",bg:"rgba(119,185,255,0.45)",title:"Sin visibilidad de la operación",body:"¿Cuánto ingresaste el mes pasado? ¿Qué habitación vende más? Sin datos, cada decisión es una apuesta. Con Roomly, son certezas."},
             ].map(({icon,color,bg,title,body})=>(
               <div key={title} className="pain-card anim-in" style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:12,padding:"32px 26px",transition:"background .2s"}}>
                 <div style={{width:44,height:44,background:bg,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:18,fontSize:"1.3rem",border:`1px solid ${color}30`}}>
@@ -350,6 +350,26 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
+      {/* IMAGE BREAK */}
+      <div style={{position:"relative",height:380,overflow:"hidden"}}>
+        <img
+          src="https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=1600&q=80"
+          alt="Hotel boutique vista"
+          style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center 60%",display:"block"}}
+          loading="lazy"
+        />
+        <div style={{position:"absolute",inset:0,background:"linear-gradient(to right, rgba(4,27,66,0.82) 0%, rgba(4,27,66,0.45) 60%, rgba(4,27,66,0.15) 100%)"}} />
+        <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",padding:"0 48px",maxWidth:1200,margin:"0 auto",left:0,right:0}}>
+          <div style={{maxWidth:540}}>
+            <p style={{fontSize:"clamp(1.4rem,2.5vw,2rem)",fontWeight:600,color:"#fff",lineHeight:1.35,marginBottom:16}}>
+              "Antes perdíamos reservas cada semana.<br />
+              <span style={{color:"#FFBC1A"}}>Ahora todo está en un solo lugar."</span>
+            </p>
+            <p style={{fontSize:"0.85rem",color:"rgba(255,255,255,0.65)"}}>Hotel Casa del Mar · Oaxaca, México</p>
+          </div>
+        </div>
+      </div>
 
       {/* HOW IT WORKS */}
       <section id="como-funciona" style={{background:"#fff"}} className="section-pad">
