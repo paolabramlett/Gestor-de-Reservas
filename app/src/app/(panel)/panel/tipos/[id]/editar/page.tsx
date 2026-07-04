@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { actualizarTipoAction } from "../../actions";
 import { TipoDeHabitacionForm } from "../../TipoDeHabitacionForm";
 import { IcalSection } from "./IcalSection";
+import { EditarTipoTabs } from "./EditarTipoTabs";
 
 export default async function EditarTipoPage({ params }: { params: Promise<{ id: string }> }) {
   const usuario = await getCurrentUsuario();
@@ -31,37 +32,42 @@ export default async function EditarTipoPage({ params }: { params: Promise<{ id:
         <h1 className="text-xl font-semibold text-gray-900">Editar tipo: {tipo.nombre}</h1>
       </div>
 
-      <TipoDeHabitacionForm
-        action={actualizarTipoAction}
-        tipo={{
-          id: tipo.id,
-          nombre: tipo.nombre,
-          descripcion: tipo.descripcion,
-          capacidadMin: tipo.capacidadMin,
-          capacidadMax: tipo.capacidadMax,
-          tarifaBasePrice: Number(tipo.tarifaBasePrice),
-          tarifaBaseModalidad: tipo.tarifaBaseModalidad,
-          suplementoPorPersona: tipo.suplementoPorPersona ? Number(tipo.suplementoPorPersona) : null,
-          activo: tipo.activo,
-          fotos: tipo.fotos,
-          amenidades: tipo.amenidades,
-        }}
-        submitLabel="Guardar cambios"
-        cancelHref="/panel/tipos"
+      <EditarTipoTabs
+        detalles={
+          <TipoDeHabitacionForm
+            action={actualizarTipoAction}
+            tipo={{
+              id: tipo.id,
+              nombre: tipo.nombre,
+              descripcion: tipo.descripcion,
+              capacidadMin: tipo.capacidadMin,
+              capacidadMax: tipo.capacidadMax,
+              tarifaBasePrice: Number(tipo.tarifaBasePrice),
+              tarifaBaseModalidad: tipo.tarifaBaseModalidad,
+              suplementoPorPersona: tipo.suplementoPorPersona ? Number(tipo.suplementoPorPersona) : null,
+              activo: tipo.activo,
+              fotos: tipo.fotos,
+              amenidades: tipo.amenidades,
+            }}
+            submitLabel="Guardar cambios"
+            cancelHref="/panel/tipos"
+          />
+        }
+        ical={
+          tipo.icalToken ? (
+            <IcalSection
+              tipoDeHabitacionId={tipo.id}
+              exportUrl={exportUrl}
+              feeds={tipo.icalFeeds.map((f) => ({
+                id: f.id,
+                nombre: f.nombre,
+                url: f.url,
+                lastSyncedAt: f.lastSyncedAt?.toISOString() ?? null,
+              }))}
+            />
+          ) : null
+        }
       />
-
-      {tipo.icalToken && (
-        <IcalSection
-          tipoDeHabitacionId={tipo.id}
-          exportUrl={exportUrl}
-          feeds={tipo.icalFeeds.map((f) => ({
-            id: f.id,
-            nombre: f.nombre,
-            url: f.url,
-            lastSyncedAt: f.lastSyncedAt?.toISOString() ?? null,
-          }))}
-        />
-      )}
     </div>
   );
 }
