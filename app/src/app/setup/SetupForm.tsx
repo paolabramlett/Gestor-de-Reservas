@@ -30,7 +30,7 @@ const PLANES: {
     descripcion: "Gestión completa de tu hotel desde el panel.",
     features: [
       "Panel de reservas y calendario",
-      "Gestión manual de pagos",
+      "Registro manual de pagos",
       "Reportes de ocupación",
       "Hasta 3 usuarios",
     ],
@@ -39,11 +39,11 @@ const PLANES: {
     id: "PRO",
     nombre: "Pro",
     precio: "$999 MXN/mes",
-    descripcion: "Todo lo Esencial + portal de reservas online para tus huéspedes.",
+    descripcion: "Todo lo Esencial + cobros online para tus huéspedes.",
     features: [
       "Todo lo del plan Esencial",
       "Portal de reservas online",
-      "Pagos con tarjeta (Stripe)",
+      "Solicitar pago con tarjeta",
       "Links de pago por WhatsApp",
     ],
     destacado: true,

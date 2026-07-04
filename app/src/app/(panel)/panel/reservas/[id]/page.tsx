@@ -465,7 +465,7 @@ export default async function ReservaDetallePage({
         <div className="bg-white rounded-lg border border-gray-200 p-5 mb-6">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-gray-700">Pago y notas</h2>
-            {reserva.tipoEspecial !== "CORTESIA" && reserva.pagoManual?.estadoDePago !== "PAGADO_COMPLETO" && (
+            {usuario.propiedad.planActivo === "PRO" && reserva.tipoEspecial !== "CORTESIA" && reserva.pagoManual?.estadoDePago !== "PAGADO_COMPLETO" && (
               <SolicitarPagoButton
                 reservaId={reserva.id}
                 totalMxn={Number(reserva.totalMxn)}

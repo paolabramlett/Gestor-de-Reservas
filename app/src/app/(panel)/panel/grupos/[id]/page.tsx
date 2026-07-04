@@ -246,8 +246,8 @@ export default async function GrupoDetallePage({
             </div>
           )}
 
-          {/* Payment request */}
-          {reservasActivas.length > 0 && contacto && restante > 0 && (
+          {/* Payment request — solo plan PRO */}
+          {usuario.propiedad.planActivo === "PRO" && reservasActivas.length > 0 && contacto && restante > 0 && (
             <SolicitarPagoGrupo
               grupoId={grupo.id}
               totalGrupo={totalGeneral}
