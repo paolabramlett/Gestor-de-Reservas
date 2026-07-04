@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useClerk } from "@clerk/nextjs";
 
 type NavItem = { href: string; label: string };
 
@@ -17,6 +18,13 @@ export function Sidebar({
 }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
+  const router = useRouter();
+  const { signOut } = useClerk();
+
+  async function handleSignOut() {
+    await signOut();
+    router.push("/");
+  }
 
   // Cierra el menú al navegar
   useEffect(() => { setOpen(false); }, [pathname]);
@@ -48,6 +56,14 @@ export function Sidebar({
           </Link>
         ))}
       </nav>
+      <div className="px-4 py-4 border-t border-gray-200">
+        <button
+          onClick={handleSignOut}
+          className="w-full text-left text-sm text-gray-500 hover:text-gray-900 py-1.5 transition-colors"
+        >
+          Cerrar sesión
+        </button>
+      </div>
     </>
   );
 
@@ -109,6 +125,14 @@ export function Sidebar({
                 </Link>
               ))}
             </nav>
+            <div className="px-4 py-4 border-t border-gray-200">
+              <button
+                onClick={handleSignOut}
+                className="w-full text-left text-sm text-gray-500 hover:text-gray-900 py-1.5 transition-colors"
+              >
+                Cerrar sesión
+              </button>
+            </div>
           </aside>
         </div>
       )}
