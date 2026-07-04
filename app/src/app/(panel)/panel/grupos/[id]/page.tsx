@@ -90,9 +90,10 @@ export default async function GrupoDetallePage({
       {/* Header */}
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
-          <Link href="/panel/grupos" className="text-xs text-gray-400 hover:text-gray-600 mb-1 block">← Grupos</Link>
+          <Link href="/panel/grupos" className="text-xs text-gray-400 hover:text-gray-600 mb-1 block">← Reservas grupales</Link>
           <div className="flex items-center gap-2">
-            <span className="font-mono text-xs text-gray-400">{grupo.codigoGrupo}</span>
+            <span className="text-xs text-gray-400">Código de reserva</span>
+            <span className="font-mono text-xs font-semibold text-gray-700">{grupo.codigoGrupo}</span>
           </div>
           <h1 className="text-xl font-bold text-gray-900 mt-0.5">{grupo.nombre}</h1>
         </div>
@@ -122,7 +123,8 @@ export default async function GrupoDetallePage({
                     <div className="flex items-center gap-2 flex-wrap">
                       <Link
                         href={`/panel/reservas/${r.id}`}
-                        className="font-mono text-xs text-blue-600 hover:underline"
+                        className="font-mono text-xs text-gray-400 hover:text-blue-600 hover:underline"
+                        title="Referencia interna de habitación"
                       >
                         {r.codigoReserva}
                       </Link>

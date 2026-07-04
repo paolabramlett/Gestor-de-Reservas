@@ -19,9 +19,9 @@ export default async function NuevoGrupoPage() {
   return (
     <div className="p-4 md:p-8 max-w-2xl">
       <div className="mb-6">
-        <a href="/panel/grupos" className="text-xs text-gray-400 hover:text-gray-600">← Grupos</a>
-        <h1 className="text-xl font-semibold text-gray-900 mt-1">Nuevo grupo</h1>
-        <p className="text-sm text-gray-400 mt-0.5">Define el grupo y todas las habitaciones de una vez.</p>
+        <a href="/panel/grupos" className="text-xs text-gray-400 hover:text-gray-600">← Reservas grupales</a>
+        <h1 className="text-xl font-semibold text-gray-900 mt-1">Nueva reserva grupal</h1>
+        <p className="text-sm text-gray-400 mt-0.5">Para familias o grupos con 2 o más habitaciones bajo un mismo código de reserva.</p>
       </div>
       <NuevoGrupoForm tipos={tipos} hoy={hoy} manana={manana} />
     </div>

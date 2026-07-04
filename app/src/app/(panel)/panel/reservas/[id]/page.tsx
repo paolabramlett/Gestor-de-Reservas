@@ -118,7 +118,7 @@ export default async function ReservaDetallePage({
             </div>
           </div>
           <a href={`/panel/grupos/${reserva.grupo.id}`} className="text-xs text-indigo-600 hover:underline whitespace-nowrap">
-            Ver grupo →
+            Ver reserva grupal →
           </a>
         </div>
       )}
