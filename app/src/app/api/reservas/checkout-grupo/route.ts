@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimit } from "@/lib/rateLimit";
 import { stripe } from "@/lib/stripe";
 import { calcularTotalReserva } from "@/lib/negocio/tarifas";
 import { verificarDisponibilidadAtómica } from "@/lib/negocio/disponibilidad";
@@ -22,6 +23,10 @@ const bodySchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  if (!rateLimit(req, { limite: 20, ventanaMs: 60_000 })) {
+    return NextResponse.json({ error: "Demasiadas solicitudes, intenta de nuevo en un minuto" }, { status: 429 });
+  }
+
   const body = await req.json();
   const result = bodySchema.safeParse(body);
   if (!result.success) {

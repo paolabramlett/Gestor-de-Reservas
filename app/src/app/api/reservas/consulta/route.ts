@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimit } from "@/lib/rateLimit";
 import { prisma } from "@/lib/prisma";
 
 const STRIPE_COMISION_PORCENTAJE = 0.036;
@@ -6,6 +7,10 @@ const STRIPE_COMISION_FIJA = 3;
 const ERROR_GENERICO = { error: "No encontramos una reserva con esos datos" };
 
 export async function GET(req: NextRequest) {
+  if (!rateLimit(req, { limite: 20, ventanaMs: 60_000 })) {
+    return NextResponse.json({ error: "Demasiadas solicitudes, intenta de nuevo en un minuto" }, { status: 429 });
+  }
+
   const codigo = req.nextUrl.searchParams.get("codigo")?.trim().toUpperCase();
   const email = req.nextUrl.searchParams.get("email")?.trim().toLowerCase();
 

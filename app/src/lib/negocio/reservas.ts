@@ -50,13 +50,15 @@ export async function crearReservaOnline(input: CrearReservaOnlineInput) {
     });
     if (existente) return existente;
 
-    // Si el huésped ya existe, reusar su registro sin modificarlo.
+    // Si el huésped ya existe en esta propiedad, reusar su registro sin modificarlo.
     // El nombre específico de esta reserva se guarda en nombreHuesped en la tabla Reserva.
-    const huespedExistente = await tx.huesped.findFirst({ where: { email: input.email } });
+    const huespedExistente = await tx.huesped.findFirst({
+      where: { email: input.email, propiedadId: input.propiedadId },
+    });
     const huesped = huespedExistente
       ? huespedExistente
       : await tx.huesped.create({
-          data: { nombre: input.nombre, email: input.email, telefono: input.telefono },
+          data: { nombre: input.nombre, email: input.email, telefono: input.telefono, propiedadId: input.propiedadId },
         });
 
     return tx.reserva.create({
@@ -114,11 +116,13 @@ export async function crearReservaManual(input: CrearReservaManualInput) {
 
   return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const emailNorm = input.email.toLowerCase().trim();
-    const huespedExistente = await tx.huesped.findFirst({ where: { email: emailNorm } });
+    const huespedExistente = await tx.huesped.findFirst({
+      where: { email: emailNorm, propiedadId: input.propiedadId },
+    });
     const huesped = huespedExistente
       ? huespedExistente
       : await tx.huesped.create({
-          data: { nombre: input.nombre, email: emailNorm, telefono: input.telefono },
+          data: { nombre: input.nombre, email: emailNorm, telefono: input.telefono, propiedadId: input.propiedadId },
         });
 
     const reserva = await tx.reserva.create({
@@ -202,14 +206,13 @@ export async function crearReservaConLinkDePago(input: CrearReservaConLinkInput)
 
   // Create reservation in PENDIENTE_PAGO state
   const reserva = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-    const huespedExistente = await tx.huesped.findFirst({ where: { email: input.email } });
+    const huespedExistente = await tx.huesped.findFirst({
+      where: { email: input.email, propiedadId: input.propiedadId },
+    });
     const huesped = huespedExistente
-      ? await tx.huesped.update({
-          where: { id: huespedExistente.id },
-          data: { nombre: input.nombre, telefono: input.telefono ?? undefined },
-        })
+      ? huespedExistente
       : await tx.huesped.create({
-          data: { nombre: input.nombre, email: input.email, telefono: input.telefono },
+          data: { nombre: input.nombre, email: input.email, telefono: input.telefono, propiedadId: input.propiedadId },
         });
 
     const expiraEn = new Date(Date.now() + 24 * 60 * 60 * 1000);

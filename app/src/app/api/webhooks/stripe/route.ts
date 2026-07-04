@@ -100,6 +100,18 @@ export async function POST(req: NextRequest) {
 
     if (session.metadata?.tipo === "GRUPO_PAGO" && session.metadata?.grupoId) {
       try {
+        // Idempotencia: si Stripe reintenta este webhook, no volver a acumular el pago
+        try {
+          await prisma.stripeEventoProcesado.create({
+            data: { id: session.id, tipo: "GRUPO_PAGO" },
+          });
+        } catch (err: unknown) {
+          if ((err as { code?: string })?.code === "P2002") {
+            return NextResponse.json({ received: true, duplicado: true });
+          }
+          throw err;
+        }
+
         const grupoId = session.metadata.grupoId;
         const esPagoCompleto = session.metadata.esPagoCompleto === "true";
         const estadoDePago = esPagoCompleto ? EstadoDePago.PAGADO_COMPLETO : EstadoDePago.ANTICIPO_PAGADO;
@@ -188,6 +200,18 @@ export async function POST(req: NextRequest) {
 
     if (session.metadata?.tipo === "GRUPO_ONLINE" && session.metadata?.propiedadId) {
       try {
+        // Idempotencia: evitar crear el grupo dos veces si Stripe reintenta
+        try {
+          await prisma.stripeEventoProcesado.create({
+            data: { id: session.id, tipo: "GRUPO_ONLINE" },
+          });
+        } catch (err: unknown) {
+          if ((err as { code?: string })?.code === "P2002") {
+            return NextResponse.json({ received: true, duplicado: true });
+          }
+          throw err;
+        }
+
         const meta = session.metadata;
         const habsRaw = JSON.parse(meta.habitaciones) as {
           t: string; i: string; o: string; n: number;
@@ -229,11 +253,13 @@ export async function POST(req: NextRequest) {
                 },
               });
 
-              const huespedExistente = await tx.huesped.findFirst({ where: { email: meta.email.toLowerCase() } });
+              const huespedExistente = await tx.huesped.findFirst({
+                where: { email: meta.email.toLowerCase(), propiedadId: meta.propiedadId },
+              });
               const huesped = huespedExistente
                 ? huespedExistente
                 : await tx.huesped.create({
-                    data: { nombre: meta.nombre, email: meta.email.toLowerCase(), telefono: meta.telefono || null },
+                    data: { nombre: meta.nombre, email: meta.email.toLowerCase(), telefono: meta.telefono || null, propiedadId: meta.propiedadId },
                   });
 
               for (const room of roomsData) {

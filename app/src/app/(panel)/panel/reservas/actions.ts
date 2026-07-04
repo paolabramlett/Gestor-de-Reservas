@@ -236,7 +236,7 @@ export async function actualizarDatosReservaAction(formData: FormData) {
     if (otrasReservasConMismoHuesped > 0) {
       // Create a new huesped record to avoid affecting other reservations
       const nuevoHuesped = await tx.huesped.create({
-        data: { nombre, email, telefono },
+        data: { nombre, email, telefono, propiedadId: usuario.propiedadId },
       });
       huespedId = nuevoHuesped.id;
     } else {

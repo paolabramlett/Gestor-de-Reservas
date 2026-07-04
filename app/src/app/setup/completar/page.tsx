@@ -59,7 +59,8 @@ export default async function SetupCompletarPage({
     slug = `${baseSlug}-${intento}`;
   }
 
-  await prisma.$transaction(async (tx) => {
+  try {
+    await prisma.$transaction(async (tx) => {
     const p = await tx.propiedad.create({
       data: {
         clerkOrgId: userId,
@@ -80,7 +81,14 @@ export default async function SetupCompletarPage({
         rol: RolUsuario.ADMIN,
       },
     });
-  });
+    });
+  } catch (err: unknown) {
+    // Doble pestaña / recarga: el hotel ya se creó en otra request → al panel
+    if ((err as { code?: string })?.code === "P2002") {
+      redirect("/panel");
+    }
+    throw err;
+  }
 
   redirect("/panel?setup=ok");
 }

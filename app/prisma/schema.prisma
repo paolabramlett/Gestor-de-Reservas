@@ -168,15 +168,29 @@ model Temporada {
 // ─── Huéspedes ───────────────────────────────────────────────────────────────
 
 model Huesped {
-  id       String   @id @default(cuid())
-  nombre   String
-  email    String
-  telefono String?
-  creadoEn DateTime @default(now())
+  id          String   @id @default(cuid())
+  // Nullable durante la transición: registros antiguos se backfillean por SQL;
+  // todo huésped nuevo se crea con propiedadId para aislar datos entre hoteles.
+  propiedadId String?
+  nombre      String
+  email       String
+  telefono    String?
+  creadoEn    DateTime @default(now())
 
   reservas Reserva[]
 
+  @@index([email, propiedadId])
   @@map("huespedes")
+}
+
+// Registro de eventos de Stripe ya procesados — evita doble contabilización
+// cuando Stripe reintenta un webhook (idempotencia).
+model StripeEventoProcesado {
+  id         String   @id
+  tipo       String
+  procesadoEn DateTime @default(now())
+
+  @@map("stripe_eventos_procesados")
 }
 
 // ─── Grupos de reserva ───────────────────────────────────────────────────────

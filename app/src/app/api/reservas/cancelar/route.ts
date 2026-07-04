@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimit } from "@/lib/rateLimit";
 import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
 import { enviarCancelacion } from "@/lib/emails";
@@ -8,6 +9,10 @@ const STRIPE_COMISION_FIJA = 3;
 const ERROR_GENERICO = { error: "No encontramos una reserva con esos datos" };
 
 export async function POST(req: NextRequest) {
+  if (!rateLimit(req, { limite: 20, ventanaMs: 60_000 })) {
+    return NextResponse.json({ error: "Demasiadas solicitudes, intenta de nuevo en un minuto" }, { status: 429 });
+  }
+
   const { codigo, email } = await req.json();
   const codigoNorm = (codigo as string)?.trim().toUpperCase();
   const emailNorm = (email as string)?.trim().toLowerCase();
