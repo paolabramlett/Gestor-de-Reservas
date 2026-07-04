@@ -5,6 +5,7 @@ import { clerkClient } from "@clerk/nextjs/server";
 import ConfiguracionForm from "./ConfiguracionForm";
 import { PlanSection } from "./PlanSection";
 import { EquipoSection, type MiembroEquipo, type InvitacionPendiente } from "./EquipoSection";
+import { ConfiguracionTabs } from "./ConfiguracionTabs";
 import {
   cambiarPlanAction,
   cancelarSuscripcionAction,
@@ -100,6 +101,13 @@ export default async function ConfiguracionPage({
     expiraEn: inv.expiraEn.toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" }),
   }));
 
+  const initialTab: "hotel" | "plan" | "equipo" =
+    cancelada || reactivada || (guardado && plan)
+      ? "plan"
+      : invitado || invitacionCancelada || rolActualizado || usuarioEliminado
+      ? "equipo"
+      : "hotel";
+
   return (
     <div className="p-8 max-w-2xl">
       <h1 className="text-xl font-semibold text-gray-900 mb-6">Configuración del hotel</h1>
@@ -150,34 +158,41 @@ export default async function ConfiguracionPage({
         </div>
       )}
 
-      <PlanSection
-        planActivo={propiedad.planActivo}
-        suscripcionActiva={propiedad.suscripcionActiva}
-        canceladaAlFinalDePeriodo={propiedad.canceladaAlFinalDePeriodo}
-        finDePeriodoActual={propiedad.finDePeriodoActual?.toISOString() ?? null}
-        cambiarPlanAction={cambiarPlanAction}
-        cancelarSuscripcionAction={cancelarSuscripcionAction}
-        reactivarSuscripcionAction={reactivarSuscripcionAction}
-      />
-
-      <EquipoSection
-        miembros={miembros}
-        invitaciones={invitaciones}
-        enviarInvitacionAction={enviarInvitacionAction}
-        cancelarInvitacionAction={cancelarInvitacionAction}
-        actualizarRolUsuarioAction={actualizarRolUsuarioAction}
-        quitarUsuarioAction={quitarUsuarioAction}
-      />
-
-      <ConfiguracionForm
-        nombre={propiedad.nombre}
-        descripcion={propiedad.descripcion ?? ""}
-        telefono={propiedad.telefono ?? ""}
-        email={propiedad.email ?? ""}
-        direccion={propiedad.direccion ?? ""}
-        colorPrimario={propiedad.colorPrimario ?? "#111827"}
-        slug={propiedad.slug}
-        logoUrl={propiedad.logoUrl ?? ""}
+      <ConfiguracionTabs
+        initialTab={initialTab}
+        plan={
+          <PlanSection
+            planActivo={propiedad.planActivo}
+            suscripcionActiva={propiedad.suscripcionActiva}
+            canceladaAlFinalDePeriodo={propiedad.canceladaAlFinalDePeriodo}
+            finDePeriodoActual={propiedad.finDePeriodoActual?.toISOString() ?? null}
+            cambiarPlanAction={cambiarPlanAction}
+            cancelarSuscripcionAction={cancelarSuscripcionAction}
+            reactivarSuscripcionAction={reactivarSuscripcionAction}
+          />
+        }
+        equipo={
+          <EquipoSection
+            miembros={miembros}
+            invitaciones={invitaciones}
+            enviarInvitacionAction={enviarInvitacionAction}
+            cancelarInvitacionAction={cancelarInvitacionAction}
+            actualizarRolUsuarioAction={actualizarRolUsuarioAction}
+            quitarUsuarioAction={quitarUsuarioAction}
+          />
+        }
+        hotel={
+          <ConfiguracionForm
+            nombre={propiedad.nombre}
+            descripcion={propiedad.descripcion ?? ""}
+            telefono={propiedad.telefono ?? ""}
+            email={propiedad.email ?? ""}
+            direccion={propiedad.direccion ?? ""}
+            colorPrimario={propiedad.colorPrimario ?? "#111827"}
+            slug={propiedad.slug}
+            logoUrl={propiedad.logoUrl ?? ""}
+          />
+        }
       />
     </div>
   );
