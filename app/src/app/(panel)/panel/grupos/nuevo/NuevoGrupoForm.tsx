@@ -26,6 +26,7 @@ function slotVacio(hoy: string, manana: string, tipoId: string): HabitacionSlot 
     email: "",
     telefono: "",
     estadoDePago: "PENDIENTE",
+    montoAnticipo: null,
     notas: "",
     _precio: null,
     _loadingPrecio: false,
@@ -287,7 +288,13 @@ export function NuevoGrupoForm({
                   <label className="block text-xs font-medium text-gray-600 mb-1">Estado de pago</label>
                   <select
                     value={h.estadoDePago}
-                    onChange={(e) => update(h._id, { estadoDePago: e.target.value as HabitacionInput["estadoDePago"] })}
+                    onChange={(e) =>
+                      update(h._id, {
+                        estadoDePago: e.target.value as HabitacionInput["estadoDePago"],
+                        montoAnticipo: e.target.value === "ANTICIPO_PAGADO" ? h.montoAnticipo : null,
+                        _precio: h._precio,
+                      })
+                    }
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                   >
                     <option value="PENDIENTE">Pendiente</option>
@@ -305,6 +312,46 @@ export function NuevoGrupoForm({
                   />
                 </div>
               </div>
+
+              {h.estadoDePago === "ANTICIPO_PAGADO" && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Monto del anticipo (MXN)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    max={h._precio ?? undefined}
+                    value={h.montoAnticipo ?? ""}
+                    onChange={(e) =>
+                      update(h._id, {
+                        montoAnticipo: e.target.value ? Number(e.target.value) : null,
+                        _precio: h._precio,
+                      })
+                    }
+                    placeholder="0.00"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                  />
+                  {h._precio !== null && !!h.montoAnticipo && h.montoAnticipo > 0 && (
+                    <div className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 text-sm space-y-1">
+                      <div className="flex justify-between text-gray-600">
+                        <span>Total habitación</span>
+                        <span>${h._precio.toLocaleString("es-MX")} MXN</span>
+                      </div>
+                      <div className="flex justify-between text-green-700">
+                        <span>Anticipo pagado</span>
+                        <span>− ${h.montoAnticipo.toLocaleString("es-MX")} MXN</span>
+                      </div>
+                      <div className="flex justify-between font-semibold text-amber-800 pt-1 border-t border-amber-200">
+                        <span>Resta al check-in</span>
+                        <span>${Math.max(0, h._precio - h.montoAnticipo).toLocaleString("es-MX")} MXN</span>
+                      </div>
+                    </div>
+                  )}
+                  {h._precio === null && (
+                    <p className="text-xs text-gray-400 mt-1">Calcula el precio de la habitación para ver el saldo pendiente.</p>
+                  )}
+                </div>
+              )}
 
               {/* Calcular precio */}
               <button

@@ -26,6 +26,7 @@ export type HabitacionInput = {
   email: string;
   telefono?: string;
   estadoDePago: EstadoDePago;
+  montoAnticipo?: number | null;
   notas?: string;
 };
 
@@ -62,6 +63,7 @@ export async function crearGrupoConHabitacionesAction(
           fechaSalida: new Date(h.fechaSalida),
           numPersonas: h.numPersonas,
           estadoDePago: h.estadoDePago,
+          montoAnticipo: h.estadoDePago === EstadoDePago.ANTICIPO_PAGADO ? h.montoAnticipo : undefined,
           notas: h.notas || undefined,
         });
 
