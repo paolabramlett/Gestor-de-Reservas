@@ -50,13 +50,11 @@ export async function crearReservaOnline(input: CrearReservaOnlineInput) {
     });
     if (existente) return existente;
 
-    // Crear o actualizar Huésped — siempre usar el nombre que el cliente proporcionó
+    // Si el huésped ya existe, reusar su registro sin modificarlo.
+    // El nombre específico de esta reserva se guarda en nombreHuesped en la tabla Reserva.
     const huespedExistente = await tx.huesped.findFirst({ where: { email: input.email } });
     const huesped = huespedExistente
-      ? await tx.huesped.update({
-          where: { id: huespedExistente.id },
-          data: { nombre: input.nombre, telefono: input.telefono ?? undefined },
-        })
+      ? huespedExistente
       : await tx.huesped.create({
           data: { nombre: input.nombre, email: input.email, telefono: input.telefono },
         });
@@ -115,14 +113,10 @@ export async function crearReservaManual(input: CrearReservaManualInput) {
       : totalCalculado;
 
   return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-    // BUG 8: normalizar email a lowercase para evitar duplicados y fallos de lookup
     const emailNorm = input.email.toLowerCase().trim();
     const huespedExistente = await tx.huesped.findFirst({ where: { email: emailNorm } });
     const huesped = huespedExistente
-      ? await tx.huesped.update({
-          where: { id: huespedExistente.id },
-          data: { nombre: input.nombre, telefono: input.telefono ?? undefined },
-        })
+      ? huespedExistente
       : await tx.huesped.create({
           data: { nombre: input.nombre, email: emailNorm, telefono: input.telefono },
         });

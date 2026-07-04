@@ -231,10 +231,7 @@ export async function POST(req: NextRequest) {
 
               const huespedExistente = await tx.huesped.findFirst({ where: { email: meta.email.toLowerCase() } });
               const huesped = huespedExistente
-                ? await tx.huesped.update({
-                    where: { id: huespedExistente.id },
-                    data: { nombre: meta.nombre, telefono: meta.telefono || undefined },
-                  })
+                ? huespedExistente
                 : await tx.huesped.create({
                     data: { nombre: meta.nombre, email: meta.email.toLowerCase(), telefono: meta.telefono || null },
                   });
