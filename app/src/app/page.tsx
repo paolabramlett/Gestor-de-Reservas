@@ -172,6 +172,7 @@ export default function LandingPage() {
         .hero-cal-badge{position:absolute;bottom:32px;left:-18px}
 
         @media(max-width:900px){
+          .hero-h1{font-size:2.75rem!important}
           .hero-grid{grid-template-columns:1fr;padding:40px 24px 48px;gap:40px}
           .hero-cal-wrap{display:none}
           .hero-cal-notif,.hero-cal-badge{display:none}
@@ -235,7 +236,7 @@ export default function LandingPage() {
           <div style={{display:"inline-flex",alignItems:"center",gap:8,background:"#EFF6FF",border:"1px solid #BFDBFE",color:"#0C48AD",fontSize:"0.72rem",fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",padding:"5px 14px",borderRadius:20,marginBottom:24}}>
             Sistema hotelero todo en uno
           </div>
-          <h1 style={{fontSize:"clamp(2.2rem,4vw,3.8rem)",fontWeight:700,lineHeight:1.1,letterSpacing:"-0.03em",marginBottom:20,color:"#041B42"}}>
+          <h1 className="hero-h1" style={{fontSize:"clamp(2.2rem,4vw,3.8rem)",fontWeight:700,lineHeight:1.1,letterSpacing:"-0.03em",marginBottom:20,color:"#041B42"}}>
             Tu hotel,<br />sin el <span style={{color:"#FFBC1A",borderBottom:"3px solid #FFBC1A",paddingBottom:1}}>caos.</span>
           </h1>
           <p style={{fontSize:"1rem",lineHeight:1.75,color:"#475569",marginBottom:36}}>
