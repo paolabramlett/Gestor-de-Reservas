@@ -3,6 +3,48 @@ import { stripe } from "@/lib/stripe";
 import { enviarCancelacion } from "@/lib/emails";
 import { EstadoReserva } from "@prisma/client";
 
+// Una reserva solo se puede borrar (hard delete) si no hay dinero real de por
+// medio: sin pago por Stripe capturado y sin anticipo/pago manual registrado.
+// Si pertenece a un grupo, el grupo tampoco debe tener nada pagado — de lo
+// contrario se debe usar "Cancelar" para conservar el historial de pago.
+export function tieneEliminacionSegura(reserva: {
+  stripePaymentIntentId: string | null;
+  pagoManual: { estadoDePago: string } | null;
+  grupo: { totalPagado: unknown } | null;
+}): boolean {
+  if (reserva.stripePaymentIntentId) return false;
+  if (reserva.pagoManual && reserva.pagoManual.estadoDePago !== "PENDIENTE") return false;
+  if (reserva.grupo && Number(reserva.grupo.totalPagado) > 0) return false;
+  return true;
+}
+
+export async function eliminarReserva(reservaId: string, propiedadId: string) {
+  const reserva = await prisma.reserva.findFirst({
+    where: { id: reservaId, propiedadId },
+    include: { pagoManual: true, grupo: true },
+  });
+  if (!reserva) throw new Error("Reserva no encontrada");
+  if (!tieneEliminacionSegura(reserva)) {
+    throw new Error("No se puede eliminar: tiene un pago confirmado. Usa Cancelar en su lugar.");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.asignacionDeHabitacion.deleteMany({ where: { reservaId } });
+    await tx.solicitudCambio.deleteMany({ where: { reservaId } });
+    if (reserva.pagoManual) await tx.pagoManual.deleteMany({ where: { reservaId } });
+    await tx.reserva.delete({ where: { id: reservaId } });
+
+    // Si era la última reserva activa de su grupo y el grupo no tiene nada
+    // pagado, el grupo queda vacío y sin propósito — se borra también.
+    if (reserva.grupoId) {
+      const restantes = await tx.reserva.count({ where: { grupoId: reserva.grupoId } });
+      if (restantes === 0) {
+        await tx.grupoReserva.delete({ where: { id: reserva.grupoId } });
+      }
+    }
+  });
+}
+
 export async function checkIn(reservaId: string, propiedadId: string) {
   const reserva = await prisma.reserva.findFirst({
     where: { id: reservaId, propiedadId },
