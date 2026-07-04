@@ -1,27 +1,104 @@
 import { requireAdmin } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { clerkClient } from "@clerk/nextjs/server";
 import ConfiguracionForm from "./ConfiguracionForm";
 import { PlanSection } from "./PlanSection";
+import { EquipoSection, type MiembroEquipo, type InvitacionPendiente } from "./EquipoSection";
 import {
   cambiarPlanAction,
   cancelarSuscripcionAction,
   reactivarSuscripcionAction,
+  enviarInvitacionAction,
+  cancelarInvitacionAction,
+  actualizarRolUsuarioAction,
+  quitarUsuarioAction,
 } from "./actions";
 
 export default async function ConfiguracionPage({
   searchParams,
 }: {
-  searchParams: Promise<{ guardado?: string; error?: string; cancelada?: string; reactivada?: string; plan?: string }>;
+  searchParams: Promise<{
+    guardado?: string;
+    error?: string;
+    cancelada?: string;
+    reactivada?: string;
+    plan?: string;
+    invitado?: string;
+    invitacionCancelada?: string;
+    rolActualizado?: string;
+    usuarioEliminado?: string;
+  }>;
 }) {
   const usuario = await requireAdmin();
 
-  const { guardado, error, cancelada, reactivada, plan } = await searchParams;
+  const {
+    guardado,
+    error,
+    cancelada,
+    reactivada,
+    plan,
+    invitado,
+    invitacionCancelada,
+    rolActualizado,
+    usuarioEliminado,
+  } = await searchParams;
 
   const propiedad = await prisma.propiedad.findUnique({
     where: { id: usuario.propiedadId },
   });
   if (!propiedad) redirect("/sign-in");
+
+  const [usuariosPropiedad, invitacionesPendientes] = await Promise.all([
+    prisma.usuarioPropiedad.findMany({
+      where: { propiedadId: usuario.propiedadId },
+      orderBy: { creadoEn: "asc" },
+    }),
+    prisma.invitacionEquipo.findMany({
+      where: {
+        propiedadId: usuario.propiedadId,
+        aceptadaEn: null,
+        canceladaEn: null,
+        expiraEn: { gt: new Date() },
+      },
+      orderBy: { creadoEn: "desc" },
+    }),
+  ]);
+
+  const clerk = await clerkClient();
+  const miembros: MiembroEquipo[] = await Promise.all(
+    usuariosPropiedad.map(async (up) => {
+      try {
+        const clerkUser = await clerk.users.getUser(up.clerkUserId);
+        const email = clerkUser.emailAddresses.find((e) => e.id === clerkUser.primaryEmailAddressId)?.emailAddress
+          ?? clerkUser.emailAddresses[0]?.emailAddress
+          ?? "";
+        const nombre = [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") || email || "Usuario";
+        return {
+          usuarioPropiedadId: up.id,
+          nombre,
+          email,
+          rol: up.rol,
+          esYo: up.clerkUserId === usuario.clerkUserId,
+        };
+      } catch {
+        return {
+          usuarioPropiedadId: up.id,
+          nombre: "Usuario",
+          email: "",
+          rol: up.rol,
+          esYo: up.clerkUserId === usuario.clerkUserId,
+        };
+      }
+    })
+  );
+
+  const invitaciones: InvitacionPendiente[] = invitacionesPendientes.map((inv) => ({
+    id: inv.id,
+    email: inv.email,
+    rol: inv.rol,
+    expiraEn: inv.expiraEn.toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" }),
+  }));
 
   return (
     <div className="p-8 max-w-2xl">
@@ -47,6 +124,26 @@ export default async function ConfiguracionPage({
           Tu suscripción fue reactivada. Seguirá renovándose normalmente.
         </div>
       )}
+      {invitado && (
+        <div className="mb-4 rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">
+          Invitación enviada correctamente.
+        </div>
+      )}
+      {invitacionCancelada && (
+        <div className="mb-4 rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">
+          Invitación cancelada.
+        </div>
+      )}
+      {rolActualizado && (
+        <div className="mb-4 rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">
+          Rol actualizado.
+        </div>
+      )}
+      {usuarioEliminado && (
+        <div className="mb-4 rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">
+          El usuario ya no tiene acceso a este hotel.
+        </div>
+      )}
       {error && (
         <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
           {error}
@@ -61,6 +158,15 @@ export default async function ConfiguracionPage({
         cambiarPlanAction={cambiarPlanAction}
         cancelarSuscripcionAction={cancelarSuscripcionAction}
         reactivarSuscripcionAction={reactivarSuscripcionAction}
+      />
+
+      <EquipoSection
+        miembros={miembros}
+        invitaciones={invitaciones}
+        enviarInvitacionAction={enviarInvitacionAction}
+        cancelarInvitacionAction={cancelarInvitacionAction}
+        actualizarRolUsuarioAction={actualizarRolUsuarioAction}
+        quitarUsuarioAction={quitarUsuarioAction}
       />
 
       <ConfiguracionForm

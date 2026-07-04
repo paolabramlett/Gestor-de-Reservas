@@ -4,7 +4,10 @@ import { getCurrentUsuario, requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { stripe } from "@/lib/stripe";
-import { PlanRoomly } from "@prisma/client";
+import { PlanRoomly, RolUsuario } from "@prisma/client";
+import { enviarInvitacionEquipo } from "@/lib/emails";
+
+const ROLES_INVITABLES: RolUsuario[] = [RolUsuario.ADMIN, RolUsuario.RESERVACIONES, RolUsuario.FINANZAS];
 
 function priceIdParaPlan(plan: PlanRoomly): string {
   return plan === PlanRoomly.PRO
@@ -129,4 +132,117 @@ export async function actualizarPropiedadAction(formData: FormData) {
   });
 
   redirect("/panel/configuracion?guardado=1");
+}
+
+// ── Equipo ───────────────────────────────────────────────────────────────────
+
+export async function enviarInvitacionAction(formData: FormData) {
+  const usuario = await requireAdmin();
+  const email = (formData.get("email") as string)?.trim().toLowerCase();
+  const rol = formData.get("rol") as RolUsuario;
+
+  if (!email || !ROLES_INVITABLES.includes(rol)) {
+    redirect("/panel/configuracion?error=" + encodeURIComponent("Correo o rol inválido"));
+  }
+
+  const propiedad = await prisma.propiedad.findUniqueOrThrow({ where: { id: usuario.propiedadId } });
+
+  const invitacionPendiente = await prisma.invitacionEquipo.findFirst({
+    where: {
+      propiedadId: usuario.propiedadId,
+      email,
+      aceptadaEn: null,
+      canceladaEn: null,
+      expiraEn: { gt: new Date() },
+    },
+  });
+  if (invitacionPendiente) {
+    redirect("/panel/configuracion?error=" + encodeURIComponent("Ya existe una invitación pendiente para ese correo"));
+  }
+
+  const expiraEn = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const invitacion = await prisma.invitacionEquipo.create({
+    data: { propiedadId: usuario.propiedadId, email, rol, expiraEn },
+  });
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  await enviarInvitacionEquipo({
+    email,
+    nombreHotel: propiedad.nombre,
+    rol,
+    linkInvitacion: `${appUrl}/invitacion/${invitacion.token}`,
+    expiraEn,
+    colorPrimario: propiedad.colorPrimario ?? undefined,
+  });
+
+  redirect("/panel/configuracion?invitado=1");
+}
+
+export async function cancelarInvitacionAction(formData: FormData) {
+  const usuario = await requireAdmin();
+  const invitacionId = formData.get("invitacionId") as string;
+
+  await prisma.invitacionEquipo.updateMany({
+    where: { id: invitacionId, propiedadId: usuario.propiedadId, aceptadaEn: null },
+    data: { canceladaEn: new Date() },
+  });
+
+  redirect("/panel/configuracion?invitacionCancelada=1");
+}
+
+export async function actualizarRolUsuarioAction(formData: FormData) {
+  const usuario = await requireAdmin();
+  const usuarioPropiedadId = formData.get("usuarioPropiedadId") as string;
+  const nuevoRol = formData.get("rol") as RolUsuario;
+
+  if (!ROLES_INVITABLES.includes(nuevoRol)) {
+    redirect("/panel/configuracion?error=" + encodeURIComponent("Rol inválido"));
+  }
+
+  const objetivo = await prisma.usuarioPropiedad.findFirst({
+    where: { id: usuarioPropiedadId, propiedadId: usuario.propiedadId },
+  });
+  if (!objetivo) {
+    redirect("/panel/configuracion?error=" + encodeURIComponent("Usuario no encontrado"));
+  }
+
+  if (objetivo.rol === RolUsuario.ADMIN && nuevoRol !== RolUsuario.ADMIN) {
+    const otrosAdmins = await prisma.usuarioPropiedad.count({
+      where: { propiedadId: usuario.propiedadId, rol: RolUsuario.ADMIN, id: { not: objetivo.id } },
+    });
+    if (otrosAdmins === 0) {
+      redirect("/panel/configuracion?error=" + encodeURIComponent("Debe existir al menos un administrador"));
+    }
+  }
+
+  await prisma.usuarioPropiedad.update({ where: { id: objetivo.id }, data: { rol: nuevoRol } });
+  redirect("/panel/configuracion?rolActualizado=1");
+}
+
+export async function quitarUsuarioAction(formData: FormData) {
+  const usuario = await requireAdmin();
+  const usuarioPropiedadId = formData.get("usuarioPropiedadId") as string;
+
+  const objetivo = await prisma.usuarioPropiedad.findFirst({
+    where: { id: usuarioPropiedadId, propiedadId: usuario.propiedadId },
+  });
+  if (!objetivo) {
+    redirect("/panel/configuracion?error=" + encodeURIComponent("Usuario no encontrado"));
+  }
+
+  if (objetivo.clerkUserId === usuario.clerkUserId) {
+    redirect("/panel/configuracion?error=" + encodeURIComponent("No puedes quitarte a ti mismo. Pide a otro administrador que lo haga."));
+  }
+
+  if (objetivo.rol === RolUsuario.ADMIN) {
+    const otrosAdmins = await prisma.usuarioPropiedad.count({
+      where: { propiedadId: usuario.propiedadId, rol: RolUsuario.ADMIN, id: { not: objetivo.id } },
+    });
+    if (otrosAdmins === 0) {
+      redirect("/panel/configuracion?error=" + encodeURIComponent("Debe existir al menos un administrador"));
+    }
+  }
+
+  await prisma.usuarioPropiedad.delete({ where: { id: objetivo.id } });
+  redirect("/panel/configuracion?usuarioEliminado=1");
 }

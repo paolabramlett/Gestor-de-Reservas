@@ -9,6 +9,7 @@ import PagoFallido from "@/emails/PagoFallido";
 import PropuestaCambio from "@/emails/PropuestaCambio";
 import RespuestaCambioHotel from "@/emails/RespuestaCambioHotel";
 import CambioAceptadoHuesped from "@/emails/CambioAceptadoHuesped";
+import InvitacionEquipo from "@/emails/InvitacionEquipo";
 
 const FROM = process.env.RESEND_FROM_EMAIL ?? "onboarding@resend.dev";
 
@@ -334,6 +335,31 @@ export async function enviarSolicitudPago(params: {
     from: FROM,
     to: params.emailHuesped,
     subject: `💳 Completa el pago de tu reserva ${params.codigoReserva} — ${params.nombreHotel}`,
+    html,
+  });
+}
+
+export async function enviarInvitacionEquipo(params: {
+  email: string;
+  nombreHotel: string;
+  rol: string;
+  linkInvitacion: string;
+  expiraEn: Date;
+  colorPrimario?: string;
+}) {
+  const html = await render(
+    InvitacionEquipo({
+      nombreHotel: params.nombreHotel,
+      rol: params.rol,
+      linkInvitacion: params.linkInvitacion,
+      expiraEn: fmtFecha(params.expiraEn),
+      colorPrimario: params.colorPrimario,
+    })
+  );
+  return resend.emails.send({
+    from: FROM,
+    to: params.email,
+    subject: `Te invitaron al equipo de ${params.nombreHotel} en Roomly`,
     html,
   });
 }

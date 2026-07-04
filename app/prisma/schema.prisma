@@ -81,6 +81,7 @@ model Propiedad {
   reservas          Reserva[]
   grupos            GrupoReserva[]
   usuarios          UsuarioPropiedad[]
+  invitaciones      InvitacionEquipo[]
 
   @@map("propiedades")
 }
@@ -96,6 +97,23 @@ model UsuarioPropiedad {
 
   @@unique([clerkUserId, propiedadId])
   @@map("usuarios_propiedad")
+}
+
+model InvitacionEquipo {
+  id          String     @id @default(cuid())
+  propiedadId String
+  email       String
+  rol         RolUsuario
+  token       String     @unique @default(cuid())
+  expiraEn    DateTime
+  aceptadaEn  DateTime?
+  canceladaEn DateTime?
+  creadoEn    DateTime   @default(now())
+
+  propiedad Propiedad @relation(fields: [propiedadId], references: [id], onDelete: Cascade)
+
+  @@index([propiedadId])
+  @@map("invitaciones_equipo")
 }
 
 // ─── Habitaciones ────────────────────────────────────────────────────────────

@@ -8,6 +8,7 @@ const isPublicRoute = createRouteMatcher([
   "/p/(.*)",          // portales públicos de propiedades
   "/api/disponibilidad(.*)",
   "/api/webhooks/(.*)",
+  "/invitacion/(.*)", // la página valida la sesión y el email por su cuenta
 ]);
 
 const isSetupRoute = createRouteMatcher(["/setup(.*)"]);
