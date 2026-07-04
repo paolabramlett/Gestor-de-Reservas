@@ -45,11 +45,13 @@ export function NuevaReservaForm({
   hoy,
   manana,
   from,
+  esPro,
 }: {
   tipos: Tipo[];
   hoy: string;
   manana: string;
   from?: string;
+  esPro: boolean;
 }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
@@ -340,7 +342,7 @@ export function NuevaReservaForm({
       <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
         <h2 className="text-sm font-semibold text-gray-700">Pago</h2>
 
-        {!isMulti && (
+        {esPro && !isMulti && (
           <label className="flex items-start gap-3 cursor-pointer">
             <input
               type="checkbox"
@@ -357,13 +359,13 @@ export function NuevaReservaForm({
           </label>
         )}
 
-        {isMulti && (
+        {esPro && isMulti && (
           <p className="text-xs text-gray-400">
             Para reservas multi-habitación puedes solicitar el pago por tarjeta desde el detalle de la reserva una vez creada.
           </p>
         )}
 
-        {!isMulti && solicitarPago ? (
+        {esPro && !isMulti && solicitarPago ? (
           <div className="space-y-3 pl-7">
             <div className="flex gap-3">
               {[{ v: false, label: "Anticipo" }, { v: true, label: "Pago completo" }].map(({ v, label }) => (

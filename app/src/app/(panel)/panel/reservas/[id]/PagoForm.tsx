@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 type Props = {
   reservaId: string;
@@ -9,6 +9,12 @@ type Props = {
   montoAnticipoInicial: number;
   notasIniciales: string;
   actualizarPagoYNotasAction: (fd: FormData) => Promise<void>;
+};
+
+const LABEL_ESTADO: Record<string, string> = {
+  PENDIENTE: "Pendiente",
+  ANTICIPO_PAGADO: "Anticipo pagado",
+  PAGADO_COMPLETO: "Pagado completo",
 };
 
 export function PagoForm({
@@ -21,12 +27,32 @@ export function PagoForm({
 }: Props) {
   const [estado, setEstado] = useState(estadoDePagoInicial);
   const [anticipo, setAnticipo] = useState(montoAnticipoInicial);
+  const [confirmar, setConfirmar] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  const bypassRef = useRef(false);
 
   const resta = Math.max(0, totalMxn - anticipo);
   const mostrarAnticipo = estado === "ANTICIPO_PAGADO";
 
+  // Bajar de "Pagado completo" a un estado menor es una acción sensible:
+  // pedir confirmación para evitar cambios accidentales.
+  const esDowngrade =
+    estadoDePagoInicial === "PAGADO_COMPLETO" && estado !== "PAGADO_COMPLETO";
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    if (esDowngrade && !bypassRef.current) {
+      e.preventDefault();
+      setConfirmar(true);
+    }
+  }
+
   return (
-    <form action={actualizarPagoYNotasAction} className="space-y-4">
+    <form
+      ref={formRef}
+      action={actualizarPagoYNotasAction}
+      onSubmit={handleSubmit}
+      className="space-y-4"
+    >
       <input type="hidden" name="reservaId" value={reservaId} />
 
       <div>
@@ -94,6 +120,41 @@ export function PagoForm({
       >
         Guardar cambios
       </button>
+
+      {confirmar && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-xl max-w-md w-full p-6">
+            <h2 className="text-base font-semibold text-gray-900 mb-2">
+              ¿Cambiar el estado de pago?
+            </h2>
+            <p className="text-sm text-gray-500 mb-5">
+              Esta reserva está marcada como <strong>Pagado completo</strong> y la
+              vas a cambiar a <strong>{LABEL_ESTADO[estado]}</strong>. Confirma que
+              el pago realmente cambió — este dato afecta el saldo y los reportes.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmar(false)}
+                className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium hover:bg-gray-50"
+              >
+                Volver
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmar(false);
+                  bypassRef.current = true;
+                  formRef.current?.requestSubmit();
+                }}
+                className="flex-1 rounded-lg bg-gray-900 text-white px-4 py-2.5 text-sm font-medium hover:bg-gray-700"
+              >
+                Sí, cambiar el pago
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </form>
   );
 }
