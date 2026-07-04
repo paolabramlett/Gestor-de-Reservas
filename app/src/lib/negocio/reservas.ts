@@ -50,16 +50,11 @@ export async function crearReservaOnline(input: CrearReservaOnlineInput) {
     });
     if (existente) return existente;
 
-    // Si el huésped ya existe en esta propiedad, reusar su registro sin modificarlo.
-    // El nombre específico de esta reserva se guarda en nombreHuesped en la tabla Reserva.
-    const huespedExistente = await tx.huesped.findFirst({
-      where: { email: input.email, propiedadId: input.propiedadId },
+    // Cada reserva tiene su propio registro de huésped, aunque el correo se repita.
+    // Así el nombre/teléfono de una reserva nunca afecta a otra que comparta email.
+    const huesped = await tx.huesped.create({
+      data: { nombre: input.nombre, email: input.email, telefono: input.telefono, propiedadId: input.propiedadId },
     });
-    const huesped = huespedExistente
-      ? huespedExistente
-      : await tx.huesped.create({
-          data: { nombre: input.nombre, email: input.email, telefono: input.telefono, propiedadId: input.propiedadId },
-        });
 
     return tx.reserva.create({
       data: {
@@ -116,14 +111,10 @@ export async function crearReservaManual(input: CrearReservaManualInput) {
 
   return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const emailNorm = input.email.toLowerCase().trim();
-    const huespedExistente = await tx.huesped.findFirst({
-      where: { email: emailNorm, propiedadId: input.propiedadId },
+    // Cada reserva tiene su propio registro de huésped, aunque el correo se repita.
+    const huesped = await tx.huesped.create({
+      data: { nombre: input.nombre, email: emailNorm, telefono: input.telefono, propiedadId: input.propiedadId },
     });
-    const huesped = huespedExistente
-      ? huespedExistente
-      : await tx.huesped.create({
-          data: { nombre: input.nombre, email: emailNorm, telefono: input.telefono, propiedadId: input.propiedadId },
-        });
 
     const reserva = await tx.reserva.create({
       data: {
@@ -206,14 +197,10 @@ export async function crearReservaConLinkDePago(input: CrearReservaConLinkInput)
 
   // Create reservation in PENDIENTE_PAGO state
   const reserva = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-    const huespedExistente = await tx.huesped.findFirst({
-      where: { email: input.email, propiedadId: input.propiedadId },
+    // Cada reserva tiene su propio registro de huésped, aunque el correo se repita.
+    const huesped = await tx.huesped.create({
+      data: { nombre: input.nombre, email: input.email, telefono: input.telefono, propiedadId: input.propiedadId },
     });
-    const huesped = huespedExistente
-      ? huespedExistente
-      : await tx.huesped.create({
-          data: { nombre: input.nombre, email: input.email, telefono: input.telefono, propiedadId: input.propiedadId },
-        });
 
     const expiraEn = new Date(Date.now() + 24 * 60 * 60 * 1000);
 

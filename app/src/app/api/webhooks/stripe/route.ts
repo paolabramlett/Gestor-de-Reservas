@@ -253,14 +253,10 @@ export async function POST(req: NextRequest) {
                 },
               });
 
-              const huespedExistente = await tx.huesped.findFirst({
-                where: { email: meta.email.toLowerCase(), propiedadId: meta.propiedadId },
+              // Un huésped nuevo por cada reserva de grupo, aunque el correo se repita.
+              const huesped = await tx.huesped.create({
+                data: { nombre: meta.nombre, email: meta.email.toLowerCase(), telefono: meta.telefono || null, propiedadId: meta.propiedadId },
               });
-              const huesped = huespedExistente
-                ? huespedExistente
-                : await tx.huesped.create({
-                    data: { nombre: meta.nombre, email: meta.email.toLowerCase(), telefono: meta.telefono || null, propiedadId: meta.propiedadId },
-                  });
 
               for (const room of roomsData) {
                 await tx.reserva.create({
