@@ -398,6 +398,22 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* IMAGE BREAK 2 */}
+      <div style={{position:"relative",height:340,overflow:"hidden"}}>
+        <img
+          src="https://images.unsplash.com/photo-1445019980597-93fa8acb246c?w=1600&q=80"
+          alt="Recepción de hotel"
+          style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center 45%",display:"block"}}
+          loading="lazy"
+        />
+        <div style={{position:"absolute",inset:0,background:"linear-gradient(to top, rgba(4,27,66,0.88) 0%, rgba(4,27,66,0.35) 55%, rgba(4,27,66,0.1) 100%)"}} />
+        <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end",textAlign:"center",padding:"0 24px 40px"}}>
+          <p style={{fontSize:"clamp(1.2rem,2.2vw,1.7rem)",fontWeight:600,color:"#fff",lineHeight:1.35,maxWidth:640}}>
+            Del check-in al reporte mensual, <span style={{color:"#FFBC1A"}}>todo en una sola pantalla.</span>
+          </p>
+        </div>
+      </div>
+
       {/* CTA */}
       <section style={{background:"#0C48AD",padding:"80px 48px",textAlign:"center",color:"#fff"}}>
         <h2 style={{fontSize:"clamp(2rem,3.2vw,3.2rem)",fontWeight:700,letterSpacing:"-0.02em",marginBottom:16,lineHeight:1.15,color:"#fff"}}>
