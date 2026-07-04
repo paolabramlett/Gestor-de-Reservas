@@ -72,6 +72,11 @@ model Propiedad {
   suscripcionActiva     Boolean    @default(false)
   canceladaAlFinalDePeriodo Boolean  @default(false)
   finDePeriodoActual        DateTime?
+  horaCheckIn           String   @default("15:00")
+  horaCheckOut          String   @default("12:00")
+  horasParaLateCheckIn  Int      @default(2)
+  costoLateCheckIn      Decimal? @db.Decimal(10, 2)
+  horasParaNoShow       Int      @default(6)
   creadoEn        DateTime @default(now())
   actualizadoEn   DateTime @updatedAt
 
@@ -252,6 +257,8 @@ model Reserva {
   stripeCheckoutSessionId  String?       @unique
   linkExpiraEn             DateTime?
   tipoEspecial             TipoEspecialReserva?
+  lateCheckInEn            DateTime?
+  cargoLateCheckIn         Decimal?      @db.Decimal(10, 2)
   creadoEn              DateTime      @default(now())
   actualizadoEn         DateTime      @updatedAt
 

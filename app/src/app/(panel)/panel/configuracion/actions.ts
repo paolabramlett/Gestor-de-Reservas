@@ -134,6 +134,38 @@ export async function actualizarPropiedadAction(formData: FormData) {
   redirect("/panel/configuracion?guardado=1");
 }
 
+// ── Horarios ─────────────────────────────────────────────────────────────────
+
+function validarHora(valor: string | null, fallback: string): string {
+  return valor && /^([01]\d|2[0-3]):[0-5]\d$/.test(valor) ? valor : fallback;
+}
+
+export async function actualizarHorariosAction(formData: FormData) {
+  const usuario = await requireAdmin();
+
+  const propiedad = await prisma.propiedad.findUniqueOrThrow({ where: { id: usuario.propiedadId } });
+
+  const horaCheckIn = validarHora(formData.get("horaCheckIn") as string, propiedad.horaCheckIn);
+  const horaCheckOut = validarHora(formData.get("horaCheckOut") as string, propiedad.horaCheckOut);
+  const horasParaLateCheckIn = Math.max(0, Number(formData.get("horasParaLateCheckIn")) || 0);
+  const horasParaNoShow = Math.max(horasParaLateCheckIn, Number(formData.get("horasParaNoShow")) || 0);
+  const costoLateCheckInRaw = formData.get("costoLateCheckIn") as string;
+  const costoLateCheckIn = costoLateCheckInRaw ? Number(costoLateCheckInRaw) : null;
+
+  await prisma.propiedad.update({
+    where: { id: usuario.propiedadId },
+    data: {
+      horaCheckIn,
+      horaCheckOut,
+      horasParaLateCheckIn,
+      horasParaNoShow,
+      costoLateCheckIn,
+    },
+  });
+
+  redirect("/panel/configuracion?guardado=1&tab=horarios");
+}
+
 // ── Equipo ───────────────────────────────────────────────────────────────────
 
 export async function enviarInvitacionAction(formData: FormData) {

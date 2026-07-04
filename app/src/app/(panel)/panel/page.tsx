@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import type { TipoDeHabitacion, Temporada } from "@prisma/client";
 import { OnboardingChecklist } from "@/components/OnboardingChecklist";
+import { AlertasCheckIn, type ReservaConAlerta } from "./AlertasCheckIn";
+import { calcularEtapaAlerta } from "@/lib/negocio/alertasCheckIn";
 
 export default async function PanelPage() {
   const usuario = await getCurrentUsuario();
@@ -75,6 +77,9 @@ export default async function PanelPage() {
       select: {
         email: true,
         telefono: true,
+        horaCheckIn: true,
+        horasParaLateCheckIn: true,
+        horasParaNoShow: true,
         _count: {
           select: {
             tiposDeHabitacion: true,
@@ -89,6 +94,29 @@ export default async function PanelPage() {
   const tiposSinCobertura = tipos.filter((tipo: TipoDeHabitacion & { temporadas: Temporada[] }) =>
     !tipo.temporadas.some((t: Temporada) => t.fechaInicio <= en90dias && t.fechaFin >= hoy)
   );
+
+  const ahora = new Date();
+  const alertasCheckIn: ReservaConAlerta[] = llegadasHoy
+    .map((r) => {
+      const etapa = onboardingCounts
+        ? calcularEtapaAlerta({
+            fechaIngreso: r.fechaIngreso,
+            horaCheckIn: onboardingCounts.horaCheckIn,
+            horasParaLateCheckIn: onboardingCounts.horasParaLateCheckIn,
+            horasParaNoShow: onboardingCounts.horasParaNoShow,
+            ahora,
+          })
+        : null;
+      if (!etapa) return null;
+      return {
+        id: r.id,
+        codigo: r.codigoReserva,
+        nombre: r.nombreHuesped || r.huesped.nombre,
+        subtitulo: `${r.tipoDeHabitacion.nombre}${r.asignacion ? ` · Hab. ${r.asignacion.habitacion.numero}` : ""}`,
+        etapa,
+      };
+    })
+    .filter((r): r is ReservaConAlerta => r !== null);
 
   const fmt = (d: Date) =>
     new Date(d).toLocaleDateString("es-MX", { weekday: "short", day: "numeric", month: "short" });
@@ -143,6 +171,8 @@ export default async function PanelPage() {
           + Nueva reserva
         </Link>
       </div>
+
+      <AlertasCheckIn reservas={alertasCheckIn} />
 
       {tiposSinCobertura.length > 0 && (
         <div className="mb-6 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">

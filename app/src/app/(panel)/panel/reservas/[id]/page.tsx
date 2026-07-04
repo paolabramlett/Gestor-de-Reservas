@@ -123,6 +123,17 @@ export default async function ReservaDetallePage({
         </div>
       )}
 
+      {/* Banner late check-in */}
+      {reserva.lateCheckInEn && (
+        <div className="mb-4 rounded-xl bg-orange-50 border border-orange-200 px-4 py-3 text-sm text-orange-800">
+          🟠 Marcada como <strong>Late Check-in</strong> el{" "}
+          {new Date(reserva.lateCheckInEn).toLocaleString("es-MX", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}.
+          {reserva.cargoLateCheckIn && (
+            <> Cargo sugerido: <strong>${Number(reserva.cargoLateCheckIn).toLocaleString("es-MX")} MXN</strong> — agrégalo manualmente al cobro si aplica.</>
+          )}
+        </div>
+      )}
+
       {/* Banner PENDIENTE_PAGO */}
       {estado === "PENDIENTE_PAGO" && (
         <div className="mb-4 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 flex gap-3 items-start">
