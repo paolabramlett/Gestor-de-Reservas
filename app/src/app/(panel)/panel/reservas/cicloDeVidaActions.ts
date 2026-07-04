@@ -1,16 +1,25 @@
 "use server";
 
 import { getCurrentUsuario } from "@/lib/auth";
-import { checkIn, checkOut, marcarNoShow, cancelarReserva, eliminarReserva } from "@/lib/negocio/cicloDeVida";
+import { checkIn, checkOut, marcarNoShow, cancelarReserva, eliminarReserva, completarRegistroCheckIn } from "@/lib/negocio/cicloDeVida";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
+// Combina el registro del huésped (documento, nacionalidad, placas, políticas)
+// con el check-in en un solo paso desde recepción.
 export async function checkInAction(formData: FormData) {
   const usuario = await getCurrentUsuario();
   if (!usuario) redirect("/sign-in");
 
   const reservaId = formData.get("reservaId") as string;
   try {
+    await completarRegistroCheckIn(reservaId, usuario.propiedadId, {
+      documentoTipo: (formData.get("documentoTipo") as string) || null,
+      documentoNumero: (formData.get("documentoNumero") as string) || null,
+      nacionalidad: (formData.get("nacionalidad") as string) || null,
+      placasVehiculo: (formData.get("placasVehiculo") as string) || null,
+      politicasAceptadas: formData.get("politicasAceptadas") === "on",
+    });
     await checkIn(reservaId, usuario.propiedadId);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Error";

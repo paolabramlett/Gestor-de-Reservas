@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 
 // ─── Shared dialog shell ──────────────────────────────────────────────────────
 
@@ -9,16 +9,18 @@ function ConfirmDialog({
   titulo,
   children,
   onCancel,
+  wide,
 }: {
   dialogRef: React.RefObject<HTMLDialogElement | null>;
   titulo: string;
   children: React.ReactNode;
   onCancel: () => void;
+  wide?: boolean;
 }) {
   return (
     <dialog
       ref={dialogRef}
-      className="rounded-2xl shadow-2xl border border-gray-100 p-0 w-full max-w-sm backdrop:bg-black/40"
+      className={`rounded-2xl shadow-2xl border border-gray-100 p-0 w-full ${wide ? "max-w-md" : "max-w-sm"} backdrop:bg-black/40`}
       style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", margin: 0 }}
       onClick={(e) => { if (e.target === dialogRef.current) onCancel(); }}
     >
@@ -32,15 +34,9 @@ function ConfirmDialog({
 
 // ─── Check-in / Check-out / No-Show ──────────────────────────────────────────
 
-type Accion = "checkin" | "checkout" | "noshow";
+type Accion = "checkout" | "noshow";
 
 const META: Record<Accion, { titulo: string; mensaje: string; labelBtn: string; claseBtn: string }> = {
-  checkin: {
-    titulo: "Confirmar Check-in",
-    mensaje: "¿Estás seguro de que deseas registrar el check-in de esta reserva?",
-    labelBtn: "✓ Check-in",
-    claseBtn: "rounded-lg bg-green-600 text-white px-4 py-2 text-sm font-medium hover:bg-green-700",
-  },
   checkout: {
     titulo: "Confirmar Check-out",
     mensaje: "¿Estás seguro de que deseas registrar el check-out? Esto marcará la reserva como completada.",
@@ -59,12 +55,10 @@ function BotonConConfirmacion({
   accion,
   action,
   reservaId,
-  saldoPendiente,
 }: {
   accion: Accion;
   action: (fd: FormData) => Promise<void>;
   reservaId: string;
-  saldoPendiente?: number | null;
 }) {
   const { titulo, mensaje, labelBtn, claseBtn } = META[accion];
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -79,22 +73,6 @@ function BotonConConfirmacion({
 
       <ConfirmDialog dialogRef={dialogRef} titulo={titulo} onCancel={cerrar}>
         <p className="text-sm text-gray-500 mb-4">{mensaje}</p>
-
-        {accion === "checkin" && saldoPendiente && saldoPendiente > 0 && (
-          <div className="mb-5 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 flex gap-2.5 items-start">
-            <svg className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-            </svg>
-            <div>
-              <p className="text-sm font-semibold text-amber-800">Saldo pendiente de cobro</p>
-              <p className="text-sm text-amber-700 mt-0.5">
-                El huésped tiene un saldo pendiente de{" "}
-                <span className="font-bold">${saldoPendiente.toLocaleString("es-MX")} MXN</span>.
-                Verifica el cobro antes o durante el check-in.
-              </p>
-            </div>
-          </div>
-        )}
 
         <div className="flex gap-3 justify-end">
           <button
@@ -120,6 +98,158 @@ function BotonConConfirmacion({
   );
 }
 
+export type RegistroCheckIn = {
+  documentoTipo: string | null;
+  documentoNumero: string | null;
+  nacionalidad: string | null;
+  placasVehiculo: string | null;
+  politicasAceptadas: boolean;
+};
+
+const DOCUMENTOS = [
+  { value: "INE", label: "INE" },
+  { value: "PASAPORTE", label: "Pasaporte" },
+  { value: "OTRO", label: "Otro" },
+];
+
+function CheckInDialog({
+  reservaId,
+  action,
+  saldoPendiente,
+  registro,
+}: {
+  reservaId: string;
+  action: (fd: FormData) => Promise<void>;
+  saldoPendiente?: number | null;
+  registro?: RegistroCheckIn;
+}) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const yaRegistrado = !!registro?.politicasAceptadas;
+  const [editando, setEditando] = useState(!yaRegistrado);
+
+  const cerrar = () => dialogRef.current?.close();
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => dialogRef.current?.showModal()}
+        className="rounded-lg bg-green-600 text-white px-4 py-2 text-sm font-medium hover:bg-green-700"
+      >
+        ✓ Check-in
+      </button>
+
+      <ConfirmDialog dialogRef={dialogRef} titulo="Confirmar Check-in" onCancel={cerrar} wide>
+        {!!saldoPendiente && saldoPendiente > 0 && (
+          <div className="mb-4 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 flex gap-2.5 items-start">
+            <svg className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+            </svg>
+            <div>
+              <p className="text-sm font-semibold text-amber-800">Saldo pendiente de cobro</p>
+              <p className="text-sm text-amber-700 mt-0.5">
+                El huésped tiene un saldo pendiente de{" "}
+                <span className="font-bold">${saldoPendiente.toLocaleString("es-MX")} MXN</span>.
+                Verifica el cobro antes o durante el check-in.
+              </p>
+            </div>
+          </div>
+        )}
+
+        <form action={action} className="space-y-3">
+          <input type="hidden" name="reservaId" value={reservaId} />
+
+          {yaRegistrado && !editando ? (
+            <div className="rounded-lg bg-green-50 border border-green-200 px-3 py-2.5 text-sm text-green-800 flex items-center justify-between gap-2">
+              <span>✓ El huésped ya completó su registro (pre-check-in online).</span>
+              <button type="button" onClick={() => setEditando(true)} className="text-xs underline shrink-0">
+                Editar
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Documento</label>
+                  <select
+                    name="documentoTipo"
+                    defaultValue={registro?.documentoTipo ?? "INE"}
+                    className="w-full border border-gray-300 rounded-lg px-2.5 py-2 text-sm"
+                  >
+                    {DOCUMENTOS.map((d) => (
+                      <option key={d.value} value={d.value}>{d.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Número de documento</label>
+                  <input
+                    name="documentoNumero"
+                    defaultValue={registro?.documentoNumero ?? ""}
+                    className="w-full border border-gray-300 rounded-lg px-2.5 py-2 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Nacionalidad</label>
+                  <input
+                    name="nacionalidad"
+                    defaultValue={registro?.nacionalidad ?? "Mexicana"}
+                    className="w-full border border-gray-300 rounded-lg px-2.5 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">
+                    Placas <span className="text-gray-400 font-normal">(opcional)</span>
+                  </label>
+                  <input
+                    name="placasVehiculo"
+                    defaultValue={registro?.placasVehiculo ?? ""}
+                    placeholder="Si aplica"
+                    className="w-full border border-gray-300 rounded-lg px-2.5 py-2 text-sm"
+                  />
+                </div>
+              </div>
+
+              <label className="flex items-start gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  name="politicasAceptadas"
+                  defaultChecked={registro?.politicasAceptadas ?? false}
+                  required
+                  className="mt-0.5 w-4 h-4 rounded border-gray-300"
+                />
+                <span className="text-xs text-gray-600">
+                  Confirmo que el huésped presentó identificación y aceptó las políticas del hotel.
+                </span>
+              </label>
+            </>
+          )}
+
+          <div className="flex gap-3 justify-end pt-2">
+            <button
+              type="button"
+              onClick={cerrar}
+              className="rounded-lg border border-gray-200 text-gray-600 px-4 py-2 text-sm font-medium hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              onClick={cerrar}
+              className="rounded-lg bg-gray-900 text-white px-4 py-2 text-sm font-medium hover:bg-gray-700"
+            >
+              Confirmar Check-in
+            </button>
+          </div>
+        </form>
+      </ConfirmDialog>
+    </>
+  );
+}
+
 export function BotonesEstadoReserva({
   reservaId,
   estado,
@@ -127,6 +257,7 @@ export function BotonesEstadoReserva({
   checkOutAction,
   noShowAction,
   saldoPendiente,
+  registro,
 }: {
   reservaId: string;
   estado: string;
@@ -134,11 +265,12 @@ export function BotonesEstadoReserva({
   checkOutAction: (fd: FormData) => Promise<void>;
   noShowAction: (fd: FormData) => Promise<void>;
   saldoPendiente?: number | null;
+  registro?: RegistroCheckIn;
 }) {
   return (
     <>
       {estado === "CONFIRMADA" && (
-        <BotonConConfirmacion accion="checkin" action={checkInAction} reservaId={reservaId} saldoPendiente={saldoPendiente} />
+        <CheckInDialog reservaId={reservaId} action={checkInAction} saldoPendiente={saldoPendiente} registro={registro} />
       )}
       {estado === "EN_CURSO" && (
         <BotonConConfirmacion accion="checkout" action={checkOutAction} reservaId={reservaId} />

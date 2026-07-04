@@ -134,6 +134,31 @@ export default async function ReservaDetallePage({
         </div>
       )}
 
+      {/* Registro del huésped (check-in / pre-check-in) */}
+      {reserva.registroCheckInEn && (
+        <div className="mb-4 rounded-xl bg-gray-50 border border-gray-200 px-4 py-3">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Registro del huésped</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+            <div>
+              <p className="text-xs text-gray-400">Documento</p>
+              <p className="text-gray-800">{reserva.documentoTipo ?? "—"} {reserva.documentoNumero ?? ""}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400">Nacionalidad</p>
+              <p className="text-gray-800">{reserva.nacionalidad ?? "—"}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400">Placas</p>
+              <p className="text-gray-800">{reserva.placasVehiculo ?? "—"}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400">Políticas aceptadas</p>
+              <p className="text-gray-800">{reserva.politicasAceptadas ? "Sí" : "No"}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Banner PENDIENTE_PAGO */}
       {estado === "PENDIENTE_PAGO" && (
         <div className="mb-4 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 flex gap-3 items-start">
@@ -175,6 +200,13 @@ export default async function ReservaDetallePage({
                 ? Number(reserva.totalMxn) - Number(reserva.pagoManual.montoAnticipo)
                 : null
             }
+            registro={{
+              documentoTipo: reserva.documentoTipo,
+              documentoNumero: reserva.documentoNumero,
+              nacionalidad: reserva.nacionalidad,
+              placasVehiculo: reserva.placasVehiculo,
+              politicasAceptadas: reserva.politicasAceptadas,
+            }}
           />
 
           {/* Cancelar */}

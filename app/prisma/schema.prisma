@@ -259,6 +259,13 @@ model Reserva {
   tipoEspecial             TipoEspecialReserva?
   lateCheckInEn            DateTime?
   cargoLateCheckIn         Decimal?      @db.Decimal(10, 2)
+  documentoTipo            String?
+  documentoNumero          String?
+  nacionalidad             String?
+  placasVehiculo           String?
+  politicasAceptadas       Boolean       @default(false)
+  politicasAceptadasEn     DateTime?
+  registroCheckInEn        DateTime?
   creadoEn              DateTime      @default(now())
   actualizadoEn         DateTime      @updatedAt
 

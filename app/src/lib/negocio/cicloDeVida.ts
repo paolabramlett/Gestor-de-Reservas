@@ -45,6 +45,46 @@ export async function eliminarReserva(reservaId: string, propiedadId: string) {
   });
 }
 
+export type RegistroCheckInInput = {
+  documentoTipo?: string | null;
+  documentoNumero?: string | null;
+  nacionalidad?: string | null;
+  placasVehiculo?: string | null;
+  politicasAceptadas: boolean;
+};
+
+// Guarda los datos de registro del huésped (documento, nacionalidad, placas y
+// aceptación de políticas). No cambia el estado de la reserva — se puede
+// llamar desde recepción al hacer check-in, o desde el link público de
+// pre-check-in antes de que el huésped llegue.
+export async function completarRegistroCheckIn(
+  reservaId: string,
+  propiedadId: string,
+  data: RegistroCheckInInput
+) {
+  const reserva = await prisma.reserva.findFirst({ where: { id: reservaId, propiedadId } });
+  if (!reserva) throw new Error("Reserva no encontrada");
+  if (reserva.estado !== EstadoReserva.CONFIRMADA && reserva.estado !== EstadoReserva.EN_CURSO) {
+    throw new Error(`No se puede registrar al huésped desde estado ${reserva.estado}`);
+  }
+  if (!data.politicasAceptadas) {
+    throw new Error("Debes confirmar que el huésped presentó identificación y aceptó las políticas del hotel");
+  }
+
+  return prisma.reserva.update({
+    where: { id: reservaId },
+    data: {
+      documentoTipo: data.documentoTipo || null,
+      documentoNumero: data.documentoNumero || null,
+      nacionalidad: data.nacionalidad || null,
+      placasVehiculo: data.placasVehiculo || null,
+      politicasAceptadas: true,
+      politicasAceptadasEn: reserva.politicasAceptadasEn ?? new Date(),
+      registroCheckInEn: new Date(),
+    },
+  });
+}
+
 export async function checkIn(reservaId: string, propiedadId: string) {
   const reserva = await prisma.reserva.findFirst({
     where: { id: reservaId, propiedadId },
