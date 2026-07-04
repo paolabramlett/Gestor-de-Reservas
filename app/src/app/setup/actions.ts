@@ -3,7 +3,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { RolUsuario } from "@prisma/client";
+import { stripe } from "@/lib/stripe";
 
 function generarSlug(nombre: string): string {
   return nombre
@@ -15,26 +15,25 @@ function generarSlug(nombre: string): string {
     .slice(0, 40);
 }
 
-export async function crearHotelAction(formData: FormData) {
+export async function iniciarCheckoutAction(formData: FormData) {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
 
   const nombre = (formData.get("nombre") as string)?.trim();
   const slugInput = (formData.get("slug") as string)?.trim();
-  const telefono = (formData.get("telefono") as string)?.trim() || null;
-  const email = (formData.get("email") as string)?.trim() || null;
+  const telefono = (formData.get("telefono") as string)?.trim() || "";
+  const email = (formData.get("email") as string)?.trim() || "";
+  const plan = (formData.get("plan") as string) === "PRO" ? "PRO" : "ESENCIAL";
 
   if (!nombre || nombre.length < 2) {
     redirect("/setup?error=nombre");
   }
 
-  // Verificar que el usuario no tenga ya un hotel
   const yaExiste = await prisma.usuarioPropiedad.findFirst({
     where: { clerkUserId: userId },
   });
   if (yaExiste) redirect("/panel");
 
-  // Generar slug único
   const baseSlug = slugInput || generarSlug(nombre);
   let slug = baseSlug;
   let intento = 0;
@@ -43,26 +42,29 @@ export async function crearHotelAction(formData: FormData) {
     slug = `${baseSlug}-${intento}`;
   }
 
-  // Crear propiedad y usuario en una transacción
-  const propiedad = await prisma.$transaction(async (tx) => {
-    const p = await tx.propiedad.create({
-      data: {
-        clerkOrgId: userId, // usamos userId como org ID en el piloto
-        slug,
-        nombre,
-        telefono,
-        email,
-      },
-    });
-    await tx.usuarioPropiedad.create({
-      data: {
-        clerkUserId: userId,
-        propiedadId: p.id,
-        rol: RolUsuario.ADMIN,
-      },
-    });
-    return p;
+  const priceId =
+    plan === "PRO"
+      ? process.env.STRIPE_PRICE_PRO!
+      : process.env.STRIPE_PRICE_ESENCIAL!;
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+
+  const session = await stripe.checkout.sessions.create({
+    mode: "subscription",
+    payment_method_types: ["card"],
+    line_items: [{ price: priceId, quantity: 1 }],
+    success_url: `${appUrl}/setup/completar?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${appUrl}/setup?cancelado=1`,
+    metadata: {
+      tipo: "suscripcion_setup",
+      clerkUserId: userId,
+      hotelNombre: nombre,
+      hotelSlug: slug,
+      hotelTelefono: telefono,
+      hotelEmail: email,
+      plan,
+    },
   });
 
-  redirect(`/panel?setup=ok`);
+  redirect(session.url!);
 }

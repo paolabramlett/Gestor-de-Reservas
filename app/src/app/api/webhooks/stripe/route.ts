@@ -342,6 +342,15 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Suscripción cancelada → marcar hotel como inactivo
+  if (event.type === "customer.subscription.deleted") {
+    const subscription = event.data.object as Stripe.Subscription;
+    await prisma.propiedad.updateMany({
+      where: { stripeSubscriptionId: subscription.id },
+      data: { suscripcionActiva: false },
+    });
+  }
+
   if (event.type === "payment_intent.payment_failed") {
     const intent = event.data.object as Stripe.PaymentIntent;
     const meta = intent.metadata;

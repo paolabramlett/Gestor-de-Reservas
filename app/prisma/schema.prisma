@@ -47,6 +47,11 @@ enum RolUsuario {
   SUPER_ADMIN
 }
 
+enum PlanRoomly {
+  ESENCIAL
+  PRO
+}
+
 // ─── Multi-tenant root ───────────────────────────────────────────────────────
 
 model Propiedad {
@@ -61,6 +66,10 @@ model Propiedad {
   telefono        String?
   email           String?
   direccion       String?
+  stripeCustomerId      String?
+  stripeSubscriptionId  String?
+  planActivo            PlanRoomly @default(ESENCIAL)
+  suscripcionActiva     Boolean    @default(false)
   creadoEn        DateTime @default(now())
   actualizadoEn   DateTime @updatedAt
 
