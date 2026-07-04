@@ -9,6 +9,30 @@ export type DesglosePorNoche = {
   temporadaNombre?: string;
 };
 
+/**
+ * Precio de UNA noche según la modalidad. Función pura (sin DB) para poder
+ * testearla de forma aislada:
+ *  - POR_HABITACION: precio fijo por noche, sin importar personas.
+ *  - POR_PERSONA: precio × número de personas.
+ *  - BASE_MAS_SUPLEMENTO: la primera persona paga la base; cada persona
+ *    adicional suma el suplemento.
+ */
+export function calcularPrecioNoche(
+  noche: Pick<DesglosePorNoche, "precio" | "modalidad" | "suplementoPorPersona">,
+  numPersonas: number
+): number {
+  const personas = Math.max(1, numPersonas);
+  if (noche.modalidad === "POR_PERSONA") {
+    return noche.precio * personas;
+  }
+  if (noche.modalidad === "BASE_MAS_SUPLEMENTO") {
+    const suplemento = noche.suplementoPorPersona ?? 0;
+    return noche.precio + (personas - 1) * suplemento;
+  }
+  // POR_HABITACION
+  return noche.precio;
+}
+
 export async function calcularTarifaPorNoche(
   tipoDeHabitacionId: string,
   fecha: Date
@@ -65,18 +89,10 @@ export async function calcularTotalReserva(
     cursor.setDate(cursor.getDate() + 1);
   }
 
-  const total = desglose.reduce((acc, noche) => {
-    let precio: number;
-    if (noche.modalidad === "POR_PERSONA") {
-      precio = noche.precio * numPersonas;
-    } else if (noche.modalidad === "BASE_MAS_SUPLEMENTO") {
-      const suplemento = noche.suplementoPorPersona ?? 0;
-      precio = noche.precio + (numPersonas - 1) * suplemento;
-    } else {
-      precio = noche.precio;
-    }
-    return acc + precio;
-  }, 0);
+  const total = desglose.reduce(
+    (acc, noche) => acc + calcularPrecioNoche(noche, numPersonas),
+    0
+  );
 
   return { total, desglose };
 }
