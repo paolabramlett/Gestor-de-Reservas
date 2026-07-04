@@ -17,6 +17,7 @@ import {
 import { PropuestaCambioPanel } from "../PropuestaCambioPanel";
 import { BotonesEstadoReserva, CancelarDialogClient } from "../BotonesEstadoReserva";
 import { SolicitarPagoButton } from "../SolicitarPagoButton";
+import { PagoForm } from "./PagoForm";
 
 const ESTADO_LABEL: Record<string, string> = {
   PENDIENTE_PAGO: "Pago pendiente",
@@ -479,64 +480,19 @@ export default async function ReservaDetallePage({
             )}
           </div>
 
-          {/* Resumen de saldo */}
-          {reserva.pagoManual?.estadoDePago === "ANTICIPO_PAGADO" && reserva.pagoManual.montoAnticipo && (
-            <div className="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm">
-              <div className="flex justify-between text-gray-700">
-                <span>Total</span>
-                <span className="font-medium">${Number(reserva.totalMxn).toLocaleString("es-MX")} MXN</span>
-              </div>
-              <div className="flex justify-between text-green-700 mt-1">
-                <span>Anticipo pagado</span>
-                <span className="font-medium">${Number(reserva.pagoManual.montoAnticipo).toLocaleString("es-MX")} MXN</span>
-              </div>
-              <div className="flex justify-between text-amber-800 font-semibold mt-1 pt-1 border-t border-amber-200">
-                <span>Falta por pagar</span>
-                <span>${(Number(reserva.totalMxn) - Number(reserva.pagoManual.montoAnticipo)).toLocaleString("es-MX")} MXN</span>
-              </div>
-            </div>
-          )}
-
-          {/* BUG 7: en PENDIENTE_PAGO solo mostrar el resumen; el formulario queda bloqueado hasta que el huesped pague */}
           {estado === "PENDIENTE_PAGO" ? (
             <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
               El formulario de pago está bloqueado mientras el huésped tiene un link activo. Usa el botón de arriba para reenviar o espera a que complete el pago.
             </p>
           ) : (
-          <form action={actualizarPagoYNotasAction} className="space-y-4">
-            <input type="hidden" name="reservaId" value={reserva.id} />
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">Estado de pago</label>
-              <select name="estadoDePago" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                <option value="PENDIENTE" selected={reserva.pagoManual?.estadoDePago === "PENDIENTE"}>Pendiente</option>
-                <option value="ANTICIPO_PAGADO" selected={reserva.pagoManual?.estadoDePago === "ANTICIPO_PAGADO"}>Anticipo pagado</option>
-                <option value="PAGADO_COMPLETO" selected={reserva.pagoManual?.estadoDePago === "PAGADO_COMPLETO"}>Pagado completo</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">
-                Monto de anticipo (MXN)
-                <span className="ml-1 text-gray-400 font-normal">— solo si aplica</span>
-              </label>
-              <input
-                type="number"
-                name="montoAnticipo"
-                min={0}
-                max={Number(reserva.totalMxn)}
-                step="0.01"
-                defaultValue={reserva.pagoManual?.montoAnticipo ? Number(reserva.pagoManual.montoAnticipo) : ""}
-                placeholder="0.00"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">Notas internas</label>
-              <textarea name="notas" rows={3} defaultValue={reserva.pagoManual?.notas ?? ""} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-            </div>
-            <button type="submit" className="rounded-lg bg-gray-900 text-white px-4 py-2 text-sm font-medium hover:bg-gray-700">
-              Guardar cambios
-            </button>
-          </form>
+            <PagoForm
+              reservaId={reserva.id}
+              totalMxn={Number(reserva.totalMxn)}
+              estadoDePagoInicial={reserva.pagoManual?.estadoDePago ?? "PENDIENTE"}
+              montoAnticipoInicial={reserva.pagoManual?.montoAnticipo ? Number(reserva.pagoManual.montoAnticipo) : 0}
+              notasIniciales={reserva.pagoManual?.notas ?? ""}
+              actualizarPagoYNotasAction={actualizarPagoYNotasAction}
+            />
           )}
         </div>
       )}
