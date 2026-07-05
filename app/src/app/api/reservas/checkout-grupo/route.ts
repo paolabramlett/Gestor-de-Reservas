@@ -39,6 +39,9 @@ export async function POST(req: NextRequest) {
   if (!propiedad) {
     return NextResponse.json({ error: "Propiedad no encontrada" }, { status: 404 });
   }
+  if (!propiedad.suscripcionActiva) {
+    return NextResponse.json({ error: "Este hotel no acepta reservas en línea en este momento" }, { status: 403 });
+  }
 
   // Verify all tipos belong to this propiedad and check availability
   let totalGeneral = 0;

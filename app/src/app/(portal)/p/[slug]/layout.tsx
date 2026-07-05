@@ -66,7 +66,20 @@ export default async function PortalLayout({
       </header>
 
       {/* Contenido */}
-      <main className="flex-1">{children}</main>
+      <main className="flex-1">
+        {propiedad.suscripcionActiva ? (
+          children
+        ) : (
+          <div className="max-w-md mx-auto text-center px-4 py-20">
+            <h1 className="text-lg font-semibold text-gray-900 mb-2">
+              Reservas en línea no disponibles
+            </h1>
+            <p className="text-sm text-gray-500">
+              Este portal está temporalmente fuera de servicio. Contacta directamente al hotel para reservar.
+            </p>
+          </div>
+        )}
+      </main>
 
       {/* Footer */}
       <footer className="border-t border-gray-200 bg-white mt-12">
