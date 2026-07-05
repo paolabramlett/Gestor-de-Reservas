@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import Image from "next/image";
+import Link from "next/link";
 import { SetupForm } from "./SetupForm";
 
 export default async function SetupPage({
@@ -12,10 +13,12 @@ export default async function SetupPage({
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
 
-  const existente = await prisma.usuarioPropiedad.findFirst({
+  // Ya no bloqueamos si el usuario tiene un hotel — puede pagar una
+  // suscripción independiente por cada hotel que administre. El selector
+  // del Sidebar le permite cambiar entre todos los que tenga.
+  const hotelesExistentes = await prisma.usuarioPropiedad.count({
     where: { clerkUserId: userId },
   });
-  if (existente) redirect("/panel");
 
   const { error, cancelado } = await searchParams;
 
@@ -42,6 +45,14 @@ export default async function SetupPage({
               Elige tu plan y crea tu cuenta en minutos. Sin contratos, cancela cuando quieras.
             </p>
           </div>
+
+          {hotelesExistentes > 0 && (
+            <div className="mb-6 rounded-lg bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-800">
+              Ya administras {hotelesExistentes} hotel{hotelesExistentes !== 1 ? "es" : ""} en Roomly. Esto
+              creará uno nuevo con su propia suscripción — podrás cambiar entre todos desde el menú del panel.{" "}
+              <Link href="/panel" className="underline font-medium">Volver a mi panel</Link>
+            </div>
+          )}
 
           <SetupForm error={error} cancelado={cancelado === "1"} />
         </div>

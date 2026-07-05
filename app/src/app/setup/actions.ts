@@ -29,11 +29,8 @@ export async function iniciarCheckoutAction(formData: FormData) {
     redirect("/setup?error=nombre");
   }
 
-  const yaExiste = await prisma.usuarioPropiedad.findFirst({
-    where: { clerkUserId: userId },
-  });
-  if (yaExiste) redirect("/panel");
-
+  // Un usuario puede administrar varios hoteles, cada uno con su propia
+  // suscripción — no bloqueamos por tener ya un hotel.
   const baseSlug = slugInput || generarSlug(nombre);
   let slug = baseSlug;
   let intento = 0;

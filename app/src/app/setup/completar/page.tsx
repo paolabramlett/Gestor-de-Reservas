@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { stripe } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
 import { RolUsuario, PlanRoomly } from "@prisma/client";
+import { ulid } from "ulid";
 
 function generarSlug(nombre: string): string {
   return nombre
@@ -44,11 +45,17 @@ export default async function SetupCompletarPage({
     redirect("/setup");
   }
 
-  // Idempotency: if hotel already exists for this user, go to panel
-  const yaExiste = await prisma.usuarioPropiedad.findFirst({
-    where: { clerkUserId: userId },
-  });
-  if (yaExiste) redirect("/panel");
+  // Idempotencia: si ESTA suscripción de Stripe ya generó un hotel (doble
+  // pestaña, recarga del success_url), no crear uno duplicado. Ojo: no
+  // basta con "el usuario ya tiene algún hotel" — un usuario puede tener
+  // varios, cada uno con su propia suscripción.
+  const stripeSubscriptionId = session.subscription as string | null;
+  if (stripeSubscriptionId) {
+    const propiedadDeEstaSesion = await prisma.propiedad.findFirst({
+      where: { stripeSubscriptionId },
+    });
+    if (propiedadDeEstaSesion) redirect("/panel");
+  }
 
   // Resolve slug uniqueness (in case it was taken since checkout started)
   const baseSlug = meta.hotelSlug || generarSlug(meta.hotelNombre ?? "hotel");
@@ -63,7 +70,11 @@ export default async function SetupCompletarPage({
     await prisma.$transaction(async (tx) => {
     const p = await tx.propiedad.create({
       data: {
-        clerkOrgId: userId,
+        // clerkOrgId no se usa para ninguna búsqueda hoy — solo debe ser
+        // único por hotel. Antes se guardaba el userId directo, lo cual
+        // rompía la creación de un segundo hotel del mismo usuario
+        // (violaba el @unique en cuanto se repetía el mismo userId).
+        clerkOrgId: `${userId}-${ulid()}`,
         slug,
         nombre: meta.hotelNombre ?? "Mi Hotel",
         telefono: meta.hotelTelefono || null,
