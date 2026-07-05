@@ -36,6 +36,13 @@ export async function cambiarHotelActivoAction(formData: FormData) {
   redirect("/panel");
 }
 
+// Se llama al cerrar sesión, para no dejar la selección de hotel colgada
+// en el navegador de un dispositivo que alguien más pueda usar después.
+export async function limpiarHotelActivoAction() {
+  const cookieStore = await cookies();
+  cookieStore.delete(COOKIE_HOTEL_ACTIVO);
+}
+
 export async function marcarLateCheckInDashboardAction(formData: FormData) {
   const usuario = await getCurrentUsuario();
   if (!usuario) redirect("/sign-in");

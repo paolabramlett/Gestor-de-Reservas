@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useClerk } from "@clerk/nextjs";
+import { limpiarHotelActivoAction } from "./panel/actions";
 
 type NavItem = { href: string; label: string };
 type Hotel = { id: string; nombre: string };
@@ -102,6 +103,7 @@ export function Sidebar({
   const { signOut } = useClerk();
 
   async function handleSignOut() {
+    await limpiarHotelActivoAction();
     await signOut();
     router.push("/");
   }
