@@ -170,7 +170,7 @@ export function ReservasTableClient({
                     className="rounded border-gray-300"
                   />
                 </th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Código</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600 min-w-[130px]">Código</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Huésped</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Tipo</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Habitación</th>
@@ -206,7 +206,7 @@ export function ReservasTableClient({
                       className="rounded border-gray-300"
                     />
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 whitespace-nowrap">
                     <Link href={`/panel/reservas/${r.id}`} className="font-mono text-blue-600 hover:underline">
                       {r.codigoReserva}
                     </Link>
@@ -214,7 +214,7 @@ export function ReservasTableClient({
                       <span className="ml-1 text-xs text-gray-400">online</span>
                     )}
                     {r.grupoCodigo && (
-                      <div className="mt-0.5">
+                      <div className="mt-1">
                         <span className="font-mono text-xs bg-indigo-50 text-indigo-600 border border-indigo-200 rounded px-1.5 py-0.5">
                           {r.grupoCodigo}
                         </span>

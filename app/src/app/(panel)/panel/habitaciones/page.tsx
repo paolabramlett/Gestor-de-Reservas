@@ -24,7 +24,8 @@ export default async function HabitacionesPage() {
       </div>
 
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[600px]">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Número</th>
@@ -61,6 +62,7 @@ export default async function HabitacionesPage() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

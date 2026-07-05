@@ -25,7 +25,7 @@ export function HorariosForm({
       </p>
 
       <form action={actualizarHorariosAction} className="space-y-5">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs text-gray-500 mb-1">Hora de check-in</label>
             <input
@@ -53,7 +53,7 @@ export function HorariosForm({
             Avisos de check-in tardío
           </p>
 
-          <div className="grid grid-cols-2 gap-4 mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
             <div>
               <label className="block text-xs text-gray-500 mb-1">
                 Horas tras la hora de check-in para sugerir "Late Check-in"

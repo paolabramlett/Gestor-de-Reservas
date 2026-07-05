@@ -42,7 +42,7 @@ export default async function BloqueosPage() {
     <div className="p-8 max-w-4xl">
       <h1 className="text-xl font-semibold text-gray-900 mb-8">Bloqueos</h1>
 
-      <div className="grid grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
         {/* ── Columna izquierda: Bloqueos por habitación (5.5) ── */}
         <div>
           <h2 className="text-sm font-semibold text-gray-700 mb-3">Por habitación</h2>

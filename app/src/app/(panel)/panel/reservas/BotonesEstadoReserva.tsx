@@ -168,7 +168,7 @@ function CheckInDialog({
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Documento</label>
                   <select
@@ -191,7 +191,7 @@ function CheckInDialog({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Nacionalidad</label>
                   <input

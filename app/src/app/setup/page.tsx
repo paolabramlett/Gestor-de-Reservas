@@ -49,7 +49,7 @@ export default async function SetupPage({
         <p className="text-center text-xs text-gray-400 mt-6">
           ¿Necesitas ayuda?{" "}
           <a
-            href="mailto:paolabramlett@gmail.com"
+            href="mailto:contacto.roomly@gmail.com"
             className="text-gray-600 hover:text-gray-900 underline"
           >
             Escríbenos

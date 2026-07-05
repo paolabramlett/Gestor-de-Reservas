@@ -103,8 +103,8 @@ export function AgregarHabitacionPanel({
           <form action={agregarHabitacionAlGrupoAction} className="space-y-4">
             <input type="hidden" name="grupoId" value={grupoId} />
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="sm:col-span-2">
                 <label className="block text-xs font-medium text-gray-600 mb-1">Tipo de habitación</label>
                 <select
                   name="tipoDeHabitacionId"
@@ -149,7 +149,7 @@ export function AgregarHabitacionPanel({
               <input name="nombre" required defaultValue={nombreContacto} placeholder="Nombre completo"
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Correo</label>
                 <input name="email" type="email" required defaultValue={emailContacto}

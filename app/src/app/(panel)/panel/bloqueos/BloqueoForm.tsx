@@ -24,7 +24,7 @@ export function BloqueoHabitacionForm({
           ))}
         </select>
       </div>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <div>
           <label className="block text-xs text-gray-600 mb-1">Inicio</label>
           <DatePicker name="fechaInicio" defaultValue={hoy} required />
@@ -63,7 +63,7 @@ export function BloqueoTipoForm({
           ))}
         </select>
       </div>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <div>
           <label className="block text-xs text-gray-600 mb-1">Inicio</label>
           <DatePicker name="fechaInicio" defaultValue={hoy} required />

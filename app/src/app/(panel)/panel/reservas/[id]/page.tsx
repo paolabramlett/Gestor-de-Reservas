@@ -250,7 +250,7 @@ export default async function ReservaDetallePage({
           <input type="hidden" name="reservaId" value={reserva.id} />
           <h2 className="text-sm font-semibold text-gray-700 mb-4">Datos de la reserva</h2>
 
-          <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-sm mb-4">
             {/* Tipo de habitación */}
             <div>
               <label className="block text-xs text-gray-500 mb-1">Tipo de habitación</label>
@@ -406,7 +406,7 @@ export default async function ReservaDetallePage({
           </button>
         </form>
       ) : (
-        <div className="grid grid-cols-2 gap-6 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
           {/* Detalles (solo lectura) */}
           <div className="bg-white rounded-lg border border-gray-200 p-5">
             <h2 className="text-sm font-semibold text-gray-700 mb-3">Reserva</h2>

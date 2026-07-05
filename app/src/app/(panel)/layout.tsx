@@ -68,7 +68,7 @@ export default async function PanelLayout({
             están guardados de forma segura — reactiva tu plan para continuar.
           </p>
           <a
-            href="mailto:paolabramlett@gmail.com?subject=Reactivar%20suscripci%C3%B3n%20Roomly"
+            href="mailto:contacto.roomly@gmail.com?subject=Reactivar%20suscripci%C3%B3n%20Roomly"
             className="inline-flex rounded-lg bg-gray-900 text-white px-5 py-2.5 text-sm font-semibold hover:bg-gray-700"
           >
             Reactivar mi suscripción

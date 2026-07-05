@@ -200,8 +200,8 @@ export function NuevoGrupoForm({
 
             <div className="p-5 space-y-4">
               {/* Tipo + personas */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2 sm:col-span-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Tipo de habitación</label>
                   <select
                     value={h.tipoDeHabitacionId}
@@ -226,7 +226,7 @@ export function NuevoGrupoForm({
               </div>
 
               {/* Fechas */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Check-in</label>
                   <input
