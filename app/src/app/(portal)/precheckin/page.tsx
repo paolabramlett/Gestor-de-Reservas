@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type Registro = {
   documentoTipo: string | null;
@@ -40,8 +40,7 @@ export default function PreCheckInPage() {
   const [placasVehiculo, setPlacasVehiculo] = useState("");
   const [politicasAceptadas, setPoliticasAceptadas] = useState(false);
 
-  async function buscar(e: React.FormEvent) {
-    e.preventDefault();
+  async function buscarConDatos(codigoBuscar: string, emailBuscar: string) {
     setCargando(true);
     setError(null);
     setInfo(null);
@@ -49,7 +48,7 @@ export default function PreCheckInPage() {
     const res = await fetch("/api/reservas/precheckin/buscar", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ codigo, email }),
+      body: JSON.stringify({ codigo: codigoBuscar, email: emailBuscar }),
     });
     const data = await res.json();
 
@@ -65,6 +64,25 @@ export default function PreCheckInPage() {
     }
     setCargando(false);
   }
+
+  async function buscar(e: React.FormEvent) {
+    e.preventDefault();
+    await buscarConDatos(codigo, email);
+  }
+
+  // Si llega desde el link del correo de confirmación (?codigo=&email=),
+  // precarga los datos y busca directo — el huésped no vuelve a teclear nada.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const codigoUrl = params.get("codigo");
+    const emailUrl = params.get("email");
+    if (codigoUrl && emailUrl) {
+      setCodigo(codigoUrl);
+      setEmail(emailUrl);
+      buscarConDatos(codigoUrl, emailUrl);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function guardar(e: React.FormEvent) {
     e.preventDefault();

@@ -17,6 +17,11 @@ function fmtFecha(d: Date) {
   return new Date(d).toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" });
 }
 
+function linkPreCheckin(codigoReserva: string, emailHuesped: string): string {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  return `${appUrl}/precheckin?codigo=${encodeURIComponent(codigoReserva)}&email=${encodeURIComponent(emailHuesped)}`;
+}
+
 export async function enviarConfirmacion(params: {
   emailHuesped: string;
   codigoReserva: string;
@@ -40,6 +45,7 @@ export async function enviarConfirmacion(params: {
       numPersonas: params.numPersonas,
       totalMxn: params.totalMxn.toLocaleString("es-MX"),
       colorPrimario: params.colorPrimario,
+      linkPreCheckin: linkPreCheckin(params.codigoReserva, params.emailHuesped),
     })
   );
 

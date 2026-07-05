@@ -1,4 +1,5 @@
 import { Body } from "@react-email/body";
+import { Button } from "@react-email/button";
 import { Container } from "@react-email/container";
 import { Head } from "@react-email/head";
 import { Heading } from "@react-email/heading";
@@ -18,6 +19,7 @@ export type ConfirmacionReservaProps = {
   numPersonas: number;
   totalMxn: string;
   colorPrimario?: string;
+  linkPreCheckin?: string;
 };
 
 export default function ConfirmacionReserva({
@@ -30,6 +32,7 @@ export default function ConfirmacionReserva({
   numPersonas,
   totalMxn,
   colorPrimario = "#111827",
+  linkPreCheckin,
 }: ConfirmacionReservaProps) {
   return (
     <Html>
@@ -91,6 +94,28 @@ export default function ConfirmacionReserva({
                 </tr>
               </tbody>
             </table>
+            {linkPreCheckin && (
+              <Section style={{ textAlign: "center" as const, marginTop: 28 }}>
+                <Text style={{ fontSize: 13, color: "#6b7280", marginBottom: 12 }}>
+                  Ahorra tiempo en tu llegada: completa tu registro antes de tu check-in.
+                </Text>
+                <Button
+                  href={linkPreCheckin}
+                  style={{
+                    backgroundColor: colorPrimario,
+                    color: "#fff",
+                    borderRadius: 8,
+                    padding: "12px 28px",
+                    fontSize: 14,
+                    fontWeight: "bold",
+                    textDecoration: "none",
+                    display: "inline-block",
+                  }}
+                >
+                  Completar pre-check-in
+                </Button>
+              </Section>
+            )}
           </Section>
 
           <Text style={{ fontSize: 12, color: "#9ca3af", textAlign: "center" as const, marginTop: 24 }}>
