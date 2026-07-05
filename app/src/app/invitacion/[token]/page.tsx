@@ -116,9 +116,15 @@ export default async function InvitacionPage({
   });
 
   if (!yaEsMiembro) {
-    await prisma.usuarioPropiedad.create({
-      data: { clerkUserId: userId, propiedadId: invitacion.propiedadId, rol: invitacion.rol },
-    });
+    try {
+      await prisma.usuarioPropiedad.create({
+        data: { clerkUserId: userId, propiedadId: invitacion.propiedadId, rol: invitacion.rol },
+      });
+    } catch (err: unknown) {
+      // P2002: la membresía ya se creó en una request en paralelo (doble
+      // clic, o el navegador reintentando la navegación) — no es un error.
+      if ((err as { code?: string })?.code !== "P2002") throw err;
+    }
   }
 
   if (!invitacion.aceptadaEn) {

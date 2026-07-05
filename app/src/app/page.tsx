@@ -580,8 +580,8 @@ export default function LandingPage() {
         <Image src="/roomly-logo.png" alt="Roomly" width={110} height={28} style={{objectFit:"contain",filter:"brightness(0) invert(1)"}} />
         <span style={{fontSize:"0.78rem",color:"#94a3b8"}}>© 2025 Roomly · Hecho en México</span>
         <div style={{display:"flex",gap:20}}>
-          <a href="#" style={{fontSize:"0.78rem",color:"#94a3b8"}}>Privacidad</a>
-          <a href="#" style={{fontSize:"0.78rem",color:"#94a3b8"}}>Términos</a>
+          <Link href="/privacidad" style={{fontSize:"0.78rem",color:"#94a3b8"}}>Privacidad</Link>
+          <Link href="/terminos" style={{fontSize:"0.78rem",color:"#94a3b8"}}>Términos</Link>
           <Link href={SIGN_IN_URL} style={{fontSize:"0.78rem",color:"#94a3b8"}}>Iniciar sesión</Link>
         </div>
       </footer>

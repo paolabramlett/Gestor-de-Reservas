@@ -9,9 +9,14 @@ export async function getCurrentUsuario() {
   const { userId, orgId } = await auth();
   if (!userId) return null;
 
+  // orderBy creadoEn desc: si el usuario pertenece a más de un hotel (ej.
+  // aceptó una invitación a un segundo hotel), prioriza la membresía más
+  // reciente en vez de una arbitraria — así después de aceptar una
+  // invitación aterriza en el hotel al que se acaba de unir, no en el viejo.
   const usuario = await prisma.usuarioPropiedad.findFirst({
     where: { clerkUserId: userId },
     include: { propiedad: true },
+    orderBy: { creadoEn: "desc" },
   });
 
   return usuario;
@@ -28,6 +33,7 @@ export async function getCurrentPropiedad(propiedadId?: string) {
   const usuario = await prisma.usuarioPropiedad.findFirst({
     where,
     include: { propiedad: true },
+    orderBy: { creadoEn: "desc" },
   });
 
   return usuario?.propiedad ?? null;

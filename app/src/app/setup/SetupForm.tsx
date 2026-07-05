@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import { iniciarCheckoutAction } from "./actions";
 
 function slugify(s: string) {
@@ -232,6 +233,12 @@ export function SetupForm({
 
       <p className="text-center text-xs text-gray-400">
         🔒 Pago seguro procesado por Stripe. Cancela cuando quieras.
+      </p>
+      <p className="text-center text-xs text-gray-400">
+        Al continuar aceptas los{" "}
+        <Link href="/terminos" target="_blank" className="underline hover:text-gray-600">Términos de Servicio</Link>
+        {" "}y el{" "}
+        <Link href="/privacidad" target="_blank" className="underline hover:text-gray-600">Aviso de Privacidad</Link>.
       </p>
     </form>
   );
