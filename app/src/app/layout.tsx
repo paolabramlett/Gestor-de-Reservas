@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
 import "./globals.css";
 import { PwaRegister } from "./PwaRegister";
+import { AbrirEnNavegadorBanner } from "./AbrirEnNavegadorBanner";
 
 const geist = Geist({
   variable: "--font-geist",
@@ -140,6 +141,7 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-full flex flex-col">
+        <AbrirEnNavegadorBanner />
         {children}
         <PwaRegister />
       </body>
