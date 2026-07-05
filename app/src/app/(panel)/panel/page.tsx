@@ -6,13 +6,15 @@ import type { TipoDeHabitacion, Temporada } from "@prisma/client";
 import { OnboardingChecklist } from "@/components/OnboardingChecklist";
 import { AlertasCheckIn, type ReservaConAlerta } from "./AlertasCheckIn";
 import { calcularEtapaAlerta } from "@/lib/negocio/alertasCheckIn";
+import { hoyEnMexico } from "@/lib/negocio/horaMexico";
 
 export default async function PanelPage() {
   const usuario = await getCurrentUsuario();
   if (!usuario) redirect("/sign-in");
 
-  const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0);
+  // Los servidores corren en UTC; usamos "hoy" en hora de México, no la del
+  // servidor, para que las llegadas/salidas del día se clasifiquen bien.
+  const hoy = hoyEnMexico();
   const manana = new Date(hoy);
   manana.setDate(manana.getDate() + 1);
   const en7dias = new Date(hoy);

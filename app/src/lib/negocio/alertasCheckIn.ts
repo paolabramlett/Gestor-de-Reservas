@@ -1,14 +1,14 @@
+import { horaMexicoAUtc } from "./horaMexico";
+
 export type EtapaAlertaCheckIn = "SIN_LLEGAR" | "SUGERIR_LATE_CHECKIN" | "SUGERIR_NO_SHOW";
 
 /**
- * Combina la fecha de una reserva con la hora de check-in del hotel ("HH:mm")
- * para obtener el datetime exacto en el que se esperaba al huésped.
+ * Combina la fecha de una reserva con la hora de check-in del hotel ("HH:mm",
+ * en hora de México) para obtener el instante UTC exacto en el que se
+ * esperaba al huésped.
  */
 export function horaCheckInEsperada(fechaIngreso: Date, horaCheckIn: string): Date {
-  const [horas, minutos] = horaCheckIn.split(":").map(Number);
-  const fecha = new Date(fechaIngreso);
-  fecha.setUTCHours(horas, minutos, 0, 0);
-  return fecha;
+  return horaMexicoAUtc(fechaIngreso, horaCheckIn);
 }
 
 /**
