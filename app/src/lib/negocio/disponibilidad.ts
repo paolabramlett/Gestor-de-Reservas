@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { EstadoReserva } from "@prisma/client";
+import { EstadoReserva, Prisma } from "@prisma/client";
 
 export type ResultadoDisponibilidad = {
   tipoDeHabitacionId: string;
@@ -109,6 +109,40 @@ export async function buscarDisponibilidad(
   }
 
   return resultados;
+}
+
+// Verifica que una habitación física específica esté libre en el rango de
+// fechas dado (sin otra reserva activa asignada ni bloqueo). excludeReservaId
+// permite re-asignar la misma reserva a otra habitación sin que choque con
+// su propia asignación anterior.
+export async function verificarHabitacionLibre(
+  habitacionId: string,
+  fechaIngreso: Date,
+  fechaSalida: Date,
+  excludeReservaId?: string,
+  client: Prisma.TransactionClient | typeof prisma = prisma
+): Promise<boolean> {
+  const estadosOcupados: EstadoReserva[] = [EstadoReserva.CONFIRMADA, EstadoReserva.EN_CURSO];
+
+  const reservaSolapada = await client.reserva.findFirst({
+    where: {
+      asignacion: { habitacionId },
+      estado: { in: estadosOcupados },
+      fechaIngreso: { lt: fechaSalida },
+      fechaSalida: { gt: fechaIngreso },
+      ...(excludeReservaId ? { id: { not: excludeReservaId } } : {}),
+    },
+  });
+  if (reservaSolapada) return false;
+
+  const bloqueoSolapado = await client.bloqueoDeHabitacion.findFirst({
+    where: {
+      habitacionId,
+      fechaInicio: { lt: fechaSalida },
+      fechaFin: { gt: fechaIngreso },
+    },
+  });
+  return !bloqueoSolapado;
 }
 
 export async function verificarDisponibilidadAtómica(

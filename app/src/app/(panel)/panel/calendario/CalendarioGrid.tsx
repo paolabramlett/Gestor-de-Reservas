@@ -113,10 +113,12 @@ function getBlockPos(
 }
 
 function getBlockColor(reserva: ReservaData): string {
+  // El estado "en curso" (ya hizo check-in) siempre gana sobre cualquier otro
+  // color — es la señal más importante para recepción en el calendario.
+  if (reserva.estado === "EN_CURSO") return "#2563eb";
   if (reserva.tipoEspecial === "CORTESIA") return "#9333ea";
   if (reserva.tipoEspecial === "PRECIO_ACORDADO") return "#0891b2";
   if (reserva.tipoEspecial === "PROMOCION") return "#db2777";
-  if (reserva.estado === "EN_CURSO") return "#2563eb";
   if (reserva.origen === "ONLINE") return "#16a34a";
   const pago = reserva.pagoManual?.estadoDePago;
   if (pago === "PAGADO_COMPLETO") return "#16a34a";

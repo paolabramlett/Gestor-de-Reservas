@@ -6,7 +6,7 @@ import { crearReservaManual, crearReservaConLinkDePago } from "@/lib/negocio/res
 import { EstadoDePago, EstadoReserva, TipoEspecialReserva } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { calcularTotalReserva } from "@/lib/negocio/tarifas";
-import { verificarDisponibilidadAtómica } from "@/lib/negocio/disponibilidad";
+import { verificarDisponibilidadAtómica, verificarHabitacionLibre } from "@/lib/negocio/disponibilidad";
 import { stripe } from "@/lib/stripe";
 import { enviarSolicitudPago } from "@/lib/emails";
 
@@ -118,11 +118,31 @@ export async function asignarHabitacionAction(formData: FormData) {
   });
   if (!reserva) throw new Error("Reserva no encontrada");
 
-  await prisma.asignacionDeHabitacion.upsert({
-    where: { reservaId },
-    update: { habitacionId },
-    create: { reservaId, habitacionId },
+  let conflicto = false;
+  await prisma.$transaction(async (tx) => {
+    const libre = await verificarHabitacionLibre(
+      habitacionId,
+      reserva.fechaIngreso,
+      reserva.fechaSalida,
+      reservaId,
+      tx
+    );
+    if (!libre) {
+      conflicto = true;
+      return;
+    }
+    await tx.asignacionDeHabitacion.upsert({
+      where: { reservaId },
+      update: { habitacionId },
+      create: { reservaId, habitacionId },
+    });
   });
+
+  if (conflicto) {
+    redirect(
+      `/panel/reservas/${reservaId}?error=${encodeURIComponent("Esa habitación ya está ocupada o bloqueada en esas fechas")}`
+    );
+  }
 
   redirect(`/panel/reservas/${reservaId}?success=${encodeURIComponent("Habitación asignada")}`);
 }
