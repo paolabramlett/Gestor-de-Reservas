@@ -1,39 +1,65 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { prisma } from "./prisma";
 import { RolUsuario } from "@prisma/client";
 
 export type { RolUsuario };
 
+export const COOKIE_HOTEL_ACTIVO = "roomly_propiedad_id";
+
+// Si el usuario pertenece a más de un hotel, respeta cuál eligió con el
+// selector (cookie). Si no hay cookie o ya no aplica (ej. lo quitaron de ese
+// hotel), cae de vuelta a la membresía más reciente en vez de una arbitraria.
 export async function getCurrentUsuario() {
-  const { userId, orgId } = await auth();
+  const { userId } = await auth();
   if (!userId) return null;
 
-  // orderBy creadoEn desc: si el usuario pertenece a más de un hotel (ej.
-  // aceptó una invitación a un segundo hotel), prioriza la membresía más
-  // reciente en vez de una arbitraria — así después de aceptar una
-  // invitación aterriza en el hotel al que se acaba de unir, no en el viejo.
-  const usuario = await prisma.usuarioPropiedad.findFirst({
+  const membresias = await prisma.usuarioPropiedad.findMany({
     where: { clerkUserId: userId },
     include: { propiedad: true },
     orderBy: { creadoEn: "desc" },
   });
+  if (membresias.length === 0) return null;
 
-  return usuario;
+  const cookieStore = await cookies();
+  const propiedadElegida = cookieStore.get(COOKIE_HOTEL_ACTIVO)?.value;
+
+  const seleccionada = propiedadElegida
+    ? membresias.find((m) => m.propiedadId === propiedadElegida)
+    : undefined;
+
+  return seleccionada ?? membresias[0];
+}
+
+// Todos los hoteles a los que pertenece el usuario actual — para el
+// selector de hotel en el Sidebar. Vacío o [] si solo pertenece a uno.
+export async function getMisHoteles() {
+  const { userId } = await auth();
+  if (!userId) return [];
+
+  return prisma.usuarioPropiedad.findMany({
+    where: { clerkUserId: userId },
+    include: { propiedad: { select: { id: true, nombre: true } } },
+    orderBy: { creadoEn: "desc" },
+  });
 }
 
 export async function getCurrentPropiedad(propiedadId?: string) {
+  // Sin propiedadId explícito: usar la misma resolución que getCurrentUsuario
+  // (respeta el selector de hotel) en vez de una consulta separada que
+  // ignoraría cuál hotel tiene activo el usuario.
+  if (!propiedadId) {
+    const usuario = await getCurrentUsuario();
+    return usuario?.propiedad ?? null;
+  }
+
   const { userId } = await auth();
   if (!userId) return null;
 
-  const where = propiedadId
-    ? { clerkUserId: userId, propiedadId }
-    : { clerkUserId: userId };
-
   const usuario = await prisma.usuarioPropiedad.findFirst({
-    where,
+    where: { clerkUserId: userId, propiedadId },
     include: { propiedad: true },
-    orderBy: { creadoEn: "desc" },
   });
 
   return usuario?.propiedad ?? null;

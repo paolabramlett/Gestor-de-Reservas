@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
-import { getCurrentUsuario } from "@/lib/auth";
+import { getCurrentUsuario, getMisHoteles } from "@/lib/auth";
 import { RolUsuario } from "@prisma/client";
 import { SuccessToast } from "@/components/SuccessToast";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Sidebar } from "./Sidebar";
+import { cambiarHotelActivoAction } from "./panel/actions";
 
 // Rutas restringidas por rol:
 // - Configuración y tipos/habitaciones/temporadas: solo ADMIN y SUPER_ADMIN
@@ -84,6 +85,9 @@ export default async function PanelLayout({
     (item) => item.roles === null || item.roles.includes(rol)
   );
 
+  const misHoteles = await getMisHoteles();
+  const hoteles = misHoteles.map((m) => ({ id: m.propiedadId, nombre: m.propiedad.nombre }));
+
   return (
     <ClerkProvider>
     <div className="min-h-screen flex bg-gray-50">
@@ -91,6 +95,9 @@ export default async function PanelLayout({
         nombre={usuario.propiedad.nombre}
         rolLabel={ROL_LABEL[rol]}
         nav={navVisible}
+        hoteles={hoteles}
+        hotelActivoId={usuario.propiedadId}
+        cambiarHotelActivoAction={cambiarHotelActivoAction}
       />
       <main className="flex-1 min-w-0 overflow-auto pt-14 md:pt-0">
         <RolGuard rol={rol} rutasAdmin={RUTAS_ADMIN} rutasFinanzas={RUTAS_FINANZAS}>
