@@ -19,3 +19,7 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", () => {
   // Intencionalmente vacío — sin respondWith, sin caché.
 });
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
+});
