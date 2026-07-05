@@ -92,7 +92,7 @@ export default async function PanelLayout({
         rolLabel={ROL_LABEL[rol]}
         nav={navVisible}
       />
-      <main className="flex-1 overflow-auto pt-14 md:pt-0">
+      <main className="flex-1 min-w-0 overflow-auto pt-14 md:pt-0">
         <RolGuard rol={rol} rutasAdmin={RUTAS_ADMIN} rutasFinanzas={RUTAS_FINANZAS}>
           {children}
         </RolGuard>

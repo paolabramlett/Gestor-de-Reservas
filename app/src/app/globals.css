@@ -19,6 +19,14 @@
   }
 }
 
+html, body {
+  /* Resguardo: evita que contenido interno más ancho que la pantalla
+     (tablas, elementos flex sin min-w-0) empuje toda la página hacia los
+     lados. El scroll horizontal de contenido específico sigue funcionando
+     porque cada contenedor lo maneja con su propio overflow-x-auto. */
+  overflow-x: hidden;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
