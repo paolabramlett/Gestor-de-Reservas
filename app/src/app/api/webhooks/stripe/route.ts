@@ -361,6 +361,18 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Cuenta de Stripe Connect de un hotel cambió de estado (ej. terminó su
+  // onboarding, o Stripe le pidió más información y quedó deshabilitada).
+  // Fuente de verdad principal para stripeConnectHabilitado — el redirect
+  // de /api/stripe-connect/return solo da feedback inmediato en pantalla.
+  if (event.type === "account.updated") {
+    const account = event.data.object as Stripe.Account;
+    await prisma.propiedad.updateMany({
+      where: { stripeConnectAccountId: account.id },
+      data: { stripeConnectHabilitado: !!account.charges_enabled },
+    });
+  }
+
   // Suscripción cancelada → marcar hotel como inactivo
   if (event.type === "customer.subscription.deleted") {
     const subscription = event.data.object as Stripe.Subscription;

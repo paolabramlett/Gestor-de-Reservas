@@ -4,6 +4,7 @@ import { stripe } from "@/lib/stripe";
 import { calcularTotalReserva } from "@/lib/negocio/tarifas";
 import { verificarDisponibilidadAtómica } from "@/lib/negocio/disponibilidad";
 import { getPropiedadBySlug } from "@/lib/auth";
+import { datosPagoDestino, esErrorConnectPendiente, mensajeErrorConnect } from "@/lib/stripeConnect";
 import { z } from "zod";
 
 const bodySchema = z.object({
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest) {
   if (!propiedad) {
     return NextResponse.json({ error: "Propiedad no encontrada" }, { status: 404 });
   }
-  if (!propiedad.suscripcionActiva) {
+  if (!propiedad.suscripcionActiva || propiedad.planActivo !== "PRO") {
     return NextResponse.json({ error: "Este hotel no acepta reservas en línea en este momento" }, { status: 403 });
   }
 
@@ -58,20 +59,27 @@ export async function POST(req: NextRequest) {
     data.numPersonas
   );
 
-  const intent = await stripe.paymentIntents.create({
-    amount: Math.round(total * 100), // centavos
-    currency: "mxn",
-    metadata: {
-      propiedadId: propiedad.id,
-      tipoDeHabitacionId: data.tipoDeHabitacionId,
-      nombre: data.nombre,
-      email: data.email,
-      telefono: data.telefono ?? "",
-      fechaIngreso: data.fechaIngreso,
-      fechaSalida: data.fechaSalida,
-      numPersonas: String(data.numPersonas),
-    },
-  });
+  let intent;
+  try {
+    intent = await stripe.paymentIntents.create({
+      amount: Math.round(total * 100), // centavos
+      currency: "mxn",
+      ...datosPagoDestino(propiedad, total),
+      metadata: {
+        propiedadId: propiedad.id,
+        tipoDeHabitacionId: data.tipoDeHabitacionId,
+        nombre: data.nombre,
+        email: data.email,
+        telefono: data.telefono ?? "",
+        fechaIngreso: data.fechaIngreso,
+        fechaSalida: data.fechaSalida,
+        numPersonas: String(data.numPersonas),
+      },
+    });
+  } catch (err) {
+    const status = esErrorConnectPendiente(err) ? 409 : 500;
+    return NextResponse.json({ error: mensajeErrorConnect(err) }, { status });
+  }
 
   return NextResponse.json({ clientSecret: intent.client_secret });
 }

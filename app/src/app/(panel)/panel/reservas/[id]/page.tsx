@@ -508,7 +508,7 @@ export default async function ReservaDetallePage({
         <div className="bg-white rounded-lg border border-gray-200 p-5 mb-6">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-gray-700">Pago y notas</h2>
-            {usuario.propiedad.planActivo === "PRO" && reserva.tipoEspecial !== "CORTESIA" && reserva.pagoManual?.estadoDePago !== "PAGADO_COMPLETO" && (
+            {usuario.propiedad.planActivo === "PRO" && usuario.propiedad.stripeConnectHabilitado && reserva.tipoEspecial !== "CORTESIA" && reserva.pagoManual?.estadoDePago !== "PAGADO_COMPLETO" && (
               <SolicitarPagoButton
                 reservaId={reserva.id}
                 totalMxn={Number(reserva.totalMxn)}
@@ -522,6 +522,12 @@ export default async function ReservaDetallePage({
               />
             )}
           </div>
+
+          {usuario.propiedad.planActivo === "PRO" && !usuario.propiedad.stripeConnectHabilitado && (
+            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+              Conecta tu cuenta de Stripe en Configuración → Pagos para poder solicitar pagos con tarjeta.
+            </p>
+          )}
 
           {estado === "PENDIENTE_PAGO" ? (
             <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">

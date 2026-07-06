@@ -9,6 +9,7 @@ import { ulid } from "ulid";
 import { stripe } from "@/lib/stripe";
 import { enviarSolicitudPago } from "@/lib/emails";
 import { headers } from "next/headers";
+import { datosPagoDestino, mensajeErrorConnect } from "@/lib/stripeConnect";
 
 function generarCodigoGrupo(): string {
   const id = ulid();
@@ -318,34 +319,40 @@ export async function solicitarPagoGrupoAction(formData: FormData) {
 
   const expiraEn = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-  const session = await stripe.checkout.sessions.create({
-    mode: "payment",
-    payment_method_types: ["card"],
-    line_items: [
-      {
-        quantity: 1,
-        price_data: {
-          currency: "mxn",
-          unit_amount: Math.round(monto * 100),
-          product_data: {
-            name: esPagoCompleto
-              ? `Pago completo — ${grupo.nombre}`
-              : `Anticipo — ${grupo.nombre}`,
-            description: `${grupo.codigoGrupo} · ${grupo.reservas.length} habitaciones · ${grupo.propiedad.nombre}`,
+  let session;
+  try {
+    session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      payment_method_types: ["card"],
+      line_items: [
+        {
+          quantity: 1,
+          price_data: {
+            currency: "mxn",
+            unit_amount: Math.round(monto * 100),
+            product_data: {
+              name: esPagoCompleto
+                ? `Pago completo — ${grupo.nombre}`
+                : `Anticipo — ${grupo.nombre}`,
+              description: `${grupo.codigoGrupo} · ${grupo.reservas.length} habitaciones · ${grupo.propiedad.nombre}`,
+            },
           },
         },
+      ],
+      customer_email: contacto.email,
+      payment_intent_data: datosPagoDestino(grupo.propiedad, monto),
+      metadata: {
+        tipo: "GRUPO_PAGO",
+        grupoId: grupo.id,
+        esPagoCompleto: esPagoCompleto ? "true" : "false",
       },
-    ],
-    customer_email: contacto.email,
-    metadata: {
-      tipo: "GRUPO_PAGO",
-      grupoId: grupo.id,
-      esPagoCompleto: esPagoCompleto ? "true" : "false",
-    },
-    expires_at: Math.floor(expiraEn.getTime() / 1000),
-    success_url: `${baseUrl}/p/${grupo.propiedad.slug}/pago-grupo-recibido`,
-    cancel_url: `${baseUrl}/p/${grupo.propiedad.slug}`,
-  });
+      expires_at: Math.floor(expiraEn.getTime() / 1000),
+      success_url: `${baseUrl}/p/${grupo.propiedad.slug}/pago-grupo-recibido`,
+      cancel_url: `${baseUrl}/p/${grupo.propiedad.slug}`,
+    });
+  } catch (err) {
+    redirect(`/panel/grupos/${grupoId}?error=${encodeURIComponent(mensajeErrorConnect(err))}`);
+  }
 
   enviarSolicitudPago({
     emailHuesped: contacto.email,

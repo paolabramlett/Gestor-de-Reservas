@@ -278,3 +278,64 @@ export async function quitarUsuarioAction(formData: FormData) {
   await prisma.usuarioPropiedad.delete({ where: { id: objetivo.id } });
   redirect("/panel/configuracion?usuarioEliminado=1");
 }
+
+// ── Stripe Connect (pagos de huéspedes directo a la cuenta del hotel) ───────
+
+function appUrl(): string {
+  return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+}
+
+// Crea (si no existe) la cuenta Express del hotel y genera el link de
+// onboarding alojado por Stripe. El hotel llena sus datos bancarios/fiscales
+// directamente con Stripe — Roomly nunca los recibe ni los almacena.
+export async function iniciarConexionStripeAction() {
+  const usuario = await requireAdmin();
+  const propiedad = await prisma.propiedad.findUniqueOrThrow({ where: { id: usuario.propiedadId } });
+
+  if (propiedad.planActivo !== "PRO") {
+    redirect("/panel/configuracion?tab=plan&error=" + encodeURIComponent("Necesitas el plan Pro para conectar pagos con tarjeta"));
+  }
+
+  let accountId = propiedad.stripeConnectAccountId;
+
+  if (!accountId) {
+    const account = await stripe.accounts.create({
+      type: "express",
+      country: "MX",
+      email: propiedad.email || undefined,
+      business_profile: { name: propiedad.nombre, product_description: "Hospedaje en hotel" },
+      capabilities: {
+        card_payments: { requested: true },
+        transfers: { requested: true },
+      },
+    });
+    accountId = account.id;
+    await prisma.propiedad.update({
+      where: { id: propiedad.id },
+      data: { stripeConnectAccountId: accountId },
+    });
+  }
+
+  const accountLink = await stripe.accountLinks.create({
+    account: accountId,
+    refresh_url: `${appUrl()}/api/stripe-connect/refresh?propiedadId=${propiedad.id}`,
+    return_url: `${appUrl()}/api/stripe-connect/return?propiedadId=${propiedad.id}`,
+    type: "account_onboarding",
+  });
+
+  redirect(accountLink.url);
+}
+
+// Link temporal al dashboard de Stripe del hotel — ahí ven sus propios
+// pagos y depósitos directamente, sin pasar por Roomly.
+export async function abrirDashboardStripeAction() {
+  const usuario = await requireAdmin();
+  const propiedad = await prisma.propiedad.findUniqueOrThrow({ where: { id: usuario.propiedadId } });
+
+  if (!propiedad.stripeConnectAccountId) {
+    redirect("/panel/configuracion?tab=pagos&error=" + encodeURIComponent("Aún no conectas tu cuenta de Stripe"));
+  }
+
+  const loginLink = await stripe.accounts.createLoginLink(propiedad.stripeConnectAccountId);
+  redirect(loginLink.url);
+}

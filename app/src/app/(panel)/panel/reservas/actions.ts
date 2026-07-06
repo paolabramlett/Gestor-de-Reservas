@@ -9,6 +9,7 @@ import { calcularTotalReserva } from "@/lib/negocio/tarifas";
 import { verificarDisponibilidadAtómica, verificarHabitacionLibre } from "@/lib/negocio/disponibilidad";
 import { stripe } from "@/lib/stripe";
 import { enviarSolicitudPago } from "@/lib/emails";
+import { datosPagoDestino, mensajeErrorConnect } from "@/lib/stripeConnect";
 
 export async function crearReservaManualAction(formData: FormData) {
   const usuario = await getCurrentUsuario();
@@ -81,22 +82,29 @@ export async function crearReservaConPagoAction(formData: FormData) {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ??
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
 
-  const reserva = await crearReservaConLinkDePago({
-    propiedadId: usuario.propiedadId,
-    tipoDeHabitacionId,
-    nombre,
-    email,
-    telefono,
-    fechaIngreso,
-    fechaSalida,
-    numPersonas,
-    notas,
-    tipoEspecial,
-    totalOverride,
-    montoCobrar,
-    esPagoCompleto,
-    baseUrl,
-  });
+  let reserva;
+  try {
+    reserva = await crearReservaConLinkDePago({
+      propiedadId: usuario.propiedadId,
+      tipoDeHabitacionId,
+      nombre,
+      email,
+      telefono,
+      fechaIngreso,
+      fechaSalida,
+      numPersonas,
+      notas,
+      tipoEspecial,
+      totalOverride,
+      montoCobrar,
+      esPagoCompleto,
+      baseUrl,
+    });
+  } catch (err) {
+    const msg = mensajeErrorConnect(err);
+    const volver = from === "calendario" ? "/panel/calendario" : "/panel/reservas/nueva";
+    redirect(`${volver}?error=${encodeURIComponent(msg)}`);
+  }
 
   if (from === "calendario") {
     const mes = fechaIngreso.getMonth() + 1;
@@ -360,32 +368,38 @@ export async function solicitarPagoAction(reservaId: string) {
   const montoCobrar = Number(reserva.totalMxn) - anticipoPagado;
   const expiraEn = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-  const session = await stripe.checkout.sessions.create({
-    mode: "payment",
-    payment_method_types: ["card"],
-    line_items: [
-      {
-        quantity: 1,
-        price_data: {
-          currency: "mxn",
-          unit_amount: Math.round(montoCobrar * 100),
-          product_data: {
-            name: `Reserva completa — ${reserva.tipoDeHabitacion.nombre}`,
-            description: `${reserva.codigoReserva} · ${reserva.propiedad.nombre}`,
+  let session;
+  try {
+    session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      payment_method_types: ["card"],
+      line_items: [
+        {
+          quantity: 1,
+          price_data: {
+            currency: "mxn",
+            unit_amount: Math.round(montoCobrar * 100),
+            product_data: {
+              name: `Reserva completa — ${reserva.tipoDeHabitacion.nombre}`,
+              description: `${reserva.codigoReserva} · ${reserva.propiedad.nombre}`,
+            },
           },
         },
+      ],
+      customer_email: reserva.huesped.email,
+      payment_intent_data: datosPagoDestino(reserva.propiedad, montoCobrar),
+      metadata: {
+        reservaId: reserva.id,
+        tipo: "MANUAL_PAGO",
+        esPagoCompleto: "true",
       },
-    ],
-    customer_email: reserva.huesped.email,
-    metadata: {
-      reservaId: reserva.id,
-      tipo: "MANUAL_PAGO",
-      esPagoCompleto: "true",
-    },
-    expires_at: Math.floor(expiraEn.getTime() / 1000),
-    success_url: `${baseUrl}/p/${reserva.propiedad.slug}/confirmacion?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${baseUrl}/p/${reserva.propiedad.slug}`,
-  });
+      expires_at: Math.floor(expiraEn.getTime() / 1000),
+      success_url: `${baseUrl}/p/${reserva.propiedad.slug}/confirmacion?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${baseUrl}/p/${reserva.propiedad.slug}`,
+    });
+  } catch (err) {
+    redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent(mensajeErrorConnect(err))}`);
+  }
 
   await prisma.reserva.update({
     where: { id: reserva.id },

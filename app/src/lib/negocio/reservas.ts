@@ -5,6 +5,7 @@ import { calcularTotalReserva } from "./tarifas";
 import { verificarDisponibilidadAtómica } from "./disponibilidad";
 import { enviarConfirmacion, enviarAlertaEquipo, enviarSolicitudPago } from "@/lib/emails";
 import { stripe } from "@/lib/stripe";
+import { datosPagoDestino, requerirCuentaConectada } from "@/lib/stripeConnect";
 
 export function generarCodigoReserva(): string {
   const id = ulid();
@@ -181,6 +182,15 @@ type CrearReservaConLinkInput = Omit<CrearReservaManualInput, "estadoDePago" | "
 };
 
 export async function crearReservaConLinkDePago(input: CrearReservaConLinkInput) {
+  // Validar Connect ANTES de crear la reserva — si el hotel no puede cobrar
+  // todavía, no tiene sentido dejar una reserva huérfana en PENDIENTE_PAGO
+  // que nunca se podrá pagar.
+  const propiedadConnect = await prisma.propiedad.findUniqueOrThrow({
+    where: { id: input.propiedadId },
+    select: { stripeConnectAccountId: true, stripeConnectHabilitado: true },
+  });
+  requerirCuentaConectada(propiedadConnect);
+
   const { total: totalCalculado, desglose } = await calcularTotalReserva(
     input.tipoDeHabitacionId,
     input.fechaIngreso,
@@ -254,6 +264,7 @@ export async function crearReservaConLinkDePago(input: CrearReservaConLinkInput)
       },
     ],
     customer_email: input.email,
+    payment_intent_data: datosPagoDestino(propiedadConnect, input.montoCobrar),
     metadata: {
       reservaId: reserva.id,
       tipo: "MANUAL_PAGO",

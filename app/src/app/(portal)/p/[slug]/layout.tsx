@@ -47,6 +47,11 @@ export default async function PortalLayout({
 
   const colorPrimario = propiedad.colorPrimario ?? "#111827";
 
+  const portalDisponible =
+    propiedad.suscripcionActiva &&
+    propiedad.planActivo === "PRO" &&
+    propiedad.stripeConnectHabilitado;
+
   return (
     <div className="min-h-screen flex flex-col" style={{ "--color-primario": colorPrimario } as React.CSSProperties}>
       {/* Header */}
@@ -67,7 +72,7 @@ export default async function PortalLayout({
 
       {/* Contenido */}
       <main className="flex-1">
-        {propiedad.suscripcionActiva ? (
+        {portalDisponible ? (
           children
         ) : (
           <div className="max-w-md mx-auto text-center px-4 py-20">

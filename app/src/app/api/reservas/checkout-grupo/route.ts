@@ -5,6 +5,7 @@ import { calcularTotalReserva } from "@/lib/negocio/tarifas";
 import { verificarDisponibilidadAtómica } from "@/lib/negocio/disponibilidad";
 import { getPropiedadBySlug } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { datosPagoDestino, esErrorConnectPendiente, mensajeErrorConnect } from "@/lib/stripeConnect";
 import { z } from "zod";
 
 const habSchema = z.object({
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
   if (!propiedad) {
     return NextResponse.json({ error: "Propiedad no encontrada" }, { status: 404 });
   }
-  if (!propiedad.suscripcionActiva) {
+  if (!propiedad.suscripcionActiva || propiedad.planActivo !== "PRO") {
     return NextResponse.json({ error: "Este hotel no acepta reservas en línea en este momento" }, { status: 403 });
   }
 
@@ -85,33 +86,40 @@ export async function POST(req: NextRequest) {
     }))
   );
 
-  const session = await stripe.checkout.sessions.create({
-    mode: "payment",
-    payment_method_types: ["card"],
-    customer_email: email,
-    line_items: lineItems.map((li) => ({
-      quantity: 1,
-      price_data: {
-        currency: "mxn",
-        unit_amount: Math.round(li.amount * 100),
-        product_data: {
-          name: li.name,
-          description: `${li.numPersonas} persona${li.numPersonas !== 1 ? "s" : ""} · ${propiedad.nombre}`,
+  let session;
+  try {
+    session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      payment_method_types: ["card"],
+      customer_email: email,
+      line_items: lineItems.map((li) => ({
+        quantity: 1,
+        price_data: {
+          currency: "mxn",
+          unit_amount: Math.round(li.amount * 100),
+          product_data: {
+            name: li.name,
+            description: `${li.numPersonas} persona${li.numPersonas !== 1 ? "s" : ""} · ${propiedad.nombre}`,
+          },
         },
+      })),
+      payment_intent_data: datosPagoDestino(propiedad, totalGeneral),
+      metadata: {
+        tipo: "GRUPO_ONLINE",
+        propiedadId: propiedad.id,
+        slug,
+        nombre,
+        email,
+        telefono: telefono ?? "",
+        habitaciones: habsJson,
       },
-    })),
-    metadata: {
-      tipo: "GRUPO_ONLINE",
-      propiedadId: propiedad.id,
-      slug,
-      nombre,
-      email,
-      telefono: telefono ?? "",
-      habitaciones: habsJson,
-    },
-    success_url: `${baseUrl}/p/${slug}/pago-grupo-recibido`,
-    cancel_url: `${baseUrl}/p/${slug}/reservar?cancelado=1`,
-  });
+      success_url: `${baseUrl}/p/${slug}/pago-grupo-recibido`,
+      cancel_url: `${baseUrl}/p/${slug}/reservar?cancelado=1`,
+    });
+  } catch (err) {
+    const status = esErrorConnectPendiente(err) ? 409 : 500;
+    return NextResponse.json({ error: mensajeErrorConnect(err) }, { status });
+  }
 
   return NextResponse.json({ url: session.url });
 }

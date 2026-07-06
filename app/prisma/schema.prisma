@@ -68,6 +68,11 @@ model Propiedad {
   direccion       String?
   stripeCustomerId      String?
   stripeSubscriptionId  String?
+  // Cuenta de Stripe Connect (Express) del hotel — a donde va DIRECTO el
+  // dinero de sus huéspedes. Distinta de stripeCustomerId (que es la
+  // suscripción del hotel A Roomly, dinero que sí es de Roomly).
+  stripeConnectAccountId   String?  @unique
+  stripeConnectHabilitado  Boolean  @default(false)
   planActivo            PlanRoomly @default(ESENCIAL)
   suscripcionActiva     Boolean    @default(false)
   canceladaAlFinalDePeriodo Boolean  @default(false)

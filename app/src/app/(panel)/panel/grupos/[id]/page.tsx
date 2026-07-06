@@ -248,8 +248,8 @@ export default async function GrupoDetallePage({
             </div>
           )}
 
-          {/* Payment request — solo plan PRO */}
-          {usuario.propiedad.planActivo === "PRO" && reservasActivas.length > 0 && contacto && restante > 0 && (
+          {/* Payment request — solo plan PRO con Stripe conectado */}
+          {usuario.propiedad.planActivo === "PRO" && usuario.propiedad.stripeConnectHabilitado && reservasActivas.length > 0 && contacto && restante > 0 && (
             <SolicitarPagoGrupo
               grupoId={grupo.id}
               totalGrupo={totalGeneral}
@@ -257,6 +257,11 @@ export default async function GrupoDetallePage({
               restante={restante}
               emailContacto={contacto.email}
             />
+          )}
+          {usuario.propiedad.planActivo === "PRO" && !usuario.propiedad.stripeConnectHabilitado && restante > 0 && (
+            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              Conecta tu cuenta de Stripe en Configuración → Pagos para poder solicitar pagos con tarjeta.
+            </p>
           )}
           {restante <= 0 && totalPagado > 0 && (
             <div className="rounded-xl bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-800 text-center font-medium">

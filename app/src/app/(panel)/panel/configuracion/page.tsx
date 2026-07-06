@@ -6,6 +6,7 @@ import ConfiguracionForm from "./ConfiguracionForm";
 import { PlanSection } from "./PlanSection";
 import { EquipoSection, type MiembroEquipo, type InvitacionPendiente } from "./EquipoSection";
 import { HorariosForm } from "./HorariosForm";
+import { PagosSection } from "./PagosSection";
 import { ConfiguracionTabs } from "./ConfiguracionTabs";
 import {
   cambiarPlanAction,
@@ -16,6 +17,8 @@ import {
   actualizarRolUsuarioAction,
   quitarUsuarioAction,
   actualizarHorariosAction,
+  iniciarConexionStripeAction,
+  abrirDashboardStripeAction,
 } from "./actions";
 
 export default async function ConfiguracionPage({
@@ -32,6 +35,8 @@ export default async function ConfiguracionPage({
     rolActualizado?: string;
     usuarioEliminado?: string;
     tab?: string;
+    conectado?: string;
+    pendiente?: string;
   }>;
 }) {
   const usuario = await requireAdmin();
@@ -47,6 +52,8 @@ export default async function ConfiguracionPage({
     rolActualizado,
     usuarioEliminado,
     tab,
+    conectado,
+    pendiente,
   } = await searchParams;
 
   const propiedad = await prisma.propiedad.findUnique({
@@ -105,7 +112,7 @@ export default async function ConfiguracionPage({
     expiraEn: inv.expiraEn.toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" }),
   }));
 
-  const TABS_VALIDOS = ["hotel", "horarios", "plan", "equipo"] as const;
+  const TABS_VALIDOS = ["hotel", "horarios", "plan", "pagos", "equipo"] as const;
   type TabValida = (typeof TABS_VALIDOS)[number];
 
   const initialTab: TabValida = TABS_VALIDOS.includes(tab as TabValida)
@@ -160,6 +167,16 @@ export default async function ConfiguracionPage({
           El usuario ya no tiene acceso a este hotel.
         </div>
       )}
+      {conectado && (
+        <div className="mb-4 rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">
+          Tu cuenta de Stripe quedó conectada — ya puedes cobrar a tus huéspedes.
+        </div>
+      )}
+      {pendiente && (
+        <div className="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
+          Falta información para activar tu cuenta de Stripe. Continúa la configuración cuando quieras.
+        </div>
+      )}
       {error && (
         <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
           {error}
@@ -187,6 +204,15 @@ export default async function ConfiguracionPage({
             horasParaNoShow={propiedad.horasParaNoShow}
             costoLateCheckIn={propiedad.costoLateCheckIn ? Number(propiedad.costoLateCheckIn) : null}
             actualizarHorariosAction={actualizarHorariosAction}
+          />
+        }
+        pagos={
+          <PagosSection
+            planActivo={propiedad.planActivo}
+            stripeConnectAccountId={propiedad.stripeConnectAccountId}
+            stripeConnectHabilitado={propiedad.stripeConnectHabilitado}
+            iniciarConexionStripeAction={iniciarConexionStripeAction}
+            abrirDashboardStripeAction={abrirDashboardStripeAction}
           />
         }
         equipo={

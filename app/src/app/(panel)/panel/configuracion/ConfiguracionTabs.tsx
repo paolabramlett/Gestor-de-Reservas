@@ -2,12 +2,13 @@
 
 import { useState, type ReactNode } from "react";
 
-type Tab = "hotel" | "horarios" | "plan" | "equipo";
+type Tab = "hotel" | "horarios" | "plan" | "pagos" | "equipo";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "hotel", label: "Hotel" },
   { id: "horarios", label: "Horarios" },
   { id: "plan", label: "Plan" },
+  { id: "pagos", label: "Pagos" },
   { id: "equipo", label: "Equipo" },
 ];
 
@@ -16,17 +17,19 @@ export function ConfiguracionTabs({
   hotel,
   horarios,
   plan,
+  pagos,
   equipo,
 }: {
   initialTab: Tab;
   hotel: ReactNode;
   horarios: ReactNode;
   plan: ReactNode;
+  pagos: ReactNode;
   equipo: ReactNode;
 }) {
   const [tab, setTab] = useState<Tab>(initialTab);
 
-  const contenido: Record<Tab, ReactNode> = { hotel, horarios, plan, equipo };
+  const contenido: Record<Tab, ReactNode> = { hotel, horarios, plan, pagos, equipo };
 
   return (
     <div>

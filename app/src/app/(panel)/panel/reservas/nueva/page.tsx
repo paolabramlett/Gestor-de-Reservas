@@ -35,7 +35,13 @@ export default async function NuevaReservaPage({
         <h1 className="text-xl font-semibold text-gray-900">Nueva reserva</h1>
       </div>
 
-      <NuevaReservaForm tipos={tipos} hoy={hoy} manana={manana} from={from} esPro={usuario.propiedad.planActivo === "PRO"} />
+      <NuevaReservaForm
+        tipos={tipos}
+        hoy={hoy}
+        manana={manana}
+        from={from}
+        esPro={usuario.propiedad.planActivo === "PRO" && usuario.propiedad.stripeConnectHabilitado}
+      />
     </div>
   );
 }
