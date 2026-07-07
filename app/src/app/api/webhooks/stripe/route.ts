@@ -21,11 +21,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Sin firma" }, { status: 400 });
   }
 
-  let event: Stripe.Event;
-  try {
-    event = stripe.webhooks.constructEvent(body, sig, process.env.STRIPE_WEBHOOK_SECRET!);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "Firma inválida";
+  // Stripe (Workbench) ahora crea un endpoint SEPARADO — con su propio
+  // secreto de firma — para eventos de "Cuentas conectadas" (ej.
+  // account.updated de Stripe Connect), distinto del endpoint de "Tu cuenta"
+  // (suscripciones, pagos, etc.), aunque ambos apunten a esta misma URL.
+  // Probamos los dos secretos conocidos antes de rechazar la firma.
+  const secretos = [process.env.STRIPE_WEBHOOK_SECRET, process.env.STRIPE_WEBHOOK_SECRET_CONNECT].filter(
+    (s): s is string => !!s
+  );
+
+  let event: Stripe.Event | null = null;
+  let ultimoError: unknown;
+  for (const secreto of secretos) {
+    try {
+      event = stripe.webhooks.constructEvent(body, sig, secreto);
+      break;
+    } catch (err) {
+      ultimoError = err;
+    }
+  }
+
+  if (!event) {
+    const msg = ultimoError instanceof Error ? ultimoError.message : "Firma inválida";
     console.error("[webhook] constructEvent error:", msg);
     return NextResponse.json({ error: msg }, { status: 400 });
   }
