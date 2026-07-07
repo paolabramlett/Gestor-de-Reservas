@@ -296,34 +296,46 @@ export async function iniciarConexionStripeAction() {
     redirect("/panel/configuracion?tab=plan&error=" + encodeURIComponent("Necesitas el plan Pro para conectar pagos con tarjeta"));
   }
 
-  let accountId = propiedad.stripeConnectAccountId;
+  // Las llamadas a Stripe van en try/catch para capturar el error real
+  // (Connect no habilitado, mode mismatch, etc.) y mostrarlo dentro de
+  // Roomly en vez de una página de error cruda. El redirect() final va
+  // FUERA del try — internamente lanza NEXT_REDIRECT y no debe atraparse.
+  let url: string;
+  try {
+    let accountId = propiedad.stripeConnectAccountId;
 
-  if (!accountId) {
-    const account = await stripe.accounts.create({
-      type: "express",
-      country: "MX",
-      email: propiedad.email || undefined,
-      business_profile: { name: propiedad.nombre, product_description: "Hospedaje en hotel" },
-      capabilities: {
-        card_payments: { requested: true },
-        transfers: { requested: true },
-      },
+    if (!accountId) {
+      const account = await stripe.accounts.create({
+        type: "express",
+        country: "MX",
+        email: propiedad.email || undefined,
+        business_profile: { name: propiedad.nombre, product_description: "Hospedaje en hotel" },
+        capabilities: {
+          card_payments: { requested: true },
+          transfers: { requested: true },
+        },
+      });
+      accountId = account.id;
+      await prisma.propiedad.update({
+        where: { id: propiedad.id },
+        data: { stripeConnectAccountId: accountId },
+      });
+    }
+
+    const accountLink = await stripe.accountLinks.create({
+      account: accountId,
+      refresh_url: `${appUrl()}/api/stripe-connect/refresh?propiedadId=${propiedad.id}`,
+      return_url: `${appUrl()}/api/stripe-connect/return?propiedadId=${propiedad.id}`,
+      type: "account_onboarding",
     });
-    accountId = account.id;
-    await prisma.propiedad.update({
-      where: { id: propiedad.id },
-      data: { stripeConnectAccountId: accountId },
-    });
+    url = accountLink.url;
+  } catch (err) {
+    console.error("[stripe-connect] iniciarConexion error:", err);
+    const msg = err instanceof Error ? err.message : "No se pudo iniciar la conexión con Stripe";
+    redirect("/panel/configuracion?tab=pagos&error=" + encodeURIComponent(msg));
   }
 
-  const accountLink = await stripe.accountLinks.create({
-    account: accountId,
-    refresh_url: `${appUrl()}/api/stripe-connect/refresh?propiedadId=${propiedad.id}`,
-    return_url: `${appUrl()}/api/stripe-connect/return?propiedadId=${propiedad.id}`,
-    type: "account_onboarding",
-  });
-
-  redirect(accountLink.url);
+  redirect(url);
 }
 
 // Link temporal al dashboard de Stripe del hotel — ahí ven sus propios
@@ -336,6 +348,15 @@ export async function abrirDashboardStripeAction() {
     redirect("/panel/configuracion?tab=pagos&error=" + encodeURIComponent("Aún no conectas tu cuenta de Stripe"));
   }
 
-  const loginLink = await stripe.accounts.createLoginLink(propiedad.stripeConnectAccountId);
-  redirect(loginLink.url);
+  let url: string;
+  try {
+    const loginLink = await stripe.accounts.createLoginLink(propiedad.stripeConnectAccountId);
+    url = loginLink.url;
+  } catch (err) {
+    console.error("[stripe-connect] abrirDashboard error:", err);
+    const msg = err instanceof Error ? err.message : "No se pudo abrir el dashboard de Stripe";
+    redirect("/panel/configuracion?tab=pagos&error=" + encodeURIComponent(msg));
+  }
+
+  redirect(url);
 }
