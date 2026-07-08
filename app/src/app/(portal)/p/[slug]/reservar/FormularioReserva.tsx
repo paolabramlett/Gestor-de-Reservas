@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
-import { calcularTotalPreviewAction } from "@/app/(panel)/panel/reservas/actions";
+import { calcularTotalPreviewAction, disponibilidadCantidadPreviewAction } from "@/app/(panel)/panel/reservas/actions";
 
 type TipoSimple = {
   id: string;
@@ -102,6 +102,7 @@ function AgregarHabitacionPanel({
   fechaIngresoPrincipal,
   fechaSalidaPrincipal,
   colorPrimario,
+  yaEnCarrito,
   onAgregar,
   onCancelar,
 }: {
@@ -109,6 +110,7 @@ function AgregarHabitacionPanel({
   fechaIngresoPrincipal: string;
   fechaSalidaPrincipal: string;
   colorPrimario: string;
+  yaEnCarrito: { tipoDeHabitacionId: string; fechaIngreso: string; fechaSalida: string }[];
   onAgregar: (hab: HabExtra) => void;
   onCancelar: () => void;
 }) {
@@ -119,6 +121,7 @@ function AgregarHabitacionPanel({
   const [total, setTotal] = useState<number | null>(null);
   const [calculando, setCalculando] = useState(false);
   const [errorCalculo, setErrorCalculo] = useState<string | null>(null);
+  const [errorDisponibilidad, setErrorDisponibilidad] = useState<string | null>(null);
 
   const tipoActual = tipos.find((t) => t.id === tipoId);
   const capacidadMax = tipoActual?.capacidadMax ?? 99;
@@ -134,11 +137,35 @@ function AgregarHabitacionPanel({
     setCalculando(false);
   }
 
-  // Calcula el precio inicial al abrir el panel — sin esto, el botón
-  // "Confirmar habitación" queda deshabilitado hasta que el usuario
-  // cambia algún campo, aunque los valores precargados ya sean válidos.
+  // Verifica disponibilidad real (no solo el precio) contando también las
+  // unidades del mismo tipo+fechas que ya están en el carrito — sin esto,
+  // el usuario podía agregar más habitaciones de las que existen y solo
+  // se enteraba hasta que intentaba pagar.
+  async function verificarDisponibilidad(tid: string, fi: string, fo: string) {
+    if (!tid || !fi || !fo || fo <= fi) { setErrorDisponibilidad(null); return; }
+    const { disponibles } = await disponibilidadCantidadPreviewAction(tid, fi, fo);
+    const yaEnEstasFechas = yaEnCarrito.filter(
+      (h) => h.tipoDeHabitacionId === tid && h.fechaIngreso === fi && h.fechaSalida === fo
+    ).length;
+    if (yaEnEstasFechas + 1 > disponibles) {
+      const tipo = tipos.find((t) => t.id === tid);
+      setErrorDisponibilidad(
+        disponibles > yaEnEstasFechas
+          ? `Solo queda ${disponibles - yaEnEstasFechas} habitación disponible de ${tipo?.nombre} para esas fechas`
+          : `Ya no hay más habitaciones disponibles de ${tipo?.nombre} para esas fechas`
+      );
+    } else {
+      setErrorDisponibilidad(null);
+    }
+  }
+
+  // Calcula el precio y la disponibilidad inicial al abrir el panel — sin
+  // esto, el botón "Confirmar habitación" queda deshabilitado hasta que el
+  // usuario cambia algún campo, aunque los valores precargados ya sean
+  // válidos.
   useEffect(() => {
     calcularPrecio(tipoId, fechaIngreso, fechaSalida, numPersonas);
+    verificarDisponibilidad(tipoId, fechaIngreso, fechaSalida);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -149,6 +176,7 @@ function AgregarHabitacionPanel({
     const np = Math.min(Math.max(numPersonas, t?.capacidadMin ?? 1), t?.capacidadMax ?? 99);
     setNumPersonas(np);
     calcularPrecio(tid, fechaIngreso, fechaSalida, np);
+    verificarDisponibilidad(tid, fechaIngreso, fechaSalida);
   }
 
   function handlePersonasChange(val: number) {
@@ -160,15 +188,17 @@ function AgregarHabitacionPanel({
   function handleFechaIngreso(fi: string) {
     setFechaIngreso(fi);
     calcularPrecio(tipoId, fi, fechaSalida, numPersonas);
+    verificarDisponibilidad(tipoId, fi, fechaSalida);
   }
 
   function handleFechaSalida(fo: string) {
     setFechaSalida(fo);
     calcularPrecio(tipoId, fechaIngreso, fo, numPersonas);
+    verificarDisponibilidad(tipoId, fechaIngreso, fo);
   }
 
   function handleAgregar() {
-    if (!total || fechaSalida <= fechaIngreso) return;
+    if (!total || fechaSalida <= fechaIngreso || errorDisponibilidad) return;
     onAgregar({
       id: Math.random().toString(36).slice(2),
       tipoDeHabitacionId: tipoId,
@@ -246,6 +276,7 @@ function AgregarHabitacionPanel({
 
       {calculando && <p className="text-xs text-gray-400">Calculando precio...</p>}
       {errorCalculo && <p className="text-xs text-red-500">{errorCalculo}</p>}
+      {errorDisponibilidad && <p className="text-xs text-red-500">{errorDisponibilidad}</p>}
       {total !== null && !calculando && (
         <div className="rounded-lg bg-white border border-gray-200 px-3 py-2 flex justify-between text-sm">
           <span className="text-gray-500">
@@ -259,7 +290,7 @@ function AgregarHabitacionPanel({
         <button
           type="button"
           onClick={handleAgregar}
-          disabled={!total || calculando || fechaSalida <= fechaIngreso || numPersonas > capacidadMax}
+          disabled={!total || calculando || fechaSalida <= fechaIngreso || numPersonas > capacidadMax || !!errorDisponibilidad}
           style={{ backgroundColor: colorPrimario }}
           className="flex-1 rounded-lg text-white py-2 text-sm font-semibold hover:opacity-90 disabled:opacity-50"
         >
@@ -473,6 +504,14 @@ export default function FormularioReserva(props: Props) {
             fechaIngresoPrincipal={props.fechaIngreso}
             fechaSalidaPrincipal={props.fechaSalida}
             colorPrimario={colorPrimario}
+            yaEnCarrito={[
+              { tipoDeHabitacionId: props.tipoDeHabitacionId, fechaIngreso: props.fechaIngreso, fechaSalida: props.fechaSalida },
+              ...habitacionesExtra.map((h) => ({
+                tipoDeHabitacionId: h.tipoDeHabitacionId,
+                fechaIngreso: h.fechaIngreso,
+                fechaSalida: h.fechaSalida,
+              })),
+            ]}
             onAgregar={agregarHabitacion}
             onCancelar={() => setMostrarPanel(false)}
           />

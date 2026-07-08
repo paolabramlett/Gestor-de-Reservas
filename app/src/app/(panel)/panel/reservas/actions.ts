@@ -6,7 +6,7 @@ import { crearReservaManual, crearReservaConLinkDePago } from "@/lib/negocio/res
 import { EstadoDePago, EstadoReserva, TipoEspecialReserva } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { calcularTotalReserva } from "@/lib/negocio/tarifas";
-import { verificarDisponibilidadAtómica, verificarHabitacionLibre } from "@/lib/negocio/disponibilidad";
+import { verificarDisponibilidadAtómica, verificarHabitacionLibre, calcularDisponibilidad } from "@/lib/negocio/disponibilidad";
 import { stripe } from "@/lib/stripe";
 import { enviarSolicitudPago } from "@/lib/emails";
 import { datosPagoDestino, mensajeErrorConnect } from "@/lib/stripeConnect";
@@ -478,4 +478,21 @@ export async function verificarDisponibilidadAction(
     new Date(fechaSalida)
   );
   return { disponible };
+}
+
+// Cantidad real de habitaciones disponibles de un tipo en un rango de
+// fechas (no solo un booleano) — se usa en el checkout público para
+// avisar de inmediato si ya no caben más unidades del mismo tipo en el
+// carrito, en vez de dejar que el usuario llegue hasta pagar.
+export async function disponibilidadCantidadPreviewAction(
+  tipoDeHabitacionId: string,
+  fechaIngreso: string,
+  fechaSalida: string
+): Promise<{ disponibles: number }> {
+  const disponibles = await calcularDisponibilidad(
+    tipoDeHabitacionId,
+    new Date(fechaIngreso),
+    new Date(fechaSalida)
+  );
+  return { disponibles };
 }
