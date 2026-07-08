@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { calcularTotalPreviewAction } from "@/app/(panel)/panel/reservas/actions";
@@ -133,6 +133,14 @@ function AgregarHabitacionPanel({
     else setTotal(result.total);
     setCalculando(false);
   }
+
+  // Calcula el precio inicial al abrir el panel — sin esto, el botón
+  // "Confirmar habitación" queda deshabilitado hasta que el usuario
+  // cambia algún campo, aunque los valores precargados ya sean válidos.
+  useEffect(() => {
+    calcularPrecio(tipoId, fechaIngreso, fechaSalida, numPersonas);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function handleTipoChange(tid: string) {
     setTipoId(tid);
