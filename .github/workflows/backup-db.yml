@@ -1,0 +1,54 @@
+# Respaldo diario de la base de datos (alternativa gratuita a los backups
+# del plan de pago de Supabase).
+#
+# Qué hace: pg_dump de toda la base → gzip → cifrado AES-256 → se guarda
+# como artifact del workflow (retención 30 días, repo privado).
+#
+# Requiere 2 secretos en GitHub (Settings → Secrets and variables → Actions):
+#   SUPABASE_DB_URL    — la MISMA cadena de conexión que usa la app
+#                        (el pooler de Supabase en puerto 5432 funciona;
+#                        el host directo db.*.supabase.co es solo-IPv6 y
+#                        NO es alcanzable desde GitHub Actions)
+#   BACKUP_PASSPHRASE  — cualquier frase larga; guárdala en un lugar seguro,
+#                        sin ella el respaldo no se puede descifrar
+#
+# Para restaurar un respaldo descargado:
+#   openssl enc -d -aes-256-cbc -pbkdf2 -pass pass:TU_FRASE \
+#     -in respaldo.sql.gz.enc | gunzip | psql "CADENA_DE_CONEXION"
+
+name: Respaldo de base de datos
+
+on:
+  schedule:
+    - cron: "0 8 * * *" # 08:00 UTC = 02:00 hora de México (Centro)
+  workflow_dispatch: {} # permite dispararlo a mano desde la pestaña Actions
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    # Imagen oficial de Postgres para que la versión de pg_dump sea >= a la
+    # del servidor de Supabase (un pg_dump viejo rechaza servidores nuevos).
+    container: postgres:17
+    steps:
+      - name: Volcar base de datos
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          pg_dump "$DATABASE_URL" --no-owner --no-privileges | gzip > respaldo.sql.gz
+          ls -lh respaldo.sql.gz
+
+      - name: Cifrar respaldo
+        env:
+          PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:PASSPHRASE \
+            -in respaldo.sql.gz -out respaldo.sql.gz.enc
+          rm respaldo.sql.gz
+
+      - name: Guardar como artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: respaldo-db-${{ github.run_number }}
+          path: respaldo.sql.gz.enc
+          retention-days: 30
+          if-no-files-found: error
