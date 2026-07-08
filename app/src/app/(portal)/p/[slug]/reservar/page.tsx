@@ -1,6 +1,6 @@
 import { getPropiedadBySlug } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { calcularTotalReserva } from "@/lib/negocio/tarifas";
+import { calcularTotalReserva, calcularPrecioNoche } from "@/lib/negocio/tarifas";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
@@ -209,7 +209,7 @@ export default async function ReservarPage({
                 totalMxn={total}
                 desglose={desglose.map((n) => ({
                   fecha: n.fecha,
-                  precio: n.modalidad === "POR_PERSONA" ? n.precio * numPersonas : n.precio,
+                  precio: calcularPrecioNoche(n, numPersonas),
                   temporadaNombre: n.fuente === "TEMPORADA" ? n.temporadaNombre : undefined,
                 }))}
                 stripePublishableKey={process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!}

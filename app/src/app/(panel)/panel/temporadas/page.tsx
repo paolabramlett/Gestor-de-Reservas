@@ -53,7 +53,13 @@ export default async function TemporadasPage() {
                 <td className="px-4 py-3 text-gray-700">{new Date(t.fechaFin).toLocaleDateString("es-MX")}</td>
                 <td className="px-4 py-3 text-gray-700">
                   ${Number(t.precio).toLocaleString("es-MX")}
-                  <span className="ml-1 text-xs text-gray-400">/{t.modalidad === "POR_HABITACION" ? "hab" : "pax"}</span>
+                  {t.modalidad === "BASE_MAS_SUPLEMENTO" ? (
+                    <span className="ml-1 text-xs text-gray-400">
+                      base + ${Number(t.suplementoPorPersona ?? 0).toLocaleString("es-MX")}/pax adicional
+                    </span>
+                  ) : (
+                    <span className="ml-1 text-xs text-gray-400">/{t.modalidad === "POR_HABITACION" ? "hab" : "pax"}</span>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-right flex gap-3 justify-end">
                   <Link href={`/panel/temporadas/${t.id}/editar`} className="text-sm text-blue-600 hover:underline">
