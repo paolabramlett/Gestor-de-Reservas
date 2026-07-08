@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { DatePicker } from "@/components/DatePicker";
 
@@ -24,17 +24,18 @@ export default function FormularioBusqueda({
   const [fechaIngreso, setFechaIngreso] = useState(initIngreso ?? hoy);
   const [fechaSalida, setFechaSalida] = useState(initSalida ?? manana);
   const [numPersonas, setNumPersonas] = useState(initPersonas ?? 2);
-  const [buscando, setBuscando] = useState(false);
+  const [buscando, startTransition] = useTransition();
 
   function buscar(e: React.FormEvent) {
     e.preventDefault();
-    setBuscando(true);
     const params = new URLSearchParams({
       fechaIngreso,
       fechaSalida,
       numPersonas: String(numPersonas),
     });
-    router.push(`/p/${slug}?${params}`);
+    startTransition(() => {
+      router.push(`/p/${slug}?${params}`);
+    });
   }
 
   return (
