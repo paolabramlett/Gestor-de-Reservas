@@ -351,17 +351,73 @@ export async function POST(req: NextRequest) {
       const reservaId = session.metadata.reservaId;
       const esPagoCompleto = session.metadata.esPagoCompleto === "true";
 
-      const reserva = await prisma.reserva.findUnique({
-        where: { id: reservaId },
-        include: { huesped: true, tipoDeHabitacion: true, propiedad: true, pagoManual: true },
-      });
+      // Idempotencia: distingue "Stripe reintenta este mismo evento" (no-op,
+      // normal) de "un segundo link de pago distinto se pagó de verdad"
+      // (pago duplicado real — recepción reenvió el link dos veces y el
+      // huésped alcanzó a pagar ambos). Solo lo segundo dispara reembolso.
+      let yaProcesado = false;
+      try {
+        await prisma.stripeEventoProcesado.create({ data: { id: session.id, tipo: "MANUAL_PAGO" } });
+      } catch (err: unknown) {
+        if ((err as { code?: string })?.code === "P2002") yaProcesado = true;
+        else throw err;
+      }
 
-      if (reserva && reserva.estado === EstadoReserva.PENDIENTE_PAGO) {
+      const reserva = yaProcesado
+        ? null
+        : await prisma.reserva.findUnique({
+            where: { id: reservaId },
+            include: { huesped: true, tipoDeHabitacion: true, propiedad: true, pagoManual: true },
+          });
+
+      // Claim atómico: si dos entregas de este webhook llegan casi al mismo
+      // tiempo (Stripe puede mandar la misma notificación por más de un
+      // canal), solo la primera logra pasar de PENDIENTE_PAGO a CONFIRMADA —
+      // evita duplicar el correo de confirmación y la alerta al equipo.
+      const claim = reserva
+        ? await prisma.reserva.updateMany({
+            where: { id: reservaId, estado: EstadoReserva.PENDIENTE_PAGO },
+            data: { estado: EstadoReserva.CONFIRMADA },
+          })
+        : { count: 0 };
+
+      // reserva ya no estaba PENDIENTE_PAGO pero este es un evento nuevo
+      // (no un reintento): significa que se pagó un segundo link para una
+      // reserva que otro pago ya había confirmado. El huésped pagó de más
+      // sin que nadie lo note — se reembolsa automático y se avisa al hotel.
+      if (reserva && claim.count === 0) {
+        const piId = typeof session.payment_intent === "string"
+          ? session.payment_intent
+          : (session.payment_intent as Stripe.PaymentIntent | null)?.id ?? null;
+        if (piId) {
+          await reembolsarPagoHuesped(piId).catch((err) =>
+            console.error("[webhook] MANUAL_PAGO pago duplicado — reembolso automático falló:", reservaId, err)
+          );
+        }
+        if (reserva.propiedad.email) {
+          enviarAlertaEquipo({
+            emailEquipo: reserva.propiedad.email,
+            emailHuesped: reserva.huesped.email,
+            telefonoHuesped: reserva.huesped.telefono ?? undefined,
+            origen: "MANUAL",
+            codigoReserva: reserva.codigoReserva,
+            nombreHuesped: reserva.huesped.nombre,
+            nombreHotel: reserva.propiedad.nombre,
+            tipoHabitacion: reserva.tipoDeHabitacion.nombre,
+            fechaIngreso: reserva.fechaIngreso,
+            fechaSalida: reserva.fechaSalida,
+            numPersonas: reserva.numPersonas,
+            totalMxn: Number(reserva.totalMxn),
+            colorPrimario: reserva.propiedad.colorPrimario ?? undefined,
+          }).catch(() => {});
+        }
+      }
+
+      if (reserva && claim.count > 0) {
         // BUG 5: upsert para no fallar si pagoManual no existe
         await prisma.reserva.update({
           where: { id: reservaId },
           data: {
-            estado: EstadoReserva.CONFIRMADA,
             pagoManual: {
               upsert: {
                 create: { estadoDePago: esPagoCompleto ? EstadoDePago.PAGADO_COMPLETO : EstadoDePago.ANTICIPO_PAGADO },
