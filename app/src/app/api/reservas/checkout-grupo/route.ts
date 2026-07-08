@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { rateLimit } from "@/lib/rateLimit";
 import { stripe } from "@/lib/stripe";
 import { calcularTotalReserva } from "@/lib/negocio/tarifas";
-import { verificarDisponibilidadAtómica } from "@/lib/negocio/disponibilidad";
+import { calcularDisponibilidad } from "@/lib/negocio/disponibilidad";
 import { getPropiedadBySlug } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { datosPagoDestino, esErrorConnectPendiente, mensajeErrorConnect } from "@/lib/stripeConnect";
@@ -44,28 +44,57 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Este hotel no acepta reservas en línea en este momento" }, { status: 403 });
   }
 
-  // Verify all tipos belong to this propiedad and check availability
-  let totalGeneral = 0;
-  const lineItems: { name: string; amount: number; numPersonas: number }[] = [];
-
+  // Verify all tipos belong to this propiedad
+  const tipos = new Map<string, { id: string; nombre: string }>();
   for (const h of habitaciones) {
+    if (tipos.has(h.tipoDeHabitacionId)) continue;
     const tipo = await prisma.tipoDeHabitacion.findFirst({
       where: { id: h.tipoDeHabitacionId, propiedadId: propiedad.id, activo: true },
     });
     if (!tipo) {
       return NextResponse.json({ error: `Tipo de habitación no encontrado` }, { status: 400 });
     }
+    tipos.set(h.tipoDeHabitacionId, tipo);
+  }
 
+  // Verificar disponibilidad agregando la demanda por tipo+fechas: pedir 3
+  // "Suite Deluxe" en el mismo carrito debe compararse contra el inventario
+  // real, no verificarse habitación por habitación (eso siempre ve "queda
+  // al menos 1" porque nada se reserva hasta el pago, permitiendo pedir más
+  // cuartos de los que existen).
+  const demandaPorTipoYFechas = new Map<string, { tipoDeHabitacionId: string; fechaIn: Date; fechaOut: Date; cantidad: number }>();
+  for (const h of habitaciones) {
     const fechaIn = new Date(h.fechaIngreso);
     const fechaOut = new Date(h.fechaSalida);
+    const key = `${h.tipoDeHabitacionId}|${h.fechaIngreso}|${h.fechaSalida}`;
+    const actual = demandaPorTipoYFechas.get(key);
+    if (actual) actual.cantidad += 1;
+    else demandaPorTipoYFechas.set(key, { tipoDeHabitacionId: h.tipoDeHabitacionId, fechaIn, fechaOut, cantidad: 1 });
+  }
 
-    const disponible = await verificarDisponibilidadAtómica(h.tipoDeHabitacionId, fechaIn, fechaOut);
-    if (!disponible) {
+  for (const d of demandaPorTipoYFechas.values()) {
+    const disponibles = await calcularDisponibilidad(d.tipoDeHabitacionId, d.fechaIn, d.fechaOut);
+    if (disponibles < d.cantidad) {
+      const tipo = tipos.get(d.tipoDeHabitacionId)!;
       return NextResponse.json(
-        { error: `Sin disponibilidad para ${tipo.nombre} en las fechas seleccionadas` },
+        {
+          error:
+            disponibles > 0
+              ? `Solo quedan ${disponibles} habitación(es) de ${tipo.nombre} disponibles para esas fechas`
+              : `Sin disponibilidad para ${tipo.nombre} en las fechas seleccionadas`,
+        },
         { status: 409 }
       );
     }
+  }
+
+  let totalGeneral = 0;
+  const lineItems: { name: string; amount: number; numPersonas: number }[] = [];
+
+  for (const h of habitaciones) {
+    const tipo = tipos.get(h.tipoDeHabitacionId)!;
+    const fechaIn = new Date(h.fechaIngreso);
+    const fechaOut = new Date(h.fechaSalida);
 
     const { total } = await calcularTotalReserva(h.tipoDeHabitacionId, fechaIn, fechaOut, h.numPersonas);
     totalGeneral += Number(total);
