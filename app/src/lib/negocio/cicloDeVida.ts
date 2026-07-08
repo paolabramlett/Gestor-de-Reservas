@@ -160,6 +160,17 @@ export async function cancelarReserva(input: CancelacionInput) {
   if (reserva.estado === EstadoReserva.COMPLETADA || reserva.estado === EstadoReserva.CANCELADA)
     throw new Error(`No se puede cancelar una reserva en estado ${reserva.estado}`);
 
+  // Claim atómico ANTES de tocar Stripe: si dos requests llegan casi al
+  // mismo tiempo (doble clic, doble pestaña), solo la primera logra marcar
+  // CANCELADA — la segunda ve count 0 y nunca llega a pedir el reembolso.
+  const claim = await prisma.reserva.updateMany({
+    where: { id: input.reservaId, propiedadId: input.propiedadId, estado: reserva.estado },
+    data: { estado: EstadoReserva.CANCELADA },
+  });
+  if (claim.count === 0) {
+    throw new Error("Esta reserva ya fue cancelada por otra solicitud");
+  }
+
   let montoReembolsadoMxn = 0;
 
   // Reembolso Stripe si aplica
@@ -196,11 +207,6 @@ export async function cancelarReserva(input: CancelacionInput) {
     }
   }
 
-  const cancelada = await prisma.reserva.update({
-    where: { id: input.reservaId },
-    data: { estado: EstadoReserva.CANCELADA },
-  });
-
   // 11.6: email de cancelación al huésped
   await enviarCancelacion({
     emailHuesped: reserva.huesped.email,
@@ -214,5 +220,5 @@ export async function cancelarReserva(input: CancelacionInput) {
     colorPrimario: reserva.propiedad.colorPrimario ?? undefined,
   }).catch(() => {});
 
-  return cancelada;
+  return { ...reserva, estado: EstadoReserva.CANCELADA };
 }

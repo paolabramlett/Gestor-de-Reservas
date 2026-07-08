@@ -62,10 +62,17 @@ export async function POST(req: NextRequest) {
 
     // BUG 2: cancelar en DB primero; si el reembolso de Stripe falla después, al menos
     // el cuarto queda liberado y el error sube para que el hotel lo procese manualmente
-    await prisma.reserva.updateMany({
+    //
+    // Claim atómico: el WHERE excluye estados ya terminales, así que si dos
+    // requests llegan casi al mismo tiempo (doble clic, reintento de red),
+    // solo la primera obtiene count > 0. La segunda no reembolsa dos veces.
+    const claim = await prisma.reserva.updateMany({
       where: { grupoId: grupo.id, estado: { notIn: ["CANCELADA", "NO_SHOW"] } },
       data: { estado: "CANCELADA" },
     });
+    if (claim.count === 0) {
+      return NextResponse.json({ error: "Este grupo ya fue cancelado" }, { status: 400 });
+    }
 
     if (grupo.stripePaymentIntentId) {
       await reembolsarPagoHuesped(grupo.stripePaymentIntentId, Math.round(montoReembolso * 100));
@@ -136,15 +143,26 @@ export async function POST(req: NextRequest) {
   const comision = Math.round((total * STRIPE_COMISION_PORCENTAJE + STRIPE_COMISION_FIJA) * 100) / 100;
   const montoReembolso = total - comision;
 
-  // Reembolso parcial via Stripe
+  // Claim atómico ANTES de tocar Stripe: el WHERE exige que siga en
+  // CONFIRMADA, así que si dos requests llegan casi al mismo tiempo (doble
+  // clic, reintento de red), solo la primera logra actualizar la fila —
+  // la segunda ve count 0 y nunca llega a pedir el reembolso.
+  const claim = await prisma.reserva.updateMany({
+    where: { id: reserva.id, estado: "CONFIRMADA" },
+    data: { estado: "CANCELADA" },
+  });
+  if (claim.count === 0) {
+    return NextResponse.json({ error: "Esta reserva no puede cancelarse" }, { status: 400 });
+  }
+
+  // Reembolso parcial via Stripe (ya con la reserva marcada CANCELADA)
   if (reserva.stripePaymentIntentId) {
     await reembolsarPagoHuesped(reserva.stripePaymentIntentId, Math.round(montoReembolso * 100));
   }
 
-  // Actualizar estado y obtener datos para el correo
-  const reservaActualizada = await prisma.reserva.update({
+  // Obtener datos actualizados para el correo
+  const reservaActualizada = await prisma.reserva.findUniqueOrThrow({
     where: { id: reserva.id },
-    data: { estado: "CANCELADA" },
     include: {
       huesped: true,
       propiedad: true,
