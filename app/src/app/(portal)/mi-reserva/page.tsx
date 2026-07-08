@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 type HabitacionGrupo = {
   tipoNombre: string;
@@ -34,6 +35,7 @@ const ESTADO_CONFIG: Record<string, { label: string; bg: string; text: string }>
 };
 
 export default function MiReservaPage() {
+  const router = useRouter();
   const [codigo, setCodigo] = useState("");
   const [email, setEmail] = useState("");
   const [reserva, setReserva] = useState<ReservaDetalle | null>(null);
@@ -92,6 +94,17 @@ export default function MiReservaPage() {
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4">
       <div className="max-w-md mx-auto">
+
+        <button
+          type="button"
+          onClick={() => router.back()}
+          className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 mb-6 transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+          </svg>
+          Volver al hotel
+        </button>
 
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-gray-900 mb-1">Mi reserva</h1>

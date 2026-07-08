@@ -24,9 +24,11 @@ export default function FormularioBusqueda({
   const [fechaIngreso, setFechaIngreso] = useState(initIngreso ?? hoy);
   const [fechaSalida, setFechaSalida] = useState(initSalida ?? manana);
   const [numPersonas, setNumPersonas] = useState(initPersonas ?? 2);
+  const [buscando, setBuscando] = useState(false);
 
   function buscar(e: React.FormEvent) {
     e.preventDefault();
+    setBuscando(true);
     const params = new URLSearchParams({
       fechaIngreso,
       fechaSalida,
@@ -83,10 +85,17 @@ export default function FormularioBusqueda({
       <div className="shrink-0">
         <button
           type="submit"
+          disabled={buscando}
           style={{ backgroundColor: colorPrimario }}
-          className="w-full sm:w-auto rounded-xl text-white px-7 py-2.5 text-sm font-semibold hover:opacity-90 transition-opacity"
+          className="w-full sm:w-auto rounded-xl text-white px-7 py-2.5 text-sm font-semibold hover:opacity-90 disabled:opacity-70 transition-opacity inline-flex items-center justify-center gap-2"
         >
-          Buscar
+          {buscando && (
+            <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+            </svg>
+          )}
+          {buscando ? "Buscando..." : "Buscar"}
         </button>
       </div>
     </form>
