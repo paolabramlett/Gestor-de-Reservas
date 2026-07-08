@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
+import { reembolsarPagoHuesped } from "@/lib/stripeConnect";
 import { enviarRespuestaCambioHotel, enviarCambioAceptadoHuesped } from "@/lib/emails";
 import { verificarDisponibilidadAtómica } from "@/lib/negocio/disponibilidad";
 
@@ -64,10 +65,7 @@ export async function POST(
       );
 
       if (montoCentavos > 0) {
-        await stripe.refunds.create({
-          payment_intent: reserva.stripePaymentIntentId,
-          amount: montoCentavos,
-        });
+        await reembolsarPagoHuesped(reserva.stripePaymentIntentId, montoCentavos);
       }
     } catch (err) {
       // Reembolso fallido: actualizar solicitud y notificar hotel manualmente

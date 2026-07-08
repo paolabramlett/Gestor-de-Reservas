@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { rateLimit } from "@/lib/rateLimit";
 import { prisma } from "@/lib/prisma";
-import { stripe } from "@/lib/stripe";
+import { reembolsarPagoHuesped } from "@/lib/stripeConnect";
 import { enviarCancelacion } from "@/lib/emails";
 
 const STRIPE_COMISION_PORCENTAJE = 0.036;
@@ -68,10 +68,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (grupo.stripePaymentIntentId) {
-      await stripe.refunds.create({
-        payment_intent: grupo.stripePaymentIntentId,
-        amount: Math.round(montoReembolso * 100),
-      });
+      await reembolsarPagoHuesped(grupo.stripePaymentIntentId, Math.round(montoReembolso * 100));
     }
 
     const contacto = grupo.reservas[0].huesped;
@@ -141,10 +138,7 @@ export async function POST(req: NextRequest) {
 
   // Reembolso parcial via Stripe
   if (reserva.stripePaymentIntentId) {
-    await stripe.refunds.create({
-      payment_intent: reserva.stripePaymentIntentId,
-      amount: Math.round(montoReembolso * 100), // centavos
-    });
+    await reembolsarPagoHuesped(reserva.stripePaymentIntentId, Math.round(montoReembolso * 100));
   }
 
   // Actualizar estado y obtener datos para el correo

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { EstadoReserva, Prisma } from "@prisma/client";
+import { picoOcupacionPorNoche } from "./ocupacion";
 
 export type ResultadoDisponibilidad = {
   tipoDeHabitacionId: string;
@@ -23,39 +24,66 @@ export async function calcularDisponibilidad(
     include: { habitaciones: { where: { activa: true } } },
   });
 
-  const estadosOcupados: EstadoReserva[] = [
-    EstadoReserva.CONFIRMADA,
-    EstadoReserva.EN_CURSO,
-  ];
+  const totalHabitaciones = tipo.habitaciones.length;
+  if (totalHabitaciones === 0) return 0;
+  const habitacionIds = tipo.habitaciones.map((h) => h.id);
 
-  let habitacionesOcupadas = 0;
+  // Cierre del tipo completo (temporada cerrada, sync iCal) → nada disponible.
+  // Antes solo se verificaba en buscarDisponibilidad; los checkouts que llaman
+  // esta función directo podían reservar un tipo cerrado.
+  const bloqueoTipo = await prisma.bloqueoDetipo.findFirst({
+    where: {
+      tipoDeHabitacionId,
+      fechaInicio: { lte: fechaSalida },
+      fechaFin: { gte: fechaIngreso },
+    },
+  });
+  if (bloqueoTipo) return 0;
 
-  for (const habitacion of tipo.habitaciones) {
-    // Verificar reservas solapadas
-    const reservaSolapada = await prisma.reserva.findFirst({
+  const [reservas, bloqueos] = await Promise.all([
+    prisma.reserva.findMany({
       where: {
-        asignacion: { habitacionId: habitacion.id },
-        estado: { in: estadosOcupados },
+        tipoDeHabitacionId,
         fechaIngreso: { lt: fechaSalida },
         fechaSalida: { gt: fechaIngreso },
+        OR: [
+          { estado: { in: [EstadoReserva.CONFIRMADA, EstadoReserva.EN_CURSO] } },
+          // Un link de pago vigente aparta el cuarto hasta expirar — si no
+          // contara, dos huéspedes podrían pagar el mismo último cuarto.
+          { estado: EstadoReserva.PENDIENTE_PAGO, linkExpiraEn: { gt: new Date() } },
+        ],
       },
-    });
-
-    // Verificar bloqueos solapados
-    const bloqueoSolapado = await prisma.bloqueoDeHabitacion.findFirst({
+      select: {
+        fechaIngreso: true,
+        fechaSalida: true,
+        asignacion: { select: { habitacionId: true } },
+      },
+    }),
+    prisma.bloqueoDeHabitacion.findMany({
       where: {
-        habitacionId: habitacion.id,
+        habitacionId: { in: habitacionIds },
         fechaInicio: { lt: fechaSalida },
         fechaFin: { gt: fechaIngreso },
       },
-    });
+      select: { habitacionId: true, fechaInicio: true, fechaFin: true },
+    }),
+  ]);
 
-    if (reservaSolapada || bloqueoSolapado) {
-      habitacionesOcupadas++;
-    }
-  }
+  // Las reservas SIN habitación asignada también consumen inventario del
+  // tipo — antes solo contaban las asignadas, así que una reserva online
+  // recién creada no bloqueaba nada y se podía sobrevender.
+  const pico = picoOcupacionPorNoche(
+    fechaIngreso,
+    fechaSalida,
+    reservas.map((r) => ({
+      fechaIngreso: r.fechaIngreso,
+      fechaSalida: r.fechaSalida,
+      habitacionAsignadaId: r.asignacion?.habitacionId ?? null,
+    })),
+    bloqueos
+  );
 
-  return tipo.habitaciones.length - habitacionesOcupadas;
+  return totalHabitaciones - pico;
 }
 
 export async function buscarDisponibilidad(
@@ -122,12 +150,14 @@ export async function verificarHabitacionLibre(
   excludeReservaId?: string,
   client: Prisma.TransactionClient | typeof prisma = prisma
 ): Promise<boolean> {
-  const estadosOcupados: EstadoReserva[] = [EstadoReserva.CONFIRMADA, EstadoReserva.EN_CURSO];
-
   const reservaSolapada = await client.reserva.findFirst({
     where: {
       asignacion: { habitacionId },
-      estado: { in: estadosOcupados },
+      OR: [
+        { estado: { in: [EstadoReserva.CONFIRMADA, EstadoReserva.EN_CURSO] } },
+        // Un link de pago vigente también aparta la habitación
+        { estado: EstadoReserva.PENDIENTE_PAGO, linkExpiraEn: { gt: new Date() } },
+      ],
       fechaIngreso: { lt: fechaSalida },
       fechaSalida: { gt: fechaIngreso },
       ...(excludeReservaId ? { id: { not: excludeReservaId } } : {}),

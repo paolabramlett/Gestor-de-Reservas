@@ -7,6 +7,8 @@ import { prisma } from "@/lib/prisma";
 import Stripe from "stripe";
 import { ulid } from "ulid";
 import { calcularTotalReserva } from "@/lib/negocio/tarifas";
+import { reembolsarPagoHuesped } from "@/lib/stripeConnect";
+import { calcularDisponibilidad } from "@/lib/negocio/disponibilidad";
 
 function generarCodigoGrupo(): string {
   const id = ulid();
@@ -105,7 +107,7 @@ export async function POST(req: NextRequest) {
       }
     } catch (err: unknown) {
       if (err instanceof Error && err.message === "SIN_DISPONIBILIDAD") {
-        await stripe.refunds.create({ payment_intent: intent.id });
+        await reembolsarPagoHuesped(intent.id);
         return NextResponse.json({ reembolsado: true });
       }
       throw err;
@@ -251,6 +253,25 @@ export async function POST(req: NextRequest) {
           if (!fechaIngresoMin || fechaIn < fechaIngresoMin) fechaIngresoMin = fechaIn;
           if (!fechaSalidaMax || fechaOut > fechaSalidaMax) fechaSalidaMax = fechaOut;
           totalPersonas += h.n;
+        }
+
+        // Re-verificar disponibilidad: entre crear el checkout y completar el
+        // pago pudo venderse el último cuarto. Si ya no alcanza, reembolso
+        // completo automático (mismo patrón que las reservas individuales).
+        const demandaPorTipoYFechas = new Map<string, { t: string; fechaIn: Date; fechaOut: Date; cantidad: number }>();
+        for (const room of roomsData) {
+          const key = `${room.t}|${room.fechaIn.toISOString()}|${room.fechaOut.toISOString()}`;
+          const d = demandaPorTipoYFechas.get(key);
+          if (d) d.cantidad += 1;
+          else demandaPorTipoYFechas.set(key, { t: room.t, fechaIn: room.fechaIn, fechaOut: room.fechaOut, cantidad: 1 });
+        }
+        for (const d of demandaPorTipoYFechas.values()) {
+          const disponibles = await calcularDisponibilidad(d.t, d.fechaIn, d.fechaOut);
+          if (disponibles < d.cantidad) {
+            if (stripePaymentIntentId) await reembolsarPagoHuesped(stripePaymentIntentId);
+            console.error("[webhook] GRUPO_ONLINE sin disponibilidad al confirmar — reembolsado:", session.id);
+            return NextResponse.json({ reembolsado: true });
+          }
         }
 
         // BUG 3 + 14: crear grupo y todas las reservas en una sola transacción;

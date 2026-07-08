@@ -35,21 +35,31 @@ export async function crearReservaManualAction(formData: FormData) {
   const totalOverrideRaw = formData.get("totalOverride") as string;
   const totalOverride = totalOverrideRaw ? Number(totalOverrideRaw) : null;
 
-  const reserva = await crearReservaManual({
-    propiedadId: usuario.propiedadId,
-    tipoDeHabitacionId,
-    nombre,
-    email,
-    telefono,
-    fechaIngreso,
-    fechaSalida,
-    numPersonas,
-    estadoDePago,
-    notas,
-    tipoEspecial,
-    montoAnticipo,
-    totalOverride,
-  });
+  let reserva;
+  try {
+    reserva = await crearReservaManual({
+      propiedadId: usuario.propiedadId,
+      tipoDeHabitacionId,
+      nombre,
+      email,
+      telefono,
+      fechaIngreso,
+      fechaSalida,
+      numPersonas,
+      estadoDePago,
+      notas,
+      tipoEspecial,
+      montoAnticipo,
+      totalOverride,
+    });
+  } catch (err) {
+    const msg =
+      err instanceof Error && err.message === "SIN_DISPONIBILIDAD"
+        ? "No hay disponibilidad para ese tipo de habitación en las fechas seleccionadas"
+        : err instanceof Error ? err.message : "Error al crear la reserva";
+    const volver = from === "calendario" ? "/panel/calendario" : "/panel/reservas/nueva";
+    redirect(`${volver}?error=${encodeURIComponent(msg)}`);
+  }
 
   if (from === "calendario") {
     const mes = fechaIngreso.getMonth() + 1;
@@ -101,7 +111,10 @@ export async function crearReservaConPagoAction(formData: FormData) {
       baseUrl,
     });
   } catch (err) {
-    const msg = mensajeErrorConnect(err);
+    const msg =
+      err instanceof Error && err.message === "SIN_DISPONIBILIDAD"
+        ? "No hay disponibilidad para ese tipo de habitación en las fechas seleccionadas"
+        : mensajeErrorConnect(err);
     const volver = from === "calendario" ? "/panel/calendario" : "/panel/reservas/nueva";
     redirect(`${volver}?error=${encodeURIComponent(msg)}`);
   }

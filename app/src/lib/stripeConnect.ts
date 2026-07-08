@@ -40,6 +40,30 @@ export function datosPagoDestino(
   };
 }
 
+// Reembolso correcto para cargos con Connect (destination charges): sin
+// reverse_transfer, Stripe devuelve el dinero al huésped desde el saldo de
+// LA PLATAFORMA mientras el hotel conserva su transferencia — Roomly
+// perdería ese dinero. reverse_transfer recupera la parte del hotel y
+// refund_application_fee la comisión de Roomly, proporcionales al monto.
+// Para cargos viejos sin transfer_data (previos a Connect), esos flags son
+// inválidos — se detecta el tipo de cargo y se reembolsa como corresponde.
+export async function reembolsarPagoHuesped(
+  paymentIntentId: string,
+  montoCentavos?: number
+) {
+  const { stripe } = await import("./stripe");
+  const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
+  const esDestinationCharge = !!intent.transfer_data?.destination;
+
+  return stripe.refunds.create({
+    payment_intent: paymentIntentId,
+    ...(montoCentavos != null ? { amount: montoCentavos } : {}),
+    ...(esDestinationCharge
+      ? { reverse_transfer: true, refund_application_fee: true }
+      : {}),
+  });
+}
+
 export function esErrorConnectPendiente(err: unknown): boolean {
   return err instanceof Error && err.message.startsWith("CONNECT_PENDIENTE");
 }

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
+import { reembolsarPagoHuesped } from "@/lib/stripeConnect";
 import { enviarCancelacion } from "@/lib/emails";
 import { EstadoReserva } from "@prisma/client";
 
@@ -187,10 +188,7 @@ export async function cancelarReserva(input: CancelacionInput) {
       const montoFinal = Math.min(montoCentavos, disponibleParaReembolso);
 
       try {
-        await stripe.refunds.create({
-          payment_intent: reserva.stripePaymentIntentId,
-          amount: montoFinal,
-        });
+        await reembolsarPagoHuesped(reserva.stripePaymentIntentId, montoFinal);
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Error al procesar reembolso";
         throw new Error(`Reembolso fallido: ${msg}`);

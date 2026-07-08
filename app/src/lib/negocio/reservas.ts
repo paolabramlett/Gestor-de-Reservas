@@ -111,6 +111,15 @@ export async function crearReservaManual(input: CrearReservaManualInput) {
       : totalCalculado;
 
   return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    // Mismo guard que las reservas online: recepción tampoco debe poder
+    // crear dos reservas para el último cuarto sin darse cuenta.
+    const disponible = await verificarDisponibilidadAtómica(
+      input.tipoDeHabitacionId,
+      input.fechaIngreso,
+      input.fechaSalida
+    );
+    if (!disponible) throw new Error("SIN_DISPONIBILIDAD");
+
     const emailNorm = input.email.toLowerCase().trim();
     // Cada reserva tiene su propio registro de huésped, aunque el correo se repita.
     const huesped = await tx.huesped.create({
@@ -190,6 +199,15 @@ export async function crearReservaConLinkDePago(input: CrearReservaConLinkInput)
     select: { stripeConnectAccountId: true, stripeConnectHabilitado: true },
   });
   requerirCuentaConectada(propiedadConnect);
+
+  // La reserva PENDIENTE_PAGO aparta inventario mientras el link esté
+  // vigente — hay que verificar que ese inventario exista antes de crearla.
+  const disponible = await verificarDisponibilidadAtómica(
+    input.tipoDeHabitacionId,
+    input.fechaIngreso,
+    input.fechaSalida
+  );
+  if (!disponible) throw new Error("SIN_DISPONIBILIDAD");
 
   const { total: totalCalculado, desglose } = await calcularTotalReserva(
     input.tipoDeHabitacionId,
