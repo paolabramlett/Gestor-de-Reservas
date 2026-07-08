@@ -34,14 +34,7 @@ function HotelSwitcher({
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  if (hoteles.length <= 1) {
-    return (
-      <div>
-        <div className="text-sm font-semibold text-gray-900 truncate">{nombre}</div>
-        <div className="text-xs text-gray-400 mt-0.5">{rolLabel}</div>
-      </div>
-    );
-  }
+  const esMultiple = hoteles.length > 1;
 
   return (
     <div className="relative" ref={ref}>
@@ -52,7 +45,9 @@ function HotelSwitcher({
       >
         <div className="min-w-0">
           <div className="text-sm font-semibold text-gray-900 truncate">{nombre}</div>
-          <div className="text-xs text-gray-400 mt-0.5">{rolLabel} · cambiar hotel</div>
+          <div className="text-xs text-gray-400 mt-0.5">
+            {esMultiple ? `${rolLabel} · cambiar hotel` : rolLabel}
+          </div>
         </div>
         <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9" />
@@ -76,6 +71,14 @@ function HotelSwitcher({
               </button>
             </form>
           ))}
+          <div className="border-t border-gray-100 mt-1 pt-1">
+            <Link
+              href="/setup"
+              className="block px-3 py-2 text-sm text-blue-600 hover:bg-gray-50"
+            >
+              + Agregar otro hotel
+            </Link>
+          </div>
         </div>
       )}
     </div>
