@@ -3,7 +3,7 @@
 import { getCurrentUsuario } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { crearReservaManual } from "@/lib/negocio/reservas";
-import { EstadoDePago, EstadoReserva } from "@prisma/client";
+import { EstadoDePago, EstadoReserva, TipoEspecialReserva } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { ulid } from "ulid";
 import { stripe } from "@/lib/stripe";
@@ -29,6 +29,8 @@ export type HabitacionInput = {
   estadoDePago: EstadoDePago;
   montoAnticipo?: number | null;
   notas?: string;
+  tipoEspecial?: TipoEspecialReserva | null;
+  totalOverride?: number | null;
 };
 
 export async function crearGrupoConHabitacionesAction(
@@ -66,6 +68,8 @@ export async function crearGrupoConHabitacionesAction(
           estadoDePago: h.estadoDePago,
           montoAnticipo: h.estadoDePago === EstadoDePago.ANTICIPO_PAGADO ? h.montoAnticipo : undefined,
           notas: h.notas || undefined,
+          tipoEspecial: h.tipoEspecial ?? undefined,
+          totalOverride: h.totalOverride ?? undefined,
         });
 
         await prisma.reserva.update({
@@ -196,6 +200,8 @@ export async function agregarHabitacionAlGrupoAction(formData: FormData) {
       numPersonas: Number(formData.get("numPersonas")),
       estadoDePago: (formData.get("estadoDePago") as EstadoDePago) || EstadoDePago.PENDIENTE,
       notas: (formData.get("notas") as string) || undefined,
+      tipoEspecial: (formData.get("tipoEspecial") as TipoEspecialReserva) || undefined,
+      totalOverride: formData.get("totalOverride") ? Number(formData.get("totalOverride")) : undefined,
     });
 
     await prisma.reserva.update({

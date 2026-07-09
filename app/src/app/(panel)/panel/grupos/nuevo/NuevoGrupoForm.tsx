@@ -13,6 +13,12 @@ type HabitacionSlot = HabitacionInput & {
   _loadingPrecio: boolean;
 };
 
+const TIPO_ESPECIAL_LABELS: Record<string, string> = {
+  CORTESIA: "Cortesía",
+  PRECIO_ACORDADO: "Precio acordado",
+  PROMOCION: "Promoción",
+};
+
 let nextId = 1;
 
 function slotVacio(hoy: string, manana: string, tipoId: string): HabitacionSlot {
@@ -28,6 +34,8 @@ function slotVacio(hoy: string, manana: string, tipoId: string): HabitacionSlot 
     estadoDePago: "PENDIENTE",
     montoAnticipo: null,
     notas: "",
+    tipoEspecial: null,
+    totalOverride: null,
     _precio: null,
     _loadingPrecio: false,
   };
@@ -50,6 +58,14 @@ export function NuevoGrupoForm({
   ]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Tipo de reserva: por default aplica a todo el grupo (el caso común —
+  // todo el grupo es cortesía, o todo es un bloque con precio acordado).
+  // "tiposDistintos" expande el selector por habitación para el caso donde
+  // se necesita mezclar (ej. 3 normales + 1 cortesía).
+  const [tipoEspecialGrupo, setTipoEspecialGrupo] = useState("");
+  const [totalOverrideGrupo, setTotalOverrideGrupo] = useState("");
+  const [tiposDistintos, setTiposDistintos] = useState(false);
 
   const update = useCallback((id: number, patch: Partial<HabitacionSlot>) => {
     setHabitaciones((prev) =>
@@ -96,8 +112,29 @@ export function NuevoGrupoForm({
     );
   };
 
-  const totalGeneral = habitaciones.reduce((s, h) => s + (h._precio ?? 0), 0);
-  const todosConPrecio = habitaciones.every((h) => h._precio !== null);
+  // Tipo/override efectivos de una habitación: si no se usan tipos distintos,
+  // toda la habitación hereda el tipo de reserva definido a nivel de grupo.
+  const efectivo = useCallback(
+    (h: HabitacionSlot) => {
+      const tipoEspecial = tiposDistintos ? h.tipoEspecial ?? "" : tipoEspecialGrupo;
+      const totalOverride = tiposDistintos ? h.totalOverride : (totalOverrideGrupo ? Number(totalOverrideGrupo) : null);
+      return { tipoEspecial, totalOverride };
+    },
+    [tiposDistintos, tipoEspecialGrupo, totalOverrideGrupo]
+  );
+
+  const precioEfectivo = useCallback(
+    (h: HabitacionSlot): number | null => {
+      const { tipoEspecial, totalOverride } = efectivo(h);
+      if (tipoEspecial === "CORTESIA") return 0;
+      if (tipoEspecial === "PRECIO_ACORDADO" || tipoEspecial === "PROMOCION") return totalOverride ?? null;
+      return h._precio;
+    },
+    [efectivo]
+  );
+
+  const totalGeneral = habitaciones.reduce((s, h) => s + (precioEfectivo(h) ?? 0), 0);
+  const todosConPrecio = habitaciones.every((h) => precioEfectivo(h) !== null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -110,10 +147,24 @@ export function NuevoGrupoForm({
       if (!h.email.trim()) { setError(`Habitación ${i + 1}: el correo es obligatorio`); return; }
       if (!h.fechaIngreso || !h.fechaSalida) { setError(`Habitación ${i + 1}: las fechas son obligatorias`); return; }
       if (h.fechaSalida <= h.fechaIngreso) { setError(`Habitación ${i + 1}: la salida debe ser posterior al ingreso`); return; }
+      const { tipoEspecial, totalOverride } = efectivo(h);
+      if ((tipoEspecial === "PRECIO_ACORDADO" || tipoEspecial === "PROMOCION") && !totalOverride) {
+        setError(`Habitación ${i + 1}: indica el precio ${tipoEspecial === "PROMOCION" ? "de promoción" : "acordado"}`);
+        return;
+      }
     }
 
+    const habitacionesFinal = habitaciones.map((h) => {
+      const { tipoEspecial, totalOverride } = efectivo(h);
+      return {
+        ...h,
+        tipoEspecial: (tipoEspecial || null) as HabitacionSlot["tipoEspecial"],
+        totalOverride,
+      };
+    });
+
     setLoading(true);
-    const result = await crearGrupoConHabitacionesAction(nombre, notas, habitaciones);
+    const result = await crearGrupoConHabitacionesAction(nombre, notas, habitacionesFinal);
     setLoading(false);
 
     if (!result.ok) {
@@ -149,6 +200,56 @@ export function NuevoGrupoForm({
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-900"
           />
         </div>
+
+        {/* Tipo de reserva del grupo — aplica a todas las habitaciones salvo
+            que se elija "usar tipos distintos por habitación". */}
+        {!tiposDistintos && (
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Tipo de reserva (todo el grupo)</label>
+            <select
+              value={tipoEspecialGrupo}
+              onChange={(e) => setTipoEspecialGrupo(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            >
+              <option value="">Normal</option>
+              {Object.entries(TIPO_ESPECIAL_LABELS).map(([val, label]) => (
+                <option key={val} value={val}>{label}</option>
+              ))}
+            </select>
+            {(tipoEspecialGrupo === "PRECIO_ACORDADO" || tipoEspecialGrupo === "PROMOCION") && (
+              <div className="mt-2">
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  {tipoEspecialGrupo === "PROMOCION" ? "Precio de promoción por habitación (MXN)" : "Precio acordado por habitación (MXN)"}
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={totalOverrideGrupo}
+                    onChange={(e) => setTotalOverrideGrupo(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full border border-gray-300 rounded-lg pl-7 pr-3 py-2 text-sm"
+                  />
+                </div>
+                <p className="text-xs text-gray-400 mt-1">Se aplica el mismo precio a cada habitación del grupo.</p>
+              </div>
+            )}
+            {tipoEspecialGrupo === "CORTESIA" && (
+              <div className="mt-2 rounded-lg bg-purple-50 border border-purple-200 px-4 py-3 text-sm text-purple-700">
+                Todas las habitaciones del grupo se registrarán con costo $0.
+              </div>
+            )}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => setTiposDistintos((v) => !v)}
+          className="text-xs text-blue-600 hover:underline"
+        >
+          {tiposDistintos ? "Usar el mismo tipo de reserva para todo el grupo" : "Usar tipos distintos por habitación"}
+        </button>
       </div>
 
       {/* Habitaciones */}
@@ -170,9 +271,9 @@ export function NuevoGrupoForm({
             <div className="flex items-center justify-between px-5 py-3 bg-gray-50 border-b border-gray-200">
               <span className="text-sm font-semibold text-gray-700">Habitación {i + 1}</span>
               <div className="flex items-center gap-3">
-                {h._precio !== null && (
+                {precioEfectivo(h) !== null && (
                   <span className="text-sm font-semibold text-gray-900">
-                    ${h._precio.toLocaleString("es-MX")} MXN
+                    ${precioEfectivo(h)!.toLocaleString("es-MX")} MXN
                   </span>
                 )}
                 {habitaciones.length > 1 && i === 0 && (
@@ -349,6 +450,47 @@ export function NuevoGrupoForm({
                   )}
                   {h._precio === null && (
                     <p className="text-xs text-gray-400 mt-1">Calcula el precio de la habitación para ver el saldo pendiente.</p>
+                  )}
+                </div>
+              )}
+
+              {/* Tipo de reserva por habitación (solo si se eligió "usar tipos distintos") */}
+              {tiposDistintos && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Tipo de reserva</label>
+                  <select
+                    value={h.tipoEspecial ?? ""}
+                    onChange={(e) => update(h._id, { tipoEspecial: (e.target.value || null) as HabitacionSlot["tipoEspecial"] })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                  >
+                    <option value="">Normal</option>
+                    {Object.entries(TIPO_ESPECIAL_LABELS).map(([val, label]) => (
+                      <option key={val} value={val}>{label}</option>
+                    ))}
+                  </select>
+                  {(h.tipoEspecial === "PRECIO_ACORDADO" || h.tipoEspecial === "PROMOCION") && (
+                    <div className="mt-2">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        {h.tipoEspecial === "PROMOCION" ? "Precio de promoción (MXN)" : "Precio acordado (MXN)"}
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={h.totalOverride ?? ""}
+                          onChange={(e) => update(h._id, { totalOverride: e.target.value ? Number(e.target.value) : null })}
+                          placeholder="0.00"
+                          className="w-full border border-gray-300 rounded-lg pl-7 pr-3 py-2 text-sm"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {h.tipoEspecial === "CORTESIA" && (
+                    <div className="mt-2 rounded-lg bg-purple-50 border border-purple-200 px-4 py-3 text-sm text-purple-700">
+                      Esta habitación se registrará con costo $0.
+                    </div>
                   )}
                 </div>
               )}
