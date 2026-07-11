@@ -8,7 +8,7 @@ import { redirect } from "next/navigation";
 import { calcularTotalReserva } from "@/lib/negocio/tarifas";
 import { verificarDisponibilidadAtómica, verificarHabitacionLibre, calcularDisponibilidad } from "@/lib/negocio/disponibilidad";
 import { stripe } from "@/lib/stripe";
-import { enviarSolicitudPago } from "@/lib/emails";
+import { enviarSolicitudPago, enviarConfirmacion } from "@/lib/emails";
 import { datosPagoDestino, mensajeErrorConnect } from "@/lib/stripeConnect";
 
 export async function crearReservaManualAction(formData: FormData) {
@@ -183,15 +183,36 @@ export async function actualizarPagoYNotasAction(formData: FormData) {
 
   const reserva = await prisma.reserva.findFirst({
     where: { id: reservaId, propiedadId: usuario.propiedadId },
-    include: { pagoManual: true },
+    include: { pagoManual: true, huesped: true, tipoDeHabitacion: true, propiedad: true },
   });
   if (!reserva) throw new Error("Reserva no encontrada");
+
+  const estadoAnterior = reserva.pagoManual?.estadoDePago ?? EstadoDePago.PENDIENTE;
 
   await prisma.pagoManual.upsert({
     where: { reservaId },
     update: { estadoDePago, notas, montoAnticipo },
     create: { reservaId, estadoDePago, notas, montoAnticipo },
   });
+
+  // El huésped no recibió confirmación al crear la reserva como "Pendiente"
+  // (ver crearReservaManual) — si ahora se marca como pagada, es el momento
+  // de mandarla. Solo en esa transición, para no reenviar en cada edición.
+  const pasaAPagada = estadoDePago === EstadoDePago.ANTICIPO_PAGADO || estadoDePago === EstadoDePago.PAGADO_COMPLETO;
+  if (estadoAnterior === EstadoDePago.PENDIENTE && pasaAPagada) {
+    await enviarConfirmacion({
+      emailHuesped: reserva.huesped.email,
+      codigoReserva: reserva.codigoReserva,
+      nombreHuesped: reserva.huesped.nombre,
+      nombreHotel: reserva.propiedad.nombre,
+      tipoHabitacion: reserva.tipoDeHabitacion.nombre,
+      fechaIngreso: reserva.fechaIngreso,
+      fechaSalida: reserva.fechaSalida,
+      numPersonas: reserva.numPersonas,
+      totalMxn: Number(reserva.totalMxn),
+      colorPrimario: reserva.propiedad.colorPrimario ?? undefined,
+    }).catch(() => {});
+  }
 
   redirect(`/panel/reservas/${reservaId}`);
 }

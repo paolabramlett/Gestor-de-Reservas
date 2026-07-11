@@ -167,8 +167,15 @@ export async function crearReservaManual(input: CrearReservaManualInput) {
       colorPrimario: reserva.propiedad.colorPrimario ?? undefined,
     };
 
+    // El huésped solo recibe la confirmación cuando ya hay dinero de por
+    // medio (anticipo o pago completo) — si queda "Pendiente" todavía no
+    // hay nada que confirmarle. La alerta interna al equipo sí se manda
+    // siempre, para que el hotel se entere de toda reserva manual nueva.
+    const estadoDePago = reserva.pagoManual?.estadoDePago;
+    const yaHayPago = estadoDePago === EstadoDePago.ANTICIPO_PAGADO || estadoDePago === EstadoDePago.PAGADO_COMPLETO;
+
     await Promise.allSettled([
-      enviarConfirmacion({ emailHuesped: reserva.huesped.email, ...emailParams }),
+      yaHayPago ? enviarConfirmacion({ emailHuesped: reserva.huesped.email, ...emailParams }) : Promise.resolve(),
       reserva.propiedad.email
         ? enviarAlertaEquipo({
             emailEquipo: reserva.propiedad.email,
