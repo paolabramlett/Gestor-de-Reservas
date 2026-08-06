@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { reasignarHabitacionAction, cambiarFechasAction } from "./actions";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -479,12 +480,12 @@ export function CalendarioGrid({
         </div>
 
         {/* Nueva reserva */}
-        <a
+        <Link
           href="/panel/reservas/nueva?from=calendario"
           className="ml-auto rounded-lg bg-gray-900 text-white px-4 py-1.5 text-sm font-medium hover:bg-gray-700 flex-shrink-0"
         >
           + Nueva reserva
-        </a>
+        </Link>
 
         {pending && (
           <span className="text-xs text-gray-500 animate-pulse">Guardando...</span>

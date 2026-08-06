@@ -1,6 +1,6 @@
 "use server";
 
-import { getCurrentUsuario } from "@/lib/auth";
+import { requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ModalidadTarifa } from "@prisma/client";
 import { redirect } from "next/navigation";
@@ -25,12 +25,17 @@ async function verificarSolapamiento(
 }
 
 export async function crearTemporadaAction(formData: FormData) {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireAdmin();
 
   const tipoDeHabitacionId = formData.get("tipoDeHabitacionId") as string;
   const fechaInicio = new Date(formData.get("fechaInicio") as string);
   const fechaFin = new Date(formData.get("fechaFin") as string);
+
+  const tipo = await prisma.tipoDeHabitacion.findFirst({
+    where: { id: tipoDeHabitacionId, propiedadId: usuario.propiedadId },
+    select: { id: true },
+  });
+  if (!tipo) throw new Error("Tipo de habitación no encontrado");
 
   // Task 4.6: validar solapamiento
   const solapada = await verificarSolapamiento(
@@ -63,13 +68,18 @@ export async function crearTemporadaAction(formData: FormData) {
 }
 
 export async function actualizarTemporadaAction(formData: FormData) {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireAdmin();
 
   const id = formData.get("id") as string;
   const tipoDeHabitacionId = formData.get("tipoDeHabitacionId") as string;
   const fechaInicio = new Date(formData.get("fechaInicio") as string);
   const fechaFin = new Date(formData.get("fechaFin") as string);
+
+  const tipo = await prisma.tipoDeHabitacion.findFirst({
+    where: { id: tipoDeHabitacionId, propiedadId: usuario.propiedadId },
+    select: { id: true },
+  });
+  if (!tipo) throw new Error("Tipo de habitación no encontrado");
 
   const solapada = await verificarSolapamiento(
     usuario.propiedadId,
@@ -102,8 +112,7 @@ export async function actualizarTemporadaAction(formData: FormData) {
 }
 
 export async function eliminarTemporadaAction(formData: FormData) {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireAdmin();
 
   const id = formData.get("id") as string;
   await prisma.temporada.deleteMany({

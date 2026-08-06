@@ -73,6 +73,7 @@ export function DatePicker({
   useEffect(() => {
     if (value === undefined) return;
     const parsed = parseISO(value);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sincroniza el valor controlado del componente
     setSelected(parsed);
     if (parsed) {
       setViewYear(parsed.year);

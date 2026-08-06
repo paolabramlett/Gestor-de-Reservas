@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { crearGrupoConHabitacionesAction, HabitacionInput } from "../actions";
 import { calcularTotalPreviewAction } from "../../reservas/actions";
 
@@ -542,9 +543,9 @@ export function NuevoGrupoForm({
           )}
           {loading ? "Creando grupo..." : `Crear grupo${habitaciones.length > 1 ? ` (${habitaciones.length} habitaciones)` : ""}`}
         </button>
-        <a href="/panel/grupos" className="rounded-lg border border-gray-300 text-gray-700 px-5 py-2.5 text-sm font-medium hover:bg-gray-50">
+        <Link href="/panel/grupos" className="rounded-lg border border-gray-300 text-gray-700 px-5 py-2.5 text-sm font-medium hover:bg-gray-50">
           Cancelar
-        </a>
+        </Link>
       </div>
     </form>
   );

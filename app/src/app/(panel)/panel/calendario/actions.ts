@@ -3,6 +3,7 @@
 import { getCurrentUsuario } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { calcularTotalReserva } from "@/lib/negocio/tarifas";
+import { verificarHabitacionLibre } from "@/lib/negocio/disponibilidad";
 import { revalidatePath } from "next/cache";
 
 export async function reasignarHabitacionAction(
@@ -28,18 +29,14 @@ export async function reasignarHabitacionAction(
     return { error: "Solo se puede reasignar a habitaciones del mismo tipo" };
   }
 
-  // Check for conflicts in target room
-  const conflicto = await prisma.reserva.findFirst({
-    where: {
-      id: { not: reservaId },
-      estado: { notIn: ["CANCELADA", "NO_SHOW"] },
-      asignacion: { habitacionId: nuevaHabitacionId },
-      fechaIngreso: { lt: reserva.fechaSalida },
-      fechaSalida: { gt: reserva.fechaIngreso },
-    },
-  });
-  if (conflicto) {
-    return { error: "La habitación ya tiene una reserva en esas fechas" };
+  const habitacionLibre = await verificarHabitacionLibre(
+    nuevaHabitacionId,
+    reserva.fechaIngreso,
+    reserva.fechaSalida,
+    reservaId
+  );
+  if (!habitacionLibre) {
+    return { error: "La Habitación tiene una Reserva o un BloqueoDeHabitación en esas fechas" };
   }
 
   // Upsert assignment
@@ -79,17 +76,14 @@ export async function cambiarFechasAction(
 
   // Check conflicts if assigned to a room
   if (reserva.asignacion) {
-    const conflicto = await prisma.reserva.findFirst({
-      where: {
-        id: { not: reservaId },
-        estado: { notIn: ["CANCELADA", "NO_SHOW"] },
-        asignacion: { habitacionId: reserva.asignacion.habitacionId },
-        fechaIngreso: { lt: salida },
-        fechaSalida: { gt: ingreso },
-      },
-    });
-    if (conflicto) {
-      return { error: "Hay otra reserva en esas fechas para la misma habitación" };
+    const habitacionLibre = await verificarHabitacionLibre(
+      reserva.asignacion.habitacionId,
+      ingreso,
+      salida,
+      reservaId
+    );
+    if (!habitacionLibre) {
+      return { error: "Hay otra Reserva o un BloqueoDeHabitación en esas fechas para la misma Habitación" };
     }
   }
 

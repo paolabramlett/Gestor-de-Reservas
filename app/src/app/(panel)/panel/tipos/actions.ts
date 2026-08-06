@@ -1,6 +1,6 @@
 "use server";
 
-import { getCurrentUsuario } from "@/lib/auth";
+import { requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ModalidadTarifa } from "@prisma/client";
 import { redirect } from "next/navigation";
@@ -20,8 +20,7 @@ function parseTipoFormData(formData: FormData) {
 }
 
 export async function crearTipoAction(formData: FormData) {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireAdmin();
 
   await prisma.tipoDeHabitacion.create({
     data: {
@@ -34,8 +33,7 @@ export async function crearTipoAction(formData: FormData) {
 }
 
 export async function actualizarTipoAction(formData: FormData) {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireAdmin();
 
   const id = formData.get("id") as string;
 

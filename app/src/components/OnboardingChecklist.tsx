@@ -19,6 +19,7 @@ export function OnboardingChecklist({ pasos }: { pasos: Paso[] }) {
 
   useEffect(() => {
     const dismissed = localStorage.getItem(DISMISS_KEY);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage sólo está disponible tras hidratar
     if (!dismissed) setVisible(true);
   }, []);
 

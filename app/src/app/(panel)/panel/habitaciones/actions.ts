@@ -1,14 +1,20 @@
 "use server";
 
-import { getCurrentUsuario } from "@/lib/auth";
+import { requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 
 export async function crearHabitacionAction(formData: FormData) {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireAdmin();
 
   const numero = formData.get("numero") as string;
+  const tipoDeHabitacionId = formData.get("tipoDeHabitacionId") as string;
+
+  const tipo = await prisma.tipoDeHabitacion.findFirst({
+    where: { id: tipoDeHabitacionId, propiedadId: usuario.propiedadId },
+    select: { id: true },
+  });
+  if (!tipo) throw new Error("Tipo de habitación no encontrado");
 
   // Task 4.4: validar unicidad del número
   const existente = await prisma.habitacion.findUnique({
@@ -21,7 +27,7 @@ export async function crearHabitacionAction(formData: FormData) {
   await prisma.habitacion.create({
     data: {
       propiedadId: usuario.propiedadId,
-      tipoDeHabitacionId: formData.get("tipoDeHabitacionId") as string,
+      tipoDeHabitacionId,
       numero,
       descripcion: (formData.get("descripcion") as string) || null,
     },
@@ -31,11 +37,17 @@ export async function crearHabitacionAction(formData: FormData) {
 }
 
 export async function actualizarHabitacionAction(formData: FormData) {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireAdmin();
 
   const id = formData.get("id") as string;
   const numero = formData.get("numero") as string;
+  const tipoDeHabitacionId = formData.get("tipoDeHabitacionId") as string;
+
+  const tipo = await prisma.tipoDeHabitacion.findFirst({
+    where: { id: tipoDeHabitacionId, propiedadId: usuario.propiedadId },
+    select: { id: true },
+  });
+  if (!tipo) throw new Error("Tipo de habitación no encontrado");
 
   // Task 4.4: validar unicidad excluyendo la habitación actual
   const existente = await prisma.habitacion.findFirst({
@@ -52,7 +64,7 @@ export async function actualizarHabitacionAction(formData: FormData) {
   await prisma.habitacion.updateMany({
     where: { id, propiedadId: usuario.propiedadId },
     data: {
-      tipoDeHabitacionId: formData.get("tipoDeHabitacionId") as string,
+      tipoDeHabitacionId,
       numero,
       descripcion: (formData.get("descripcion") as string) || null,
       activa: formData.get("activa") === "true",

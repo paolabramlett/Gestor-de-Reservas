@@ -21,8 +21,11 @@ export function AgregarHabitacionPanel({
   emailContacto?: string;
   nombreContacto?: string;
 }) {
-  const hoy = new Date().toISOString().slice(0, 10);
-  const manana = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const ahora = new Date();
+  const hoy = ahora.toISOString().slice(0, 10);
+  const mananaDate = new Date(ahora);
+  mananaDate.setUTCDate(mananaDate.getUTCDate() + 1);
+  const manana = mananaDate.toISOString().slice(0, 10);
 
   const [tab, setTab] = useState<"nueva" | "vincular">("nueva");
   const [fechaIngreso, setFechaIngreso] = useState(fechaIngresoGrupo ?? hoy);

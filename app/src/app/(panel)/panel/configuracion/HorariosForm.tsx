@@ -56,7 +56,7 @@ export function HorariosForm({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
             <div>
               <label className="block text-xs text-gray-500 mb-1">
-                Horas tras la hora de check-in para sugerir "Late Check-in"
+                Horas tras la hora de check-in para sugerir “Late Check-in”
               </label>
               <input
                 type="number"
@@ -70,7 +70,7 @@ export function HorariosForm({
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">
-                Horas tras la hora de check-in para sugerir "No-Show"
+                Horas tras la hora de check-in para sugerir “No-Show”
               </label>
               <input
                 type="number"

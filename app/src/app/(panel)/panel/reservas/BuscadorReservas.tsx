@@ -11,6 +11,7 @@ export function BuscadorReservas() {
 
   // Sync when URL changes externally (e.g. browser back)
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sincroniza navegación externa del historial
     setValue(searchParams.get("q") ?? "");
   }, [searchParams]);
 

@@ -111,9 +111,6 @@ export function Sidebar({
     router.push("/");
   }
 
-  // Cierra el menú al navegar
-  useEffect(() => { setOpen(false); }, [pathname]);
-
   // Cierra con Escape
   useEffect(() => {
     if (!open) return;
@@ -134,6 +131,7 @@ export function Sidebar({
           <Link
             key={item.href}
             href={item.href}
+            onClick={() => setOpen(false)}
             className={`block px-4 py-2.5 text-sm hover:bg-gray-50 hover:text-gray-900 ${
               pathname === item.href ? "text-gray-900 font-medium bg-gray-50" : "text-gray-700"
             }`}

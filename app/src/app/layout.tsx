@@ -1,13 +1,7 @@
 import type { Metadata, Viewport } from "next";
-import { Geist } from "next/font/google";
 import "./globals.css";
 import { PwaRegister } from "./PwaRegister";
 import { AbrirEnNavegadorBanner } from "./AbrirEnNavegadorBanner";
-
-const geist = Geist({
-  variable: "--font-geist",
-  subsets: ["latin"],
-});
 
 const SITE_URL = "https://hello-roomly.com";
 const TITLE = "Roomly — Software de gestión hotelera para hoteles pequeños en México";
@@ -133,7 +127,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es" className={`${geist.variable} h-full antialiased`}>
+    <html lang="es" className="h-full antialiased">
       <head>
         <script
           type="application/ld+json"

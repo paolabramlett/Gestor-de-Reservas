@@ -18,6 +18,7 @@ import { PropuestaCambioPanel } from "../PropuestaCambioPanel";
 import { BotonesEstadoReserva, CancelarDialogClient } from "../BotonesEstadoReserva";
 import { SolicitarPagoButton } from "../SolicitarPagoButton";
 import { PagoForm } from "./PagoForm";
+import Link from "next/link";
 
 const ESTADO_LABEL: Record<string, string> = {
   PENDIENTE_PAGO: "Pago pendiente",
@@ -97,7 +98,7 @@ export default async function ReservaDetallePage({
     <div className="p-8 max-w-3xl">
       {/* Encabezado */}
       <div className="flex items-center gap-3 mb-2">
-        <a href="/panel/reservas" className="text-sm text-gray-500 hover:text-gray-700">← Reservas</a>
+        <Link href="/panel/reservas" className="text-sm text-gray-500 hover:text-gray-700">← Reservas</Link>
         <span className="text-gray-300">/</span>
         <h1 className="text-xl font-semibold text-gray-900 font-mono">{reserva.codigoReserva}</h1>
         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ESTADO_COLOR[estado]}`}>

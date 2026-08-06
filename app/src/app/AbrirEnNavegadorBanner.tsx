@@ -15,6 +15,7 @@ export function AbrirEnNavegadorBanner() {
   const [copiado, setCopiado] = useState(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- navigator sólo está disponible tras hidratar
     if (esNavegadorEmbebido(navigator.userAgent)) setMostrar(true);
   }, []);
 

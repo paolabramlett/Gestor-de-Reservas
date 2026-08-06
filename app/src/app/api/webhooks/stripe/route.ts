@@ -132,9 +132,6 @@ export async function POST(req: NextRequest) {
         }
 
         const grupoId = session.metadata.grupoId;
-        const esPagoCompleto = session.metadata.esPagoCompleto === "true";
-        const estadoDePago = esPagoCompleto ? EstadoDePago.PAGADO_COMPLETO : EstadoDePago.ANTICIPO_PAGADO;
-
         const montoCobrado = session.amount_total ? session.amount_total / 100 : 0;
         // BUG 11: guardar stripePaymentIntentId en el grupo para poder reembolsar después
         const piId = typeof session.payment_intent === "string"

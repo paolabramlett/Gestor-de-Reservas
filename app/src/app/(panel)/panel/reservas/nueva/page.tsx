@@ -19,8 +19,11 @@ export default async function NuevaReservaPage({
     select: { id: true, nombre: true, capacidadMin: true, capacidadMax: true },
   });
 
-  const hoy = new Date().toISOString().slice(0, 10);
-  const manana = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const ahora = new Date();
+  const hoy = ahora.toISOString().slice(0, 10);
+  const mananaDate = new Date(ahora);
+  mananaDate.setUTCDate(mananaDate.getUTCDate() + 1);
+  const manana = mananaDate.toISOString().slice(0, 10);
 
   return (
     <div className="p-8 max-w-2xl">

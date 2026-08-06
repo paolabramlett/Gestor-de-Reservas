@@ -264,7 +264,7 @@ export function TipoDeHabitacionForm({
             Agregar
           </button>
         </div>
-        <p className="text-xs text-gray-400 mt-1">Presiona Enter o "Agregar" para añadir cada amenidad.</p>
+        <p className="text-xs text-gray-400 mt-1">Presiona Enter o “Agregar” para añadir cada amenidad.</p>
       </div>
 
       <hr className="border-gray-100" />

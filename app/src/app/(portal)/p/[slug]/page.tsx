@@ -20,8 +20,11 @@ export default async function PortalHomePage({
 
   const colorPrimario = propiedad.colorPrimario ?? "#111827";
 
-  const hoy = new Date().toISOString().split("T")[0];
-  const manana = new Date(Date.now() + 86400000).toISOString().split("T")[0];
+  const ahora = new Date();
+  const hoy = ahora.toISOString().split("T")[0];
+  const mananaDate = new Date(ahora);
+  mananaDate.setUTCDate(mananaDate.getUTCDate() + 1);
+  const manana = mananaDate.toISOString().split("T")[0];
 
   const fechaIngresoStr = sp.fechaIngreso ?? hoy;
   const fechaSalidaStr = sp.fechaSalida ?? manana;

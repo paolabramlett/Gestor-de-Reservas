@@ -77,11 +77,11 @@ export default function PreCheckInPage() {
     const codigoUrl = params.get("codigo");
     const emailUrl = params.get("email");
     if (codigoUrl && emailUrl) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- inicializa el formulario desde la URL
       setCodigo(codigoUrl);
       setEmail(emailUrl);
       buscarConDatos(codigoUrl, emailUrl);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function guardar(e: React.FormEvent) {

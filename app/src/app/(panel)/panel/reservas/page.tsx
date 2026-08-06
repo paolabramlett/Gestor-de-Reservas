@@ -7,6 +7,7 @@ import { Suspense } from "react";
 import { tieneEliminacionSegura } from "@/lib/negocio/cicloDeVida";
 import { cancelarReservasEnLoteAction, eliminarReservasEnLoteAction } from "./cicloDeVidaActions";
 import { ReservasTableClient, type ReservaFila } from "./ReservasTableClient";
+import { EstadoReserva, Prisma } from "@prisma/client";
 
 export default async function ReservasPage({
   searchParams,
@@ -20,11 +21,11 @@ export default async function ReservasPage({
   const busqueda = q?.trim();
 
   // When there's a search query, ignore the estado filter and search all states
-  const whereEstado = busqueda
+  const whereEstado: Prisma.ReservaWhereInput = busqueda
     ? {}
     : estado
-    ? { estado: estado as any }
-    : { estado: { in: ["PENDIENTE_PAGO", "CONFIRMADA", "EN_CURSO"] as any[] } };
+    ? { estado: estado as EstadoReserva }
+    : { estado: { in: [EstadoReserva.PENDIENTE_PAGO, EstadoReserva.CONFIRMADA, EstadoReserva.EN_CURSO] } };
 
   const whereBusqueda = busqueda
     ? {

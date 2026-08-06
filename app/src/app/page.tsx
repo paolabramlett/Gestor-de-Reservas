@@ -390,8 +390,8 @@ export default function LandingPage() {
         <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",padding:"0 48px",maxWidth:1200,margin:"0 auto",left:0,right:0}}>
           <div style={{maxWidth:540}}>
             <p style={{fontSize:"clamp(1.4rem,2.5vw,2rem)",fontWeight:600,color:"#fff",lineHeight:1.35,marginBottom:16}}>
-              "Antes perdíamos reservas cada semana.<br />
-              <span style={{color:"#FFBC1A"}}>Ahora todo está en un solo lugar."</span>
+              “Antes perdíamos reservas cada semana.<br />
+              <span style={{color:"#FFBC1A"}}>Ahora todo está en un solo lugar.”</span>
             </p>
             <p style={{fontSize:"0.85rem",color:"rgba(255,255,255,0.65)"}}>Hotel Casa del Mar · Oaxaca, México</p>
           </div>

@@ -1,6 +1,6 @@
 "use server";
 
-import { getCurrentUsuario, requireAdmin } from "@/lib/auth";
+import { requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { stripe } from "@/lib/stripe";
@@ -115,8 +115,7 @@ export async function reactivarSuscripcionAction() {
 }
 
 export async function actualizarPropiedadAction(formData: FormData) {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireAdmin();
 
   await prisma.propiedad.update({
     where: { id: usuario.propiedadId },

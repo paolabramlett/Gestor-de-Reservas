@@ -30,6 +30,7 @@ function SuccessToastInner() {
     const newUrl = params.toString() ? `${pathname}?${params}` : pathname;
     router.replace(newUrl, { scroll: false });
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- refleja el mensaje recibido desde la URL
     setMessage(decodeURIComponent(msg));
     setEsError(!success);
     setVisible(true);

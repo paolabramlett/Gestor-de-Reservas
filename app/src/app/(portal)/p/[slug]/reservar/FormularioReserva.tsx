@@ -164,6 +164,7 @@ function AgregarHabitacionPanel({
   // usuario cambia algún campo, aunque los valores precargados ya sean
   // válidos.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- carga inicial desde parámetros ya validados
     calcularPrecio(tipoId, fechaIngreso, fechaSalida, numPersonas);
     verificarDisponibilidad(tipoId, fechaIngreso, fechaSalida);
     // eslint-disable-next-line react-hooks/exhaustive-deps

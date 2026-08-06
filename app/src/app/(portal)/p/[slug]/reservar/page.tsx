@@ -86,7 +86,8 @@ export default async function ReservarPage({
   // Política de cancelación
   const limiteCancelacion = new Date(fechaIn);
   limiteCancelacion.setHours(limiteCancelacion.getHours() - 48);
-  const ahoraMas1h = new Date(Date.now() + 3600000); // margen conservador
+  const ahoraMas1h = new Date();
+  ahoraMas1h.setHours(ahoraMas1h.getHours() + 1); // margen conservador
   const cancelable = ahoraMas1h < limiteCancelacion;
   const STRIPE_PORCENTAJE = 0.036;
   const STRIPE_FIJA = 3;
