@@ -211,6 +211,7 @@ export default async function ConfiguracionPage({
             planActivo={propiedad.planActivo}
             stripeConnectAccountId={propiedad.stripeConnectAccountId}
             stripeConnectHabilitado={propiedad.stripeConnectHabilitado}
+            stripePublishableKey={process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? null}
             iniciarConexionStripeAction={iniciarConexionStripeAction}
             abrirDashboardStripeAction={abrirDashboardStripeAction}
           />

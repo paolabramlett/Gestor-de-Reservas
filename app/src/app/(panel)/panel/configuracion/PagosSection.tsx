@@ -1,7 +1,10 @@
+import { StripeConnectEmbedded } from "./StripeConnectEmbedded";
+
 type Props = {
   planActivo: string;
   stripeConnectAccountId: string | null;
   stripeConnectHabilitado: boolean;
+  stripePublishableKey: string | null;
   iniciarConexionStripeAction: () => Promise<void>;
   abrirDashboardStripeAction: () => Promise<void>;
 };
@@ -10,6 +13,7 @@ export function PagosSection({
   planActivo,
   stripeConnectAccountId,
   stripeConnectHabilitado,
+  stripePublishableKey,
   iniciarConexionStripeAction,
   abrirDashboardStripeAction,
 }: Props) {
@@ -54,14 +58,26 @@ export function PagosSection({
               ? "Empezaste tu configuración de pagos pero no la terminaste — no puedes cobrar a huéspedes todavía."
               : "Todavía no conectas tu cuenta de Stripe — no puedes cobrar a huéspedes hasta hacerlo."}
           </div>
+          {stripePublishableKey ? (
+            <StripeConnectEmbedded publishableKey={stripePublishableKey} />
+          ) : (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              La configuración embebida no está disponible en este momento.
+            </div>
+          )}
+          <div className="border-t border-gray-100 pt-4">
+            <p className="mb-2 text-xs text-gray-400">
+              Si el formulario embebido no funciona, puedes continuar directamente en Stripe.
+            </p>
           <form action={iniciarConexionStripeAction}>
             <button
               type="submit"
-              className="rounded-lg bg-gray-900 text-white px-4 py-2 text-sm font-medium hover:bg-gray-700"
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
-              {stripeConnectAccountId ? "Continuar configuración" : "Conectar cuenta de Stripe"}
+              Abrir formulario alojado de Stripe →
             </button>
           </form>
+          </div>
         </div>
       )}
     </div>

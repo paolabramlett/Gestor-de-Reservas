@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { stripe } from "@/lib/stripe";
 import { PlanRoomly, RolUsuario } from "@prisma/client";
 import { enviarInvitacionEquipo } from "@/lib/emails";
+import { obtenerOCrearCuentaConnect } from "@/lib/stripeConnectAccount.server";
 
 const ROLES_INVITABLES: RolUsuario[] = [RolUsuario.ADMIN, RolUsuario.RESERVACIONES, RolUsuario.FINANZAS];
 
@@ -301,25 +302,7 @@ export async function iniciarConexionStripeAction() {
   // FUERA del try — internamente lanza NEXT_REDIRECT y no debe atraparse.
   let url: string;
   try {
-    let accountId = propiedad.stripeConnectAccountId;
-
-    if (!accountId) {
-      const account = await stripe.accounts.create({
-        type: "express",
-        country: "MX",
-        email: propiedad.email || undefined,
-        business_profile: { name: propiedad.nombre, product_description: "Hospedaje en hotel" },
-        capabilities: {
-          card_payments: { requested: true },
-          transfers: { requested: true },
-        },
-      });
-      accountId = account.id;
-      await prisma.propiedad.update({
-        where: { id: propiedad.id },
-        data: { stripeConnectAccountId: accountId },
-      });
-    }
+    const accountId = await obtenerOCrearCuentaConnect(propiedad);
 
     const accountLink = await stripe.accountLinks.create({
       account: accountId,
