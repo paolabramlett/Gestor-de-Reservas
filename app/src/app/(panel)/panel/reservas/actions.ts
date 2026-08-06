@@ -435,20 +435,25 @@ export async function solicitarPagoAction(reservaId: string) {
     redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent(mensajeErrorConnect(err))}`);
   }
 
-  await prisma.reserva.update({
-    where: { id: reserva.id },
-    data: {
-      stripeCheckoutSessionId: session.id,
-      linkExpiraEn: expiraEn,
-      estado: EstadoReserva.PENDIENTE_PAGO,
-      pagoManual: {
-        upsert: {
-          create: { estadoDePago: EstadoDePago.PENDIENTE },
-          update: {},
+  try {
+    await prisma.reserva.update({
+      where: { id: reserva.id },
+      data: {
+        stripeCheckoutSessionId: session.id,
+        linkExpiraEn: expiraEn,
+        estado: EstadoReserva.PENDIENTE_PAGO,
+        pagoManual: {
+          upsert: {
+            create: { estadoDePago: EstadoDePago.PENDIENTE },
+            update: {},
+          },
         },
       },
-    },
-  });
+    });
+  } catch (err) {
+    await stripe.checkout.sessions.expire(session.id).catch(() => {});
+    redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent(mensajeErrorConnect(err))}`);
+  }
 
   enviarSolicitudPago({
     emailHuesped: reserva.huesped.email,

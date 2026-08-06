@@ -5,6 +5,7 @@ import { enviarConfirmacion, enviarAlertaEquipo, enviarPagoFallido } from "@/lib
 import { EstadoReserva, EstadoDePago, OrigenReserva, PlanRoomly } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import Stripe from "stripe";
+import { estadoSegunMontoRecibido } from "@/lib/negocio/reglasReserva";
 import { ulid } from "ulid";
 import { calcularTotalReserva } from "@/lib/negocio/tarifas";
 import { reembolsarPagoHuesped } from "@/lib/stripeConnect";
@@ -346,7 +347,6 @@ export async function POST(req: NextRequest) {
 
     if (session.metadata?.tipo === "MANUAL_PAGO" && session.metadata?.reservaId) {
       const reservaId = session.metadata.reservaId;
-      const esPagoCompleto = session.metadata.esPagoCompleto === "true";
 
       // Idempotencia: distingue "Stripe reintenta este mismo evento" (no-op,
       // normal) de "un segundo link de pago distinto se pagó de verdad"
@@ -366,6 +366,19 @@ export async function POST(req: NextRequest) {
             where: { id: reservaId },
             include: { huesped: true, tipoDeHabitacion: true, propiedad: true, pagoManual: true },
           });
+
+      const montoRecibido = (session.amount_total ?? 0) / 100;
+      const montoAnterior = reserva?.pagoManual?.estadoDePago === EstadoDePago.ANTICIPO_PAGADO
+        ? Number(reserva.pagoManual.montoAnticipo ?? 0)
+        : 0;
+      const montoAcumulado = montoAnterior + montoRecibido;
+      const estadoPago = reserva
+        ? estadoSegunMontoRecibido(Number(reserva.totalMxn), montoAcumulado)
+        : EstadoDePago.PENDIENTE;
+      if (reserva && estadoPago === EstadoDePago.PENDIENTE) {
+        console.error("[webhook] MANUAL_PAGO sin monto recibido", reservaId, session.id);
+        return new Response("Monto de pago inválido", { status: 400 });
+      }
 
       // Claim atómico: si dos entregas de este webhook llegan casi al mismo
       // tiempo (Stripe puede mandar la misma notificación por más de un
@@ -417,8 +430,8 @@ export async function POST(req: NextRequest) {
           data: {
             pagoManual: {
               upsert: {
-                create: { estadoDePago: esPagoCompleto ? EstadoDePago.PAGADO_COMPLETO : EstadoDePago.ANTICIPO_PAGADO },
-                update: { estadoDePago: esPagoCompleto ? EstadoDePago.PAGADO_COMPLETO : EstadoDePago.ANTICIPO_PAGADO },
+                create: { estadoDePago: estadoPago, montoAnticipo: estadoPago === EstadoDePago.ANTICIPO_PAGADO ? montoAcumulado : null },
+                update: { estadoDePago: estadoPago, montoAnticipo: estadoPago === EstadoDePago.ANTICIPO_PAGADO ? montoAcumulado : null },
               },
             },
           },

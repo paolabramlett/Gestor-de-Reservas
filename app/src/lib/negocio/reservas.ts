@@ -6,6 +6,7 @@ import { verificarDisponibilidadAtómica } from "./disponibilidad";
 import { enviarConfirmacion, enviarAlertaEquipo, enviarSolicitudPago } from "@/lib/emails";
 import { stripe } from "@/lib/stripe";
 import { datosPagoDestino, requerirCuentaConectada } from "@/lib/stripeConnect";
+import { resolverMontoCobro, resolverTotalReserva, validarDatosReserva, validarPagoManual } from "./reglasReserva";
 
 export function generarCodigoReserva(): string {
   const id = ulid();
@@ -95,6 +96,12 @@ type CrearReservaManualInput = {
 };
 
 export async function crearReservaManual(input: CrearReservaManualInput) {
+  const tipo = await prisma.tipoDeHabitacion.findFirst({
+    where: { id: input.tipoDeHabitacionId, propiedadId: input.propiedadId },
+    select: { capacidadMin: true, capacidadMax: true },
+  });
+  if (!tipo) throw new Error("TIPO_HABITACION_INVALIDO");
+  validarDatosReserva(input.fechaIngreso, input.fechaSalida, input.numPersonas, tipo.capacidadMin, tipo.capacidadMax);
   const { total: totalCalculado, desglose } = await calcularTotalReserva(
     input.tipoDeHabitacionId,
     input.fechaIngreso,
@@ -103,12 +110,8 @@ export async function crearReservaManual(input: CrearReservaManualInput) {
   );
 
   // Si hay precio acordado/cortesía, usar ese total; si es cortesía sin precio, 0
-  const total =
-    input.totalOverride != null
-      ? input.totalOverride
-      : input.tipoEspecial === "CORTESIA"
-      ? 0
-      : totalCalculado;
+  const total = resolverTotalReserva(totalCalculado, input.tipoEspecial, input.totalOverride);
+  validarPagoManual(total, input.estadoDePago ?? EstadoDePago.PENDIENTE, input.montoAnticipo);
 
   return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     // Mismo guard que las reservas online: recepción tampoco debe poder
@@ -207,6 +210,13 @@ export async function crearReservaConLinkDePago(input: CrearReservaConLinkInput)
   });
   requerirCuentaConectada(propiedadConnect);
 
+  const tipo = await prisma.tipoDeHabitacion.findFirst({
+    where: { id: input.tipoDeHabitacionId, propiedadId: input.propiedadId },
+    select: { capacidadMin: true, capacidadMax: true },
+  });
+  if (!tipo) throw new Error("TIPO_HABITACION_INVALIDO");
+  validarDatosReserva(input.fechaIngreso, input.fechaSalida, input.numPersonas, tipo.capacidadMin, tipo.capacidadMax);
+
   // La reserva PENDIENTE_PAGO aparta inventario mientras el link esté
   // vigente — hay que verificar que ese inventario exista antes de crearla.
   const disponible = await verificarDisponibilidadAtómica(
@@ -223,12 +233,8 @@ export async function crearReservaConLinkDePago(input: CrearReservaConLinkInput)
     input.numPersonas
   );
 
-  const total =
-    input.totalOverride != null
-      ? input.totalOverride
-      : input.tipoEspecial === "CORTESIA"
-      ? 0
-      : totalCalculado;
+  const total = resolverTotalReserva(totalCalculado, input.tipoEspecial, input.totalOverride);
+  const montoCobrar = resolverMontoCobro(total, input.esPagoCompleto, input.montoCobrar);
 
   // Create reservation in PENDIENTE_PAGO state
   const reserva = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -258,7 +264,7 @@ export async function crearReservaConLinkDePago(input: CrearReservaConLinkInput)
         pagoManual: {
           create: {
             estadoDePago: EstadoDePago.PENDIENTE,
-            montoAnticipo: input.esPagoCompleto ? null : input.montoCobrar,
+            montoAnticipo: input.esPagoCompleto ? null : montoCobrar,
             notas: input.notas,
           },
         },
@@ -270,7 +276,9 @@ export async function crearReservaConLinkDePago(input: CrearReservaConLinkInput)
   });
 
   // Create Stripe Checkout Session
-  const session = await stripe.checkout.sessions.create({
+  let session;
+  try {
+    session = await stripe.checkout.sessions.create({
     mode: "payment",
     payment_method_types: ["card"],
     line_items: [
@@ -278,7 +286,7 @@ export async function crearReservaConLinkDePago(input: CrearReservaConLinkInput)
         quantity: 1,
         price_data: {
           currency: "mxn",
-          unit_amount: Math.round(input.montoCobrar * 100),
+          unit_amount: Math.round(montoCobrar * 100),
           product_data: {
             name: input.esPagoCompleto
               ? `Reserva completa — ${reserva.tipoDeHabitacion.nombre}`
@@ -289,7 +297,7 @@ export async function crearReservaConLinkDePago(input: CrearReservaConLinkInput)
       },
     ],
     customer_email: input.email,
-    payment_intent_data: datosPagoDestino(propiedadConnect, input.montoCobrar),
+    payment_intent_data: datosPagoDestino(propiedadConnect, montoCobrar),
     metadata: {
       reservaId: reserva.id,
       tipo: "MANUAL_PAGO",
@@ -298,13 +306,19 @@ export async function crearReservaConLinkDePago(input: CrearReservaConLinkInput)
     expires_at: Math.floor((Date.now() + 24 * 60 * 60 * 1000) / 1000),
     success_url: `${input.baseUrl}/p/${reserva.propiedad.slug}/confirmacion?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${input.baseUrl}/p/${reserva.propiedad.slug}`,
-  });
-
-  // Save checkout session ID
-  await prisma.reserva.update({
-    where: { id: reserva.id },
-    data: { stripeCheckoutSessionId: session.id },
-  });
+    });
+    await prisma.reserva.update({
+      where: { id: reserva.id },
+      data: { stripeCheckoutSessionId: session.id },
+    });
+  } catch (error) {
+    if (session?.id) await stripe.checkout.sessions.expire(session.id).catch(() => {});
+    await prisma.$transaction([
+      prisma.reserva.delete({ where: { id: reserva.id } }),
+      prisma.huesped.delete({ where: { id: reserva.huespedId } }),
+    ]).catch(() => {});
+    throw error;
+  }
 
   // Send payment request email (fire-and-forget)
   enviarSolicitudPago({
@@ -316,7 +330,7 @@ export async function crearReservaConLinkDePago(input: CrearReservaConLinkInput)
     fechaIngreso: reserva.fechaIngreso,
     fechaSalida: reserva.fechaSalida,
     numPersonas: reserva.numPersonas,
-    montoCobrar: input.montoCobrar,
+    montoCobrar,
     esPagoCompleto: input.esPagoCompleto,
     linkPago: session.url!,
     expiraEn: reserva.linkExpiraEn!,

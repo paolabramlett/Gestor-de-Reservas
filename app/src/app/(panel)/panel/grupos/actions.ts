@@ -53,6 +53,7 @@ export async function crearGrupoConHabitacionesAction(
       },
     });
 
+    const reservasCreadas: Array<{ reservaId: string; huespedId: string }> = [];
     for (let i = 0; i < habitaciones.length; i++) {
       const h = habitaciones[i];
       try {
@@ -71,15 +72,20 @@ export async function crearGrupoConHabitacionesAction(
           tipoEspecial: h.tipoEspecial ?? undefined,
           totalOverride: h.totalOverride ?? undefined,
         });
+        reservasCreadas.push({ reservaId: reserva.id, huespedId: reserva.huespedId });
 
         await prisma.reserva.update({
           where: { id: reserva.id },
           data: { grupoId: grupo.id },
         });
       } catch (err: unknown) {
-        // Si una habitación falla, elimina el grupo recién creado (y las reservas ya vinculadas)
-        await prisma.reserva.updateMany({ where: { grupoId: grupo.id }, data: { grupoId: null } });
-        await prisma.grupoReserva.delete({ where: { id: grupo.id } });
+        // Compensación: ninguna reserva parcial debe quedar consumiendo
+        // inventario si falla una habitación posterior del mismo grupo.
+        await prisma.$transaction([
+          prisma.reserva.deleteMany({ where: { id: { in: reservasCreadas.map((r) => r.reservaId) } } }),
+          prisma.huesped.deleteMany({ where: { id: { in: reservasCreadas.map((r) => r.huespedId) } } }),
+          prisma.grupoReserva.delete({ where: { id: grupo.id } }),
+        ]);
 
         const msg = err instanceof Error ? err.message : String(err);
         const label = `Habitación ${i + 1}`;
@@ -305,6 +311,10 @@ export async function solicitarPagoGrupoAction(formData: FormData) {
 
   if (monto > restante) {
     redirect(`/panel/grupos/${grupoId}?error=${encodeURIComponent(`El monto no puede superar el restante de $${restante.toLocaleString("es-MX")} MXN`)}`);
+  }
+
+  if (esPagoCompleto && Math.abs(monto - restante) > 0.005) {
+    redirect(`/panel/grupos/${grupoId}?error=${encodeURIComponent("Para liquidar el grupo debe cobrarse exactamente el saldo pendiente")}`);
   }
 
   const contacto = grupo.reservas[0].huesped;

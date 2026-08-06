@@ -85,7 +85,18 @@ export function NuevaReservaForm({
     setHabitaciones((prev) => prev.map((h) => h.id === id ? { ...h, [field]: value } : h));
   }, []);
 
-  const addHab = () => setHabitaciones((prev) => [...prev, makeHab(prev[0].fechaIngreso, prev[0].fechaSalida, tipos)]);
+  const addHab = () => {
+    setHabitaciones((prev) => [...prev, makeHab(prev[0].fechaIngreso, prev[0].fechaSalida, tipos)]);
+    // Los precios especiales y anticipos son por habitación; no deben
+    // heredarse silenciosamente al convertir el formulario en un grupo.
+    setTipoEspecial("");
+    setTotalOverride("");
+    setSolicitarPago(false);
+    if (estadoDePago !== "PENDIENTE") {
+      setEstadoDePago("PENDIENTE");
+      setMontoAnticipo("");
+    }
+  };
   const removeHab = (id: string) => setHabitaciones((prev) => prev.filter((h) => h.id !== id));
 
   const copyDatesFromFirst = () => {
@@ -115,9 +126,11 @@ export function NuevaReservaForm({
       fd.set("numPersonas", String(habitaciones[0].numPersonas));
       fd.set("notas", habitaciones[0].notas);
       if (tipoEspecial) fd.set("tipoEspecial", tipoEspecial);
-      if (totalOverride) fd.set("totalOverride", totalOverride);
+      if ((tipoEspecial === "PRECIO_ACORDADO" || tipoEspecial === "PROMOCION") && totalOverride) {
+        fd.set("totalOverride", totalOverride);
+      }
       if (solicitarPago) {
-        fd.set("montoCobrar", montoCobrar);
+        if (!esPagoCompleto) fd.set("montoCobrar", montoCobrar);
         fd.set("esPagoCompleto", String(esPagoCompleto));
         await crearReservaConPagoAction(fd);
       } else {
@@ -287,7 +300,15 @@ export function NuevaReservaForm({
                   <label className="block text-xs font-medium text-gray-500 mb-1">Tipo de reserva</label>
                   <select
                     value={tipoEspecial}
-                    onChange={(e) => setTipoEspecial(e.target.value)}
+                    onChange={(e) => {
+                      setTipoEspecial(e.target.value);
+                      setTotalOverride("");
+                      if (e.target.value === "CORTESIA") {
+                        setSolicitarPago(false);
+                        setEstadoDePago("PENDIENTE");
+                        setMontoAnticipo("");
+                      }
+                    }}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                   >
                     <option value="">Normal</option>
@@ -342,7 +363,7 @@ export function NuevaReservaForm({
       <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
         <h2 className="text-sm font-semibold text-gray-700">Pago</h2>
 
-        {esPro && !isMulti && (
+        {esPro && !isMulti && tipoEspecial !== "CORTESIA" && (
           <label className="flex items-start gap-3 cursor-pointer">
             <input
               type="checkbox"
@@ -375,9 +396,9 @@ export function NuevaReservaForm({
                 </label>
               ))}
             </div>
-            <div>
+            {!esPagoCompleto ? <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">
-                {esPagoCompleto ? "Monto total a cobrar (MXN)" : "Monto del anticipo (MXN)"}
+                Monto del anticipo (MXN)
               </label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
@@ -392,7 +413,11 @@ export function NuevaReservaForm({
                   className="w-full border border-gray-300 rounded-lg pl-7 pr-3 py-2 text-sm"
                 />
               </div>
-            </div>
+            </div> : (
+              <p className="text-xs text-gray-500 rounded-lg bg-gray-50 px-3 py-2">
+                Cobraremos automáticamente el total calculado de la reserva.
+              </p>
+            )}
           </div>
         ) : (
           <div className="space-y-3">
@@ -404,8 +429,8 @@ export function NuevaReservaForm({
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
               >
                 <option value="PENDIENTE">Pendiente</option>
-                <option value="ANTICIPO_PAGADO">Anticipo pagado</option>
-                <option value="PAGADO_COMPLETO">Pagado completo</option>
+                {tipoEspecial !== "CORTESIA" && !isMulti && <option value="ANTICIPO_PAGADO">Anticipo pagado</option>}
+                {tipoEspecial !== "CORTESIA" && <option value="PAGADO_COMPLETO">Pagado completo</option>}
               </select>
             </div>
             {estadoDePago === "ANTICIPO_PAGADO" && !isMulti && (
@@ -415,7 +440,7 @@ export function NuevaReservaForm({
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
                   <input
                     type="number"
-                    min={0}
+                    min={0.01}
                     step="0.01"
                     required
                     value={montoAnticipo}
