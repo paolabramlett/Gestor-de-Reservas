@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { crearReservaManual, crearReservaConLinkDePago } from "@/lib/negocio/reservas";
 import { EstadoDePago, EstadoReserva, TipoEspecialReserva } from "@prisma/client";
 import { redirect } from "next/navigation";
-import { calcularTotalReserva } from "@/lib/negocio/tarifas";
+import { calcularPrecioNoche, calcularTotalReserva } from "@/lib/negocio/tarifas";
 import { verificarDisponibilidadAtómica, verificarHabitacionLibre, calcularDisponibilidad } from "@/lib/negocio/disponibilidad";
 import { stripe } from "@/lib/stripe";
 import { enviarSolicitudPago, enviarConfirmacion } from "@/lib/emails";
@@ -490,6 +490,65 @@ export async function calcularTotalPreviewAction(
     return { total: Number(total) };
   } catch {
     return { total: 0, error: "Error calculando tarifa" };
+  }
+}
+
+type HabitacionCotizacionInput = {
+  id: string;
+  tipoDeHabitacionId: string;
+  fechaIngreso: string;
+  fechaSalida: string;
+  numPersonas: number;
+};
+
+export async function cotizarHabitacionesPreviewAction(
+  habitaciones: HabitacionCotizacionInput[]
+): Promise<
+  | { ok: true; habitaciones: Array<{ id: string; total: number; noches: number; desglose: Array<{ fecha: string; subtotal: number; fuente: string; temporada?: string }> }> }
+  | { ok: false; error: string }
+> {
+  const usuario = await getCurrentUsuario();
+  if (!usuario) return { ok: false, error: "No autenticado" };
+  if (habitaciones.length === 0 || habitaciones.length > 20) {
+    return { ok: false, error: "Cantidad de habitaciones inválida" };
+  }
+
+  const ids = [...new Set(habitaciones.map((h) => h.tipoDeHabitacionId))];
+  const tiposPropios = await prisma.tipoDeHabitacion.findMany({
+    where: { id: { in: ids }, propiedadId: usuario.propiedadId, activo: true },
+    select: { id: true, capacidadMin: true, capacidadMax: true },
+  });
+  if (tiposPropios.length !== ids.length) return { ok: false, error: "Tipo de habitación inválido" };
+  const capacidades = new Map(tiposPropios.map((tipo) => [tipo.id, tipo]));
+
+  try {
+    const cotizaciones = await Promise.all(
+      habitaciones.map(async (h) => {
+        const ingreso = new Date(`${h.fechaIngreso}T12:00:00`);
+        const salida = new Date(`${h.fechaSalida}T12:00:00`);
+        const capacidad = capacidades.get(h.tipoDeHabitacionId);
+        if (!h.fechaIngreso || !h.fechaSalida || salida <= ingreso || !capacidad || !Number.isInteger(h.numPersonas) ||
+            h.numPersonas < capacidad.capacidadMin || h.numPersonas > capacidad.capacidadMax) {
+          throw new Error("DATOS_INVALIDOS");
+        }
+        const { total, desglose } = await calcularTotalReserva(h.tipoDeHabitacionId, ingreso, salida, h.numPersonas);
+        const noches = Math.round((salida.getTime() - ingreso.getTime()) / 86_400_000);
+        return {
+          id: h.id,
+          total: Number(total),
+          noches,
+          desglose: desglose.map((noche) => ({
+            fecha: noche.fecha,
+            subtotal: calcularPrecioNoche(noche, h.numPersonas),
+            fuente: noche.fuente,
+            temporada: noche.temporadaNombre,
+          })),
+        };
+      })
+    );
+    return { ok: true, habitaciones: cotizaciones };
+  } catch {
+    return { ok: false, error: "No se pudo calcular el precio" };
   }
 }
 

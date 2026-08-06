@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { crearReservaManualAction, crearReservaConPagoAction } from "../actions";
+import { cotizarHabitacionesPreviewAction, crearReservaManualAction, crearReservaConPagoAction } from "../actions";
 import { crearGrupoConHabitacionesAction } from "../../grupos/actions";
 import type { HabitacionInput } from "../../grupos/actions";
 import { EstadoDePago } from "@prisma/client";
@@ -21,6 +21,13 @@ type Habitacion = {
   fechaSalida: string;
   numPersonas: number;
   notas: string;
+};
+
+type PrecioHabitacion = {
+  total: number | null;
+  noches: number | null;
+  estado: "calculando" | "listo" | "error";
+  desglose: Array<{ fecha: string; subtotal: number; fuente: string; temporada?: string }>;
 };
 
 const TIPO_ESPECIAL_LABELS: Record<string, string> = {
@@ -74,12 +81,69 @@ export function NuevaReservaForm({
   // Single-room extras
   const [tipoEspecial, setTipoEspecial] = useState("");
   const [totalOverride, setTotalOverride] = useState("");
+  const [precios, setPrecios] = useState<Record<string, PrecioHabitacion>>({});
+  const cotizacionActual = useRef(0);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const isMulti = habitaciones.length > 1;
   const cancelUrl = from === "calendario" ? "/panel/calendario" : "/panel/reservas";
+
+  useEffect(() => {
+    const requestId = ++cotizacionActual.current;
+    const validas = habitaciones.filter(
+      (h) => h.tipoDeHabitacionId && h.fechaIngreso && h.fechaSalida > h.fechaIngreso && h.numPersonas > 0
+    );
+    if (validas.length !== habitaciones.length) {
+      return;
+    }
+
+    const timer = window.setTimeout(async () => {
+      setPrecios((prev) => Object.fromEntries(validas.map((h) => [h.id, {
+      total: prev[h.id]?.total ?? null,
+      noches: prev[h.id]?.noches ?? null,
+      estado: "calculando" as const,
+      desglose: prev[h.id]?.desglose ?? [],
+      }])));
+      const result = await cotizarHabitacionesPreviewAction(validas.map(({ id, tipoDeHabitacionId, fechaIngreso, fechaSalida, numPersonas }) => ({
+        id, tipoDeHabitacionId, fechaIngreso, fechaSalida, numPersonas,
+      })));
+      if (requestId !== cotizacionActual.current) return;
+      if (!result.ok) {
+        setPrecios(Object.fromEntries(validas.map((h) => [h.id, { total: null, noches: null, estado: "error" as const, desglose: [] }])));
+        return;
+      }
+      setPrecios(Object.fromEntries(result.habitaciones.map((h) => [h.id, {
+        total: h.total, noches: h.noches, estado: "listo" as const, desglose: h.desglose,
+      }])));
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [habitaciones]);
+
+  const preciosEfectivos = useMemo(() => habitaciones.map((h) => {
+    if (!h.tipoDeHabitacionId || !h.fechaIngreso || h.fechaSalida <= h.fechaIngreso || h.numPersonas <= 0) return null;
+    if (!isMulti && tipoEspecial === "CORTESIA") return 0;
+    if (!isMulti && (tipoEspecial === "PRECIO_ACORDADO" || tipoEspecial === "PROMOCION")) {
+      const override = Number(totalOverride);
+      return Number.isFinite(override) && override > 0 ? override : null;
+    }
+    return precios[h.id]?.estado === "listo" ? precios[h.id].total : null;
+  }), [habitaciones, isMulti, precios, tipoEspecial, totalOverride]);
+
+  const totalEstimado = preciosEfectivos.every((precio) => precio !== null)
+    ? preciosEfectivos.reduce<number>((suma, precio) => suma + (precio ?? 0), 0)
+    : null;
+  const formatoMxn = (monto: number) => monto.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
+  const datosCompletos = habitaciones.every(
+    (h) => h.tipoDeHabitacionId && h.fechaIngreso && h.fechaSalida > h.fechaIngreso && h.numPersonas > 0
+  );
+  const hayErrorPrecio = habitaciones.some((h) => precios[h.id]?.estado === "error");
+  const estadoTotal = totalEstimado !== null
+    ? formatoMxn(totalEstimado)
+    : !datosCompletos ? "Completa los datos"
+    : hayErrorPrecio ? "No disponible"
+    : "Calculando…";
 
   const updateHab = useCallback((id: string, field: keyof Habitacion, value: string | number) => {
     setHabitaciones((prev) => prev.map((h) => h.id === id ? { ...h, [field]: value } : h));
@@ -164,11 +228,11 @@ export function NuevaReservaForm({
   };
 
   return (
-    <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
+    <form ref={formRef} onSubmit={handleSubmit} className="min-w-0 space-y-6">
       <input type="hidden" name="from" value={from ?? ""} />
 
       {/* ── Datos del huésped ───────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
+      <div className="min-w-0 overflow-hidden bg-white rounded-xl border border-gray-200 p-4 sm:p-5 space-y-4">
         <h2 className="text-sm font-semibold text-gray-700">Datos del huésped</h2>
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">Nombre completo</label>
@@ -181,7 +245,7 @@ export function NuevaReservaForm({
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
           />
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid min-w-0 grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Correo</label>
             <input
@@ -218,7 +282,7 @@ export function NuevaReservaForm({
         </div>
 
         {habitaciones.map((h, idx) => (
-          <div key={h.id} className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
+          <div key={h.id} className="min-w-0 overflow-hidden bg-white rounded-xl border border-gray-200 p-4 sm:p-5 space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
                 Habitación {idx + 1}
@@ -246,7 +310,7 @@ export function NuevaReservaForm({
               </select>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid min-w-0 grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">Check-in</label>
                 <input
@@ -254,7 +318,7 @@ export function NuevaReservaForm({
                   required
                   value={h.fechaIngreso}
                   onChange={(e) => updateHab(h.id, "fechaIngreso", e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                  className="block min-w-0 max-w-full w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                 />
               </div>
               <div>
@@ -264,12 +328,12 @@ export function NuevaReservaForm({
                   required
                   value={h.fechaSalida}
                   onChange={(e) => updateHab(h.id, "fechaSalida", e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                  className="block min-w-0 max-w-full w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid min-w-0 grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">Personas</label>
                 <input
@@ -344,6 +408,36 @@ export function NuevaReservaForm({
                 )}
               </>
             )}
+
+            <div className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5">
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-gray-500">
+                  {precios[h.id]?.noches ? `${precios[h.id].noches} noche${precios[h.id].noches === 1 ? "" : "s"}` : "Precio de la estancia"}
+                </p>
+                {precios[h.id]?.estado === "error" && <p className="text-xs text-red-600">No se pudo calcular</p>}
+              </div>
+              <p className="shrink-0 text-sm font-semibold text-gray-900" aria-live="polite">
+                {preciosEfectivos[idx] !== null
+                  ? formatoMxn(preciosEfectivos[idx]!)
+                  : precios[h.id]?.estado === "calculando" ? "Calculando…" : "—"}
+              </p>
+            </div>
+            {precios[h.id]?.estado === "listo" && precios[h.id].desglose.length > 0 && (
+              <details className="rounded-lg border border-gray-100 px-3 py-2 text-xs text-gray-600">
+                <summary className="cursor-pointer font-medium text-gray-700">Ver precio por noche</summary>
+                <div className="mt-2 divide-y divide-gray-100">
+                  {precios[h.id].desglose.map((noche) => (
+                    <div key={noche.fecha} className="flex items-center justify-between gap-3 py-2">
+                      <div className="min-w-0">
+                        <p>{new Date(`${noche.fecha}T12:00:00`).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}</p>
+                        <p className="truncate text-gray-400">{noche.temporada ?? (noche.fuente === "TEMPORADA" ? "Temporada" : "Tarifa normal")}</p>
+                      </div>
+                      <span className="shrink-0 font-medium text-gray-700">{formatoMxn(noche.subtotal)}</span>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
           </div>
         ))}
 
@@ -359,8 +453,23 @@ export function NuevaReservaForm({
         </button>
       </div>
 
+      <div className="min-w-0 rounded-xl border border-gray-200 bg-gray-900 p-4 text-white" aria-live="polite">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <p className="text-xs text-gray-300">Total estimado</p>
+            <p className="mt-0.5 text-sm text-gray-400">
+              {habitaciones.length} habitación{habitaciones.length === 1 ? "" : "es"}
+            </p>
+          </div>
+          <p className="text-xl font-semibold tracking-tight">
+            {estadoTotal}
+          </p>
+        </div>
+        <p className="mt-2 text-xs text-gray-400">El total final se valida nuevamente al crear la reserva.</p>
+      </div>
+
       {/* ── Pago ────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
+      <div className="min-w-0 overflow-hidden bg-white rounded-xl border border-gray-200 p-4 sm:p-5 space-y-4">
         <h2 className="text-sm font-semibold text-gray-700">Pago</h2>
 
         {esPro && !isMulti && tipoEspecial !== "CORTESIA" && (
@@ -387,8 +496,8 @@ export function NuevaReservaForm({
         )}
 
         {esPro && !isMulti && solicitarPago ? (
-          <div className="space-y-3 pl-7">
-            <div className="flex gap-3">
+          <div className="min-w-0 space-y-3 sm:pl-7">
+            <div className="grid min-w-0 grid-cols-1 sm:grid-cols-2 gap-3">
               {[{ v: false, label: "Anticipo" }, { v: true, label: "Pago completo" }].map(({ v, label }) => (
                 <label key={label} className={`flex-1 flex items-center gap-2 border rounded-lg px-3 py-2.5 cursor-pointer text-sm ${esPagoCompleto === v ? "border-gray-900 bg-gray-50" : "border-gray-200"}`}>
                   <input type="radio" checked={esPagoCompleto === v} onChange={() => setEsPagoCompleto(v)} className="text-gray-900" />
@@ -410,12 +519,14 @@ export function NuevaReservaForm({
                   value={montoCobrar}
                   onChange={(e) => setMontoCobrar(e.target.value)}
                   placeholder="0.00"
-                  className="w-full border border-gray-300 rounded-lg pl-7 pr-3 py-2 text-sm"
+                  className="block min-w-0 max-w-full w-full border border-gray-300 rounded-lg pl-7 pr-3 py-2 text-sm"
                 />
               </div>
             </div> : (
               <p className="text-xs text-gray-500 rounded-lg bg-gray-50 px-3 py-2">
-                Cobraremos automáticamente el total calculado de la reserva.
+                {totalEstimado !== null
+                  ? `Cobraremos automáticamente ${formatoMxn(totalEstimado)}.`
+                  : "Cobraremos automáticamente el total calculado de la reserva."}
               </p>
             )}
           </div>
@@ -463,7 +574,7 @@ export function NuevaReservaForm({
       )}
 
       {/* ── Acciones ────────────────────────────────────────── */}
-      <div className="flex gap-3">
+      <div className="flex min-w-0 flex-col gap-3 sm:flex-row">
         <button
           type="submit"
           disabled={submitting}

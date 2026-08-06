@@ -26,7 +26,7 @@ export default async function NuevaReservaPage({
   const manana = mananaDate.toISOString().slice(0, 10);
 
   return (
-    <div className="p-8 max-w-2xl">
+    <div className="w-full min-w-0 p-4 md:p-8 max-w-2xl">
       <div className="flex items-center gap-3 mb-6">
         <a
           href={from === "calendario" ? "/panel/calendario" : "/panel/reservas"}
