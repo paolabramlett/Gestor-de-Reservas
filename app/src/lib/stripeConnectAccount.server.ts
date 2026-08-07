@@ -2,6 +2,7 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
+import { cuentaConnectNecesitaReemplazo } from "@/lib/stripeConnectAccount";
 
 type DatosPropiedadConnect = {
   id: string;
@@ -15,7 +16,14 @@ type DatosPropiedadConnect = {
 export async function obtenerOCrearCuentaConnect(
   propiedad: DatosPropiedadConnect
 ): Promise<string> {
-  if (propiedad.stripeConnectAccountId) return propiedad.stripeConnectAccountId;
+  if (propiedad.stripeConnectAccountId) {
+    try {
+      await stripe.accounts.retrieve(propiedad.stripeConnectAccountId);
+      return propiedad.stripeConnectAccountId;
+    } catch (error) {
+      if (!cuentaConnectNecesitaReemplazo(error)) throw error;
+    }
+  }
 
   const account = await stripe.accounts.create(
     {
@@ -34,7 +42,11 @@ export async function obtenerOCrearCuentaConnect(
       },
     },
     // Evita cuentas Express huérfanas si dos sesiones se solicitan al mismo tiempo.
-    { idempotencyKey: `roomly-connect-account-${propiedad.id}` }
+    {
+      idempotencyKey: propiedad.stripeConnectAccountId
+        ? `roomly-connect-account-replacement-${propiedad.id}-${propiedad.stripeConnectAccountId}`
+        : `roomly-connect-account-${propiedad.id}`,
+    }
   );
 
   await prisma.propiedad.update({
