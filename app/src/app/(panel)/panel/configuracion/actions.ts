@@ -8,6 +8,7 @@ import { PlanRoomly, RolUsuario } from "@prisma/client";
 import { enviarInvitacionEquipo } from "@/lib/emails";
 import { obtenerOCrearCuentaConnect } from "@/lib/stripeConnectAccount.server";
 import { puedeAdministrarSuscripcion } from "@/lib/negocio/suscripciones";
+import { esPlataformaConnectNoConfigurada } from "@/lib/stripeConnectAccount";
 
 const ROLES_INVITABLES: RolUsuario[] = [RolUsuario.ADMIN, RolUsuario.RESERVACIONES, RolUsuario.FINANZAS];
 
@@ -324,7 +325,9 @@ export async function iniciarConexionStripeAction() {
     url = accountLink.url;
   } catch (err) {
     console.error("[stripe-connect] iniciarConexion error:", err);
-    const msg = err instanceof Error ? err.message : "No se pudo iniciar la conexión con Stripe";
+    const msg = esPlataformaConnectNoConfigurada(err)
+      ? "La cuenta de Roomly aún no tiene Stripe Connect activado. Actívalo una vez en el Dashboard de Stripe y vuelve a intentarlo."
+      : err instanceof Error ? err.message : "No se pudo iniciar la conexión con Stripe";
     redirect("/panel/configuracion?tab=pagos&error=" + encodeURIComponent(msg));
   }
 
@@ -347,7 +350,15 @@ export async function abrirDashboardStripeAction() {
     url = loginLink.url;
   } catch (err) {
     console.error("[stripe-connect] abrirDashboard error:", err);
-    const msg = err instanceof Error ? err.message : "No se pudo abrir el dashboard de Stripe";
+    if (esPlataformaConnectNoConfigurada(err)) {
+      await prisma.propiedad.update({
+        where: { id: propiedad.id },
+        data: { stripeConnectHabilitado: false },
+      });
+    }
+    const msg = esPlataformaConnectNoConfigurada(err)
+      ? "La cuenta de Roomly aún no tiene Stripe Connect activado. Actívalo una vez en el Dashboard de Stripe y vuelve a intentarlo."
+      : err instanceof Error ? err.message : "No se pudo abrir el dashboard de Stripe";
     redirect("/panel/configuracion?tab=pagos&error=" + encodeURIComponent(msg));
   }
 
