@@ -35,10 +35,21 @@
 
 ## Puertas pendientes
 
-- Conciliación de PaymentIntents históricos.
 - Pruebas end-to-end con Stripe Test Mode.
 - Cron, alertas y runbook de incidentes.
 - Piloto live y rollout gradual.
+
+## Puerta 3 — Conciliación histórica
+
+- Estado: APROBADA CON BLOQUEO CONSERVADOR
+- Referencias históricas encontradas en Reservas: 2
+- Referencias históricas encontradas en Grupos: 0
+- Filas creadas en `PagoOnline`: 0
+- Resultado Stripe Test: 2 `PAYMENT_INTENT_NO_ENCONTRADO`
+- Resolución: conservar los identificadores como evidencia, no inferir montos y bloquear reembolsos automáticos legacy.
+- Para desbloquear un caso será necesario acceder a la cuenta Stripe original y ejecutar nuevamente el conciliador contra esa cuenta.
+- El conciliador opera en dry-run por defecto, rechaza llaves live sin `--allow-live` y solo aplica coincidencias exactas de estado, MXN, centavos, propiedad y cuenta Connect.
+- Reporte local privado: `app/.stripe-reconciliation-report.json` (ignorado por git).
 
 ## Puerta 2 — Acceso gratuito heredado
 

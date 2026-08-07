@@ -117,7 +117,7 @@ git commit -m "docs: record Stripe staging migration"
 - Consumes: reservas/grupos con `stripePaymentIntentId`, Stripe API y `PagoOnline` existente.
 - Produces: reporte JSON; con `--apply`, filas `PagoOnline` basadas exclusivamente en datos confirmados por Stripe.
 
-- [ ] **Step 1: Escribir pruebas fallidas de clasificación**
+- [x] **Step 1: Escribir pruebas fallidas de clasificación**
 
 Cubrir exactamente: PI `succeeded` MXN con metadata coincidente; PI no exitoso; moneda distinta; propiedad/destino distinto; PI inexistente; PI ya conciliado; monto con centavos. La salida será:
 
@@ -128,7 +128,7 @@ type ResultadoConciliacion =
   | { estado: "REVISION_MANUAL"; motivo: string };
 ```
 
-- [ ] **Step 2: Confirmar que las pruebas fallan**
+- [x] **Step 2: Confirmar que las pruebas fallan**
 
 Run:
 
@@ -139,15 +139,15 @@ node node_modules/vitest/vitest.mjs run src/lib/negocio/reconciliacionStripe.tes
 
 Expected: FAIL porque el clasificador todavía no existe.
 
-- [ ] **Step 3: Implementar el clasificador puro**
+- [x] **Step 3: Implementar el clasificador puro**
 
 Aceptar monto, moneda, estado, metadata y destino ya normalizados. Rechazar cualquier caso que no sea `succeeded`, `mxn`, entero positivo y destino Connect de la propiedad.
 
-- [ ] **Step 4: Implementar el comando dry-run/apply**
+- [x] **Step 4: Implementar el comando dry-run/apply**
 
 El modo predeterminado solo genera `stripe-reconciliation-report.json`. `--apply` crea una fila únicamente para resultados `CONCILIABLE`, usando `intent.amount_received / 100`, `intent.currency`, el PI real y el destino exacto Reserva o Grupo. Cada inserción usa la unicidad de `stripePaymentIntentId`; nunca actualiza montos ya conciliados.
 
-- [ ] **Step 5: Ejecutar primero en dry-run**
+- [x] **Step 5: Ejecutar primero en dry-run**
 
 Run:
 
@@ -158,11 +158,11 @@ node --import tsx scripts/reconcile-stripe-ledger.ts
 
 Expected: totales de `CONCILIABLE`, `YA_CONCILIADO` y `REVISION_MANUAL`; cero escrituras.
 
-- [ ] **Step 6: Revisar manualmente todas las discrepancias**
+- [x] **Step 6: Revisar manualmente todas las discrepancias**
 
 Comparar PI, cargo, reembolsos, metadata y cuenta destino en Stripe Dashboard. La puerta solo aprueba cuando cada discrepancia tiene resolución documentada.
 
-- [ ] **Step 7: Aplicar y repetir el dry-run**
+- [x] **Step 7: Aplicar y repetir el dry-run**
 
 Run:
 
@@ -174,7 +174,7 @@ node --import tsx scripts/reconcile-stripe-ledger.ts
 
 Expected: cero nuevos `CONCILIABLE`; únicamente `YA_CONCILIADO` o casos documentados para revisión.
 
-- [ ] **Step 8: Probar y commit**
+- [x] **Step 8: Probar y commit**
 
 Run:
 
