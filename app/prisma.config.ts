@@ -1,5 +1,7 @@
 import { config } from "dotenv";
-config({ path: ".env.local", override: true });
+// Respeta DATABASE_URL/DIRECT_URL explícitas para poder migrar bases aisladas
+// de pruebas; .env.local sigue siendo el fallback del desarrollo local.
+config({ path: ".env.local", override: false });
 import { defineConfig } from "prisma/config";
 
 // Supabase pooler puerto 5432 = session mode, soporta DDL para migraciones.

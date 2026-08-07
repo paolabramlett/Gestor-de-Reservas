@@ -198,5 +198,5 @@ export async function bloquearInventarioTipo(
   tx: Prisma.TransactionClient,
   tipoDeHabitacionId: string
 ): Promise<void> {
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${tipoDeHabitacionId}, 0))`;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${tipoDeHabitacionId}, 0))`;
 }
