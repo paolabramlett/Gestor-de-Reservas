@@ -7,6 +7,7 @@ import { stripe } from "@/lib/stripe";
 import { PlanRoomly, RolUsuario } from "@prisma/client";
 import { enviarInvitacionEquipo } from "@/lib/emails";
 import { obtenerOCrearCuentaConnect } from "@/lib/stripeConnectAccount.server";
+import { puedeAdministrarSuscripcion } from "@/lib/negocio/suscripciones";
 
 const ROLES_INVITABLES: RolUsuario[] = [RolUsuario.ADMIN, RolUsuario.RESERVACIONES, RolUsuario.FINANZAS];
 
@@ -34,6 +35,10 @@ export async function cambiarPlanAction(formData: FormData) {
   const propiedad = await prisma.propiedad.findUniqueOrThrow({
     where: { id: usuario.propiedadId },
   });
+
+  if (!puedeAdministrarSuscripcion(propiedad)) {
+    redirect("/panel/configuracion?error=" + encodeURIComponent("Esta propiedad conserva acceso gratuito y no requiere cambios de suscripción."));
+  }
 
   if (!propiedad.stripeSubscriptionId) {
     redirect("/panel/configuracion?error=" + encodeURIComponent("No encontramos una suscripción activa. Contáctanos."));
@@ -74,6 +79,9 @@ export async function cancelarSuscripcionAction() {
   const propiedad = await prisma.propiedad.findUniqueOrThrow({
     where: { id: usuario.propiedadId },
   });
+  if (!puedeAdministrarSuscripcion(propiedad)) {
+    redirect("/panel/configuracion?error=" + encodeURIComponent("Esta propiedad conserva acceso gratuito y no tiene una suscripción que cancelar."));
+  }
   if (!propiedad.stripeSubscriptionId) {
     redirect("/panel/configuracion?error=" + encodeURIComponent("No encontramos una suscripción activa."));
   }
@@ -99,6 +107,9 @@ export async function reactivarSuscripcionAction() {
   const propiedad = await prisma.propiedad.findUniqueOrThrow({
     where: { id: usuario.propiedadId },
   });
+  if (!puedeAdministrarSuscripcion(propiedad)) {
+    redirect("/panel/configuracion?error=" + encodeURIComponent("Esta propiedad conserva acceso gratuito y no requiere reactivar una suscripción."));
+  }
   if (!propiedad.stripeSubscriptionId) {
     redirect("/panel/configuracion?error=" + encodeURIComponent("No encontramos una suscripción activa."));
   }

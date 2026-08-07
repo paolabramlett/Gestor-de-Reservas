@@ -189,6 +189,7 @@ export default async function ConfiguracionPage({
           <PlanSection
             planActivo={propiedad.planActivo}
             suscripcionActiva={propiedad.suscripcionActiva}
+            accesoGratisLegacy={propiedad.accesoGratisLegacy}
             canceladaAlFinalDePeriodo={propiedad.canceladaAlFinalDePeriodo}
             finDePeriodoActual={propiedad.finDePeriodoActual?.toISOString() ?? null}
             cambiarPlanAction={cambiarPlanAction}

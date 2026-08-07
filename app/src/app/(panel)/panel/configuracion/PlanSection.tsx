@@ -32,6 +32,7 @@ const PLANES: Record<
 type Props = {
   planActivo: PlanRoomly;
   suscripcionActiva: boolean;
+  accesoGratisLegacy: boolean;
   canceladaAlFinalDePeriodo: boolean;
   finDePeriodoActual: string | null;
   cambiarPlanAction: (fd: FormData) => Promise<void>;
@@ -42,6 +43,7 @@ type Props = {
 export function PlanSection({
   planActivo,
   suscripcionActiva,
+  accesoGratisLegacy,
   canceladaAlFinalDePeriodo,
   finDePeriodoActual,
   cambiarPlanAction,
@@ -78,7 +80,11 @@ export function PlanSection({
     <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-sm font-semibold text-gray-700">Tu plan</h2>
-        {!suscripcionActiva && (
+        {accesoGratisLegacy ? (
+          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+            Acceso gratuito heredado
+          </span>
+        ) : !suscripcionActiva && (
           <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
             Inactiva
           </span>
@@ -88,7 +94,9 @@ export function PlanSection({
       <div className="flex items-center justify-between mb-2">
         <div>
           <p className="text-lg font-bold text-gray-900">{PLANES[planActivo].nombre}</p>
-          <p className="text-sm text-gray-500">{PLANES[planActivo].precio}</p>
+          <p className="text-sm text-gray-500">
+            {accesoGratisLegacy ? "Sin cuota mensual" : PLANES[planActivo].precio}
+          </p>
         </div>
       </div>
 
@@ -101,14 +109,19 @@ export function PlanSection({
         ))}
       </ul>
 
-      {canceladaAlFinalDePeriodo && fechaFin && (
+      {!accesoGratisLegacy && canceladaAlFinalDePeriodo && fechaFin && (
         <div className="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 text-sm text-amber-800">
           Tu suscripción se cancelará el <strong>{fechaFin}</strong>. Seguirás teniendo acceso hasta esa fecha.
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        <button
+      {accesoGratisLegacy ? (
+        <div className="rounded-lg bg-green-50 border border-green-200 px-3 py-2.5 text-sm text-green-800">
+          Esta propiedad conserva gratuitamente las funciones de su plan actual. No se generarán cargos de suscripción.
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          <button
           type="button"
           onClick={() => setModal("cambiar")}
           disabled={pending}
@@ -117,26 +130,27 @@ export function PlanSection({
           {esUpgrade ? `Subir a ${PLANES.PRO.nombre}` : `Cambiar a ${PLANES.ESENCIAL.nombre}`}
         </button>
 
-        {canceladaAlFinalDePeriodo ? (
-          <button
+          {canceladaAlFinalDePeriodo ? (
+            <button
             type="button"
             onClick={handleReactivar}
             disabled={pending}
             className="rounded-lg border border-gray-300 text-gray-700 px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
           >
             Reactivar suscripción
-          </button>
-        ) : (
-          <button
+            </button>
+          ) : (
+            <button
             type="button"
             onClick={() => setModal("cancelar")}
             disabled={pending}
             className="rounded-lg border border-gray-300 text-red-600 px-4 py-2 text-sm font-medium hover:bg-red-50 disabled:opacity-50"
           >
             Cancelar suscripción
-          </button>
-        )}
-      </div>
+            </button>
+          )}
+        </div>
+      )}
 
       {modal === "cambiar" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">

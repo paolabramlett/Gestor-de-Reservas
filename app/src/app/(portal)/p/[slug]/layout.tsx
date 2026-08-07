@@ -2,6 +2,7 @@ import { getPropiedadBySlug } from "@/lib/auth";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
+import { tieneAccesoRoomly } from "@/lib/negocio/suscripciones";
 
 export async function generateMetadata({
   params,
@@ -48,7 +49,7 @@ export default async function PortalLayout({
   const colorPrimario = propiedad.colorPrimario ?? "#111827";
 
   const portalDisponible =
-    propiedad.suscripcionActiva &&
+    tieneAccesoRoomly(propiedad) &&
     propiedad.planActivo === "PRO" &&
     propiedad.stripeConnectHabilitado;
 

@@ -75,6 +75,7 @@ model Propiedad {
   stripeConnectHabilitado  Boolean  @default(false)
   planActivo            PlanRoomly @default(ESENCIAL)
   suscripcionActiva     Boolean    @default(false)
+  accesoGratisLegacy    Boolean    @default(false)
   canceladaAlFinalDePeriodo Boolean  @default(false)
   finDePeriodoActual        DateTime?
   horaCheckIn           String   @default("15:00")

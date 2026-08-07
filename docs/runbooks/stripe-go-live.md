@@ -35,8 +35,19 @@
 
 ## Puertas pendientes
 
-- Grandfathering de propiedades existentes y onboarding oficial para propiedades nuevas.
 - Conciliación de PaymentIntents históricos.
 - Pruebas end-to-end con Stripe Test Mode.
 - Cron, alertas y runbook de incidentes.
 - Piloto live y rollout gradual.
+
+## Puerta 2 — Acceso gratuito heredado
+
+- Estado: APROBADA
+- Migración aplicada: `20260807133000_grandfathering_propiedades_existentes`
+- Propiedades existentes al momento del corte: 2
+- Propiedades marcadas con `accesoGratisLegacy = true`: 2
+- Valor predeterminado para propiedades futuras: `false`
+- Las altas nuevas continúan creando una propiedad únicamente después de completar Stripe Checkout de suscripción.
+- Las propiedades legacy conservan las funciones de su `planActivo`, no generan cuota mensual y no pueden ejecutar acciones de cambio/cancelación/reactivación de suscripción.
+- Vitest: 9 archivos, 55 pruebas aprobadas.
+- TypeScript, ESLint y build de producción con Webpack: aprobados.

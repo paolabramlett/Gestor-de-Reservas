@@ -83,6 +83,7 @@ export default async function SetupCompletarPage({
         stripeSubscriptionId: session.subscription as string | null,
         planActivo: meta.plan === "PRO" ? PlanRoomly.PRO : PlanRoomly.ESENCIAL,
         suscripcionActiva: true,
+        accesoGratisLegacy: false,
       },
     });
     await tx.usuarioPropiedad.create({

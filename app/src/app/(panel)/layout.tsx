@@ -5,6 +5,7 @@ import { SuccessToast } from "@/components/SuccessToast";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Sidebar } from "./Sidebar";
 import { cambiarHotelActivoAction } from "./panel/actions";
+import { tieneAccesoRoomly } from "@/lib/negocio/suscripciones";
 
 // Rutas restringidas por rol:
 // - Configuración y tipos/habitaciones/temporadas: solo ADMIN y SUPER_ADMIN
@@ -52,7 +53,7 @@ export default async function PanelLayout({
   }
 
   // Suscripción cancelada → bloquear acceso al panel
-  if (!usuario.propiedad.suscripcionActiva) {
+  if (!tieneAccesoRoomly(usuario.propiedad)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
         <div className="max-w-md w-full bg-white rounded-2xl border border-gray-200 p-8 text-center">

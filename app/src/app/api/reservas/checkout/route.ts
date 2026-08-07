@@ -8,6 +8,7 @@ import { datosPagoDestino, esErrorConnectPendiente, mensajeErrorConnect } from "
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { validarDatosReserva } from "@/lib/negocio/reglasReserva";
+import { tieneAccesoRoomly } from "@/lib/negocio/suscripciones";
 
 const bodySchema = z.object({
   slug: z.string(),
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest) {
   if (!propiedad) {
     return NextResponse.json({ error: "Propiedad no encontrada" }, { status: 404 });
   }
-  if (!propiedad.suscripcionActiva || propiedad.planActivo !== "PRO") {
+  if (!tieneAccesoRoomly(propiedad) || propiedad.planActivo !== "PRO") {
     return NextResponse.json({ error: "Este hotel no acepta reservas en línea en este momento" }, { status: 403 });
   }
 
