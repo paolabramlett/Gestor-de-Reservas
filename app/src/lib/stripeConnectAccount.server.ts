@@ -2,7 +2,10 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
-import { cuentaConnectNecesitaReemplazo } from "@/lib/stripeConnectAccount";
+import {
+  cuentaConnectEsCompatible,
+  cuentaConnectNecesitaReemplazo,
+} from "@/lib/stripeConnectAccount";
 
 type DatosPropiedadConnect = {
   id: string;
@@ -18,8 +21,10 @@ export async function obtenerOCrearCuentaConnect(
 ): Promise<string> {
   if (propiedad.stripeConnectAccountId) {
     try {
-      await stripe.accounts.retrieve(propiedad.stripeConnectAccountId);
-      return propiedad.stripeConnectAccountId;
+      const cuenta = await stripe.accounts.retrieve(propiedad.stripeConnectAccountId);
+      if (cuentaConnectEsCompatible(cuenta)) {
+        return propiedad.stripeConnectAccountId;
+      }
     } catch (error) {
       if (!cuentaConnectNecesitaReemplazo(error)) throw error;
     }
@@ -27,9 +32,14 @@ export async function obtenerOCrearCuentaConnect(
 
   const account = await stripe.accounts.create(
     {
-      type: "express",
       country: "MX",
       email: propiedad.email || undefined,
+      controller: {
+        fees: { payer: "account" },
+        losses: { payments: "stripe" },
+        requirement_collection: "stripe",
+        stripe_dashboard: { type: "full" },
+      },
       business_profile: {
         name: propiedad.nombre,
         product_description: "Servicios de hospedaje",
@@ -51,7 +61,10 @@ export async function obtenerOCrearCuentaConnect(
 
   await prisma.propiedad.update({
     where: { id: propiedad.id },
-    data: { stripeConnectAccountId: account.id },
+    data: {
+      stripeConnectAccountId: account.id,
+      stripeConnectHabilitado: false,
+    },
   });
 
   return account.id;

@@ -8,7 +8,10 @@ import { PlanRoomly, RolUsuario } from "@prisma/client";
 import { enviarInvitacionEquipo } from "@/lib/emails";
 import { obtenerOCrearCuentaConnect } from "@/lib/stripeConnectAccount.server";
 import { puedeAdministrarSuscripcion } from "@/lib/negocio/suscripciones";
-import { esPlataformaConnectNoConfigurada } from "@/lib/stripeConnectAccount";
+import {
+  cuentaConnectUsaDashboardCompleto,
+  esPlataformaConnectNoConfigurada,
+} from "@/lib/stripeConnectAccount";
 
 const ROLES_INVITABLES: RolUsuario[] = [RolUsuario.ADMIN, RolUsuario.RESERVACIONES, RolUsuario.FINANZAS];
 
@@ -346,8 +349,13 @@ export async function abrirDashboardStripeAction() {
 
   let url: string;
   try {
-    const loginLink = await stripe.accounts.createLoginLink(propiedad.stripeConnectAccountId);
-    url = loginLink.url;
+    const cuenta = await stripe.accounts.retrieve(propiedad.stripeConnectAccountId);
+    if (cuentaConnectUsaDashboardCompleto(cuenta)) {
+      url = "https://dashboard.stripe.com/";
+    } else {
+      const loginLink = await stripe.accounts.createLoginLink(propiedad.stripeConnectAccountId);
+      url = loginLink.url;
+    }
   } catch (err) {
     console.error("[stripe-connect] abrirDashboard error:", err);
     if (esPlataformaConnectNoConfigurada(err)) {
