@@ -8,7 +8,6 @@ import { redirect } from "next/navigation";
 import { ulid } from "ulid";
 import { stripe } from "@/lib/stripe";
 import { enviarSolicitudPago } from "@/lib/emails";
-import { headers } from "next/headers";
 import { datosPagoDestino, mensajeErrorConnect } from "@/lib/stripeConnect";
 
 function generarCodigoGrupo(): string {
@@ -115,6 +114,23 @@ export async function actualizarGrupoAction(formData: FormData) {
   const totalPagadoRaw = formData.get("totalPagado");
   const totalPagado = totalPagadoRaw !== null && totalPagadoRaw !== "" ? Number(totalPagadoRaw) : undefined;
 
+  if (totalPagado !== undefined) {
+    const grupoActual = await prisma.grupoReserva.findFirst({
+      where: { id: grupoId, propiedadId: usuario.propiedadId },
+      include: { reservas: { where: { estado: { notIn: [EstadoReserva.CANCELADA, EstadoReserva.NO_SHOW] } } } },
+    });
+    if (!grupoActual) redirect("/panel/grupos?error=" + encodeURIComponent("Grupo no encontrado"));
+    const totalGrupo = grupoActual.reservas.reduce((s, r) => s + Number(r.totalMxn), 0);
+    const cobradoStripe = await prisma.pagoOnline.aggregate({
+      where: { grupoId, estado: { in: ["PAGADO", "REEMBOLSADO_PARCIAL"] } },
+      _sum: { montoMxn: true, montoReembolsadoMxn: true },
+    });
+    const netoStripe = Number(cobradoStripe._sum.montoMxn ?? 0) - Number(cobradoStripe._sum.montoReembolsadoMxn ?? 0);
+    if (!Number.isFinite(totalPagado) || totalPagado < netoStripe || totalPagado > totalGrupo) {
+      redirect(`/panel/grupos/${grupoId}?error=${encodeURIComponent("El total pagado no puede ser menor a lo cobrado por Stripe ni mayor al total del grupo")}`);
+    }
+  }
+
   await prisma.grupoReserva.updateMany({
     where: { id: grupoId, propiedadId: usuario.propiedadId },
     data: {
@@ -168,6 +184,11 @@ export async function eliminarGrupoAction(formData: FormData) {
   if (!usuario) redirect("/sign-in");
 
   const grupoId = formData.get("grupoId") as string;
+
+  const pagosOnline = await prisma.pagoOnline.count({ where: { grupoId, propiedadId: usuario.propiedadId } });
+  if (pagosOnline > 0) {
+    redirect(`/panel/grupos/${grupoId}?error=${encodeURIComponent("Un grupo con pagos en Stripe no puede eliminarse; cancélalo para conservar el historial financiero")}`);
+  }
 
   await prisma.reserva.updateMany({
     where: { grupoId, propiedadId: usuario.propiedadId },
@@ -328,10 +349,8 @@ export async function solicitarPagoGrupoAction(formData: FormData) {
   );
   const totalPersonas = grupo.reservas.reduce((s, r) => s + r.numPersonas, 0);
 
-  const headersList = await headers();
-  const host = headersList.get("host") ?? "";
-  const proto = host.includes("localhost") ? "http" : "https";
-  const baseUrl = `${proto}://${host}`;
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ??
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
 
   const expiraEn = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
@@ -361,6 +380,10 @@ export async function solicitarPagoGrupoAction(formData: FormData) {
         tipo: "GRUPO_PAGO",
         grupoId: grupo.id,
         esPagoCompleto: esPagoCompleto ? "true" : "false",
+        propiedadId: grupo.propiedadId,
+        montoEsperadoCentavos: String(Math.round(monto * 100)),
+        moneda: "mxn",
+        stripeConnectAccountId: grupo.propiedad.stripeConnectAccountId ?? "",
       },
       expires_at: Math.floor(expiraEn.getTime() / 1000),
       success_url: `${baseUrl}/p/${grupo.propiedad.slug}/pago-grupo-recibido`,

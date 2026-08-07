@@ -2,18 +2,42 @@ import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { crearReservaOnline, generarCodigoReserva } from "@/lib/negocio/reservas";
 import { enviarConfirmacion, enviarAlertaEquipo, enviarPagoFallido } from "@/lib/emails";
-import { EstadoReserva, EstadoDePago, OrigenReserva, PlanRoomly } from "@prisma/client";
+import { EstadoReserva, OrigenReserva, PlanRoomly } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import Stripe from "stripe";
-import { estadoSegunMontoRecibido } from "@/lib/negocio/reglasReserva";
 import { ulid } from "ulid";
 import { calcularTotalReserva } from "@/lib/negocio/tarifas";
 import { reembolsarPagoHuesped } from "@/lib/stripeConnect";
-import { calcularDisponibilidad } from "@/lib/negocio/disponibilidad";
+import { bloquearInventarioTipo, calcularDisponibilidad } from "@/lib/negocio/disponibilidad";
+import { validarDestinoPago, validarPagoRecibido } from "@/lib/negocio/pagosOnline";
 
 function generarCodigoGrupo(): string {
   const id = ulid();
   return `GRP-${id.slice(-8, -4)}-${id.slice(-4)}`;
+}
+
+async function validarSesionDePago(session: Stripe.Checkout.Session): Promise<Stripe.PaymentIntent> {
+  const esperado = Number(session.metadata?.montoEsperadoCentavos);
+  validarPagoRecibido({
+    paymentStatus: session.payment_status,
+    moneda: session.currency,
+    montoRecibidoCentavos: session.amount_total,
+    montoEsperadoCentavos: esperado,
+  });
+  const piId = typeof session.payment_intent === "string"
+    ? session.payment_intent
+    : session.payment_intent?.id;
+  if (!piId) throw new Error("PAGO_STRIPE_INCONSISTENTE");
+  const intent = await stripe.paymentIntents.retrieve(piId);
+  const destino = typeof intent.transfer_data?.destination === "string"
+    ? intent.transfer_data.destination
+    : intent.transfer_data?.destination?.id ?? null;
+  const propiedadId = session.metadata?.propiedadId;
+  const propiedad = propiedadId
+    ? await prisma.propiedad.findUnique({ where: { id: propiedadId }, select: { stripeConnectAccountId: true } })
+    : null;
+  validarDestinoPago(destino, propiedad?.stripeConnectAccountId ?? "");
+  return intent;
 }
 
 export async function POST(req: NextRequest) {
@@ -60,6 +84,21 @@ export async function POST(req: NextRequest) {
     }
 
     try {
+      const propiedadPago = await prisma.propiedad.findUnique({
+        where: { id: meta.propiedadId },
+        select: { stripeConnectAccountId: true },
+      });
+      if (!propiedadPago?.stripeConnectAccountId) throw new Error("DESTINO_STRIPE_INCONSISTENTE");
+      const destino = typeof intent.transfer_data?.destination === "string"
+        ? intent.transfer_data.destination
+        : intent.transfer_data?.destination?.id ?? null;
+      validarDestinoPago(destino, propiedadPago.stripeConnectAccountId);
+      validarPagoRecibido({
+        paymentStatus: intent.status === "succeeded" ? "paid" : intent.status,
+        moneda: intent.currency,
+        montoRecibidoCentavos: intent.amount_received,
+        montoEsperadoCentavos: Number(meta.montoEsperadoCentavos),
+      });
       const reserva = await crearReservaOnline({
         propiedadId: meta.propiedadId,
         tipoDeHabitacionId: meta.tipoDeHabitacionId,
@@ -70,6 +109,7 @@ export async function POST(req: NextRequest) {
         fechaSalida: new Date(meta.fechaSalida),
         numPersonas: Number(meta.numPersonas),
         stripePaymentIntentId: intent.id,
+        montoPagadoMxn: intent.amount_received / 100,
       });
 
       // 11.5 + 11.8: emails usando los datos del PaymentIntent metadata + propiedad
@@ -107,8 +147,15 @@ export async function POST(req: NextRequest) {
         ]).catch(() => {});
       }
     } catch (err: unknown) {
-      if (err instanceof Error && err.message === "SIN_DISPONIBILIDAD") {
-        await reembolsarPagoHuesped(intent.id);
+      if (err instanceof Error && [
+        "SIN_DISPONIBILIDAD",
+        "PAGO_STRIPE_INCONSISTENTE",
+        "DESTINO_STRIPE_INCONSISTENTE",
+        "TIPO_HABITACION_INVALIDO",
+        "FECHAS_INVALIDAS",
+        "CAPACIDAD_INVALIDA",
+      ].includes(err.message)) {
+        await reembolsarPagoHuesped(intent.id, undefined, `roomly-no-availability-${intent.id}`);
         return NextResponse.json({ reembolsado: true });
       }
       throw err;
@@ -117,21 +164,26 @@ export async function POST(req: NextRequest) {
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
+    if (["GRUPO_PAGO", "GRUPO_ONLINE", "MANUAL_PAGO"].includes(session.metadata?.tipo ?? "")) {
+      try {
+        await validarSesionDePago(session);
+      } catch (err) {
+        console.error("[webhook] Checkout inconsistente:", session.id, err);
+        const piId = typeof session.payment_intent === "string"
+          ? session.payment_intent
+          : session.payment_intent?.id;
+        // Si Stripe ya capturó dinero pero el monto, moneda, tenant o destino
+        // no coincide con lo cotizado, no hay una reserva válida que crear.
+        if (session.payment_status === "paid" && piId) {
+          await reembolsarPagoHuesped(piId, undefined, `roomly-invalid-checkout-${piId}`);
+          return NextResponse.json({ received: true, reembolsado: true });
+        }
+        return NextResponse.json({ error: "Pago inconsistente" }, { status: 400 });
+      }
+    }
 
     if (session.metadata?.tipo === "GRUPO_PAGO" && session.metadata?.grupoId) {
       try {
-        // Idempotencia: si Stripe reintenta este webhook, no volver a acumular el pago
-        try {
-          await prisma.stripeEventoProcesado.create({
-            data: { id: session.id, tipo: "GRUPO_PAGO" },
-          });
-        } catch (err: unknown) {
-          if ((err as { code?: string })?.code === "P2002") {
-            return NextResponse.json({ received: true, duplicado: true });
-          }
-          throw err;
-        }
-
         const grupoId = session.metadata.grupoId;
         const montoCobrado = session.amount_total ? session.amount_total / 100 : 0;
         // BUG 11: guardar stripePaymentIntentId en el grupo para poder reembolsar después
@@ -139,49 +191,69 @@ export async function POST(req: NextRequest) {
           ? session.payment_intent
           : (session.payment_intent as Stripe.PaymentIntent | null)?.id ?? null;
 
-        // Acumular totalPagado en el grupo y determinar si está saldado
-        const grupoActualizado = await prisma.grupoReserva.update({
-          where: { id: grupoId },
-          data: {
-            totalPagado: { increment: montoCobrado },
-            ...(piId ? { stripePaymentIntentId: piId } : {}),
-          },
-          include: { reservas: { where: { estado: { notIn: [EstadoReserva.CANCELADA, EstadoReserva.NO_SHOW] } } } },
-        });
-
-        const totalGrupo = grupoActualizado.reservas.reduce((s, r) => s + Number(r.totalMxn), 0);
-        const nuevoTotalPagado = Number(grupoActualizado.totalPagado);
-        const saldado = nuevoTotalPagado >= totalGrupo;
-        const estadoDePagoFinal = saldado ? EstadoDePago.PAGADO_COMPLETO : EstadoDePago.ANTICIPO_PAGADO;
-
-        const reservas = await prisma.reserva.findMany({
-          where: {
-            grupoId,
-            estado: { notIn: [EstadoReserva.CANCELADA, EstadoReserva.NO_SHOW] },
-          },
-          include: { pagoManual: true },
-        });
-
-        await Promise.all(
-          reservas.map((r) =>
-            prisma.reserva.update({
+        if (!piId) throw new Error("PAGO_STRIPE_INCONSISTENTE");
+        const resultadoGrupo = await prisma.$transaction(async (tx) => {
+          // Serializa pagos distintos del mismo grupo. Sin este lock, dos
+          // checkouts simultáneos pueden leer el mismo saldo y sobrecobrarlo.
+          await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${grupoId}, 2))`;
+          const grupoBase = await tx.grupoReserva.findFirst({
+            where: { id: grupoId, propiedadId: session.metadata!.propiedadId },
+            include: { reservas: { where: { estado: { notIn: [EstadoReserva.CANCELADA, EstadoReserva.NO_SHOW] } } } },
+          });
+          if (!grupoBase) throw new Error("GRUPO_INVALIDO");
+          const totalGrupoBase = grupoBase.reservas.reduce((s, r) => s + Number(r.totalMxn), 0);
+          const restante = totalGrupoBase - Number(grupoBase.totalPagado);
+          const esExceso = montoCobrado > restante + 0.005;
+          const pago = await tx.pagoOnline.create({
+            data: {
+              propiedadId: grupoBase.propiedadId,
+              grupoId,
+              stripePaymentIntentId: piId,
+              stripeCheckoutSessionId: session.id,
+              montoMxn: montoCobrado,
+              moneda: session.currency ?? "mxn",
+              estado: esExceso ? "REEMBOLSO_PENDIENTE" : "PAGADO",
+              reembolsoPendienteMxn: esExceso ? montoCobrado : 0,
+            },
+          });
+          if (esExceso) {
+            return { grupoActualizado: grupoBase, reservas: grupoBase.reservas, nuevoTotalPagado: Number(grupoBase.totalPagado), reembolsar: true, pagoId: pago.id };
+          }
+          const actualizado = await tx.grupoReserva.update({
+            where: { id: grupoId },
+            data: { totalPagado: { increment: montoCobrado }, stripePaymentIntentId: piId },
+            include: { reservas: { where: { estado: { notIn: [EstadoReserva.CANCELADA, EstadoReserva.NO_SHOW] } } } },
+          });
+          const totalPagado = Number(actualizado.totalPagado);
+          const activas = await tx.reserva.findMany({
+            where: { grupoId, estado: { notIn: [EstadoReserva.CANCELADA, EstadoReserva.NO_SHOW] } },
+          });
+          for (const r of activas) {
+            await tx.reserva.update({
               where: { id: r.id },
               data: {
                 estado:
                   r.estado === EstadoReserva.PENDIENTE_PAGO
                     ? EstadoReserva.CONFIRMADA
                     : r.estado,
-                // BUG 5: upsert para no fallar si pagoManual no existe
-                pagoManual: {
-                  upsert: {
-                    create: { estadoDePago: estadoDePagoFinal },
-                    update: { estadoDePago: estadoDePagoFinal },
-                  },
-                },
               },
-            })
-          )
-        );
+            });
+          }
+          return { grupoActualizado: actualizado, reservas: activas, nuevoTotalPagado: totalPagado, reembolsar: false, pagoId: pago.id };
+        });
+        if (resultadoGrupo.reembolsar) {
+          try {
+            await reembolsarPagoHuesped(piId);
+            await prisma.pagoOnline.update({
+              where: { id: resultadoGrupo.pagoId },
+              data: { estado: "REEMBOLSADO", montoReembolsadoMxn: montoCobrado, reembolsoPendienteMxn: 0 },
+            });
+            return NextResponse.json({ received: true, reembolsado: true });
+          } catch (err) {
+            throw err;
+          }
+        }
+        const { reservas, nuevoTotalPagado } = resultadoGrupo;
 
         const grupo = await prisma.grupoReserva.findUnique({
           where: { id: grupoId },
@@ -211,24 +283,29 @@ export async function POST(req: NextRequest) {
           });
         }
       } catch (err) {
+        if ((err as { code?: string })?.code === "P2002") {
+          const piDuplicado = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id;
+          const pagoPendiente = piDuplicado
+            ? await prisma.pagoOnline.findUnique({ where: { stripePaymentIntentId: piDuplicado } })
+            : null;
+          if (piDuplicado && pagoPendiente?.estado === "REEMBOLSO_PENDIENTE") {
+            const centavos = Math.round(Number(pagoPendiente.reembolsoPendienteMxn) * 100);
+            await reembolsarPagoHuesped(piDuplicado, centavos, `roomly-refund-${pagoPendiente.id}-${centavos}`);
+            await prisma.pagoOnline.update({
+              where: { id: pagoPendiente.id },
+              data: { estado: "REEMBOLSADO", montoReembolsadoMxn: pagoPendiente.montoMxn, reembolsoPendienteMxn: 0 },
+            });
+            return NextResponse.json({ received: true, reembolsado: true });
+          }
+          return NextResponse.json({ received: true, duplicado: true });
+        }
         console.error("[webhook] GRUPO_PAGO error:", err);
+        throw err;
       }
     }
 
     if (session.metadata?.tipo === "GRUPO_ONLINE" && session.metadata?.propiedadId) {
       try {
-        // Idempotencia: evitar crear el grupo dos veces si Stripe reintenta
-        try {
-          await prisma.stripeEventoProcesado.create({
-            data: { id: session.id, tipo: "GRUPO_ONLINE" },
-          });
-        } catch (err: unknown) {
-          if ((err as { code?: string })?.code === "P2002") {
-            return NextResponse.json({ received: true, duplicado: true });
-          }
-          throw err;
-        }
-
         const meta = session.metadata;
         const habsRaw = JSON.parse(meta.habitaciones) as {
           t: string; i: string; o: string; n: number;
@@ -236,18 +313,35 @@ export async function POST(req: NextRequest) {
         const stripePaymentIntentId = typeof session.payment_intent === "string"
           ? session.payment_intent : null;
         const montoCobrado = session.amount_total ? session.amount_total / 100 : 0;
+        if (!stripePaymentIntentId) throw new Error("PAGO_STRIPE_INCONSISTENTE");
+        const pagoExistente = await prisma.pagoOnline.findUnique({
+          where: { stripePaymentIntentId },
+          select: { id: true },
+        });
+        if (pagoExistente) return NextResponse.json({ received: true, duplicado: true });
 
         // BUG 3: pre-calcular totales fuera de la transacción
         let fechaIngresoMin: Date | null = null;
         let fechaSalidaMax: Date | null = null;
         let totalPersonas = 0;
         const roomsData: { t: string; fechaIn: Date; fechaOut: Date; n: number; total: number; desglose: unknown }[] = [];
+        const lineItems = await stripe.checkout.sessions.listLineItems(session.id, { limit: 100 });
+        if (lineItems.data.length !== habsRaw.length) throw new Error("PAGO_STRIPE_INCONSISTENTE");
 
-        for (const h of habsRaw) {
+        for (const [index, h] of habsRaw.entries()) {
           const fechaIn = new Date(h.i);
           const fechaOut = new Date(h.o);
-          const { total, desglose } = await calcularTotalReserva(h.t, fechaIn, fechaOut, h.n);
-          roomsData.push({ t: h.t, fechaIn, fechaOut, n: h.n, total: Number(total), desglose });
+          const tipo = await prisma.tipoDeHabitacion.findFirst({
+            where: { id: h.t, propiedadId: meta.propiedadId, activo: true },
+            select: { capacidadMin: true, capacidadMax: true },
+          });
+          if (!tipo || fechaOut <= fechaIn || h.n < tipo.capacidadMin || h.n > tipo.capacidadMax) {
+            throw new Error("DATOS_RESERVA_INVALIDOS");
+          }
+          const { desglose } = await calcularTotalReserva(h.t, fechaIn, fechaOut, h.n);
+          const totalCotizado = (lineItems.data[index].amount_total ?? 0) / 100;
+          if (totalCotizado <= 0) throw new Error("PAGO_STRIPE_INCONSISTENTE");
+          roomsData.push({ t: h.t, fechaIn, fechaOut, n: h.n, total: totalCotizado, desglose });
           if (!fechaIngresoMin || fechaIn < fechaIngresoMin) fechaIngresoMin = fechaIn;
           if (!fechaSalidaMax || fechaOut > fechaSalidaMax) fechaSalidaMax = fechaOut;
           totalPersonas += h.n;
@@ -266,7 +360,7 @@ export async function POST(req: NextRequest) {
         for (const d of demandaPorTipoYFechas.values()) {
           const disponibles = await calcularDisponibilidad(d.t, d.fechaIn, d.fechaOut);
           if (disponibles < d.cantidad) {
-            if (stripePaymentIntentId) await reembolsarPagoHuesped(stripePaymentIntentId);
+            if (stripePaymentIntentId) await reembolsarPagoHuesped(stripePaymentIntentId, undefined, `roomly-no-availability-${stripePaymentIntentId}`);
             console.error("[webhook] GRUPO_ONLINE sin disponibilidad al confirmar — reembolsado:", session.id);
             return NextResponse.json({ reembolsado: true });
           }
@@ -279,6 +373,13 @@ export async function POST(req: NextRequest) {
           try {
             const codigoGrupo = generarCodigoGrupo();
             grupo = await prisma.$transaction(async (tx) => {
+              for (const tipoId of [...new Set(roomsData.map((room) => room.t))].sort()) {
+                await bloquearInventarioTipo(tx, tipoId);
+              }
+              for (const d of demandaPorTipoYFechas.values()) {
+                const disponibles = await calcularDisponibilidad(d.t, d.fechaIn, d.fechaOut, tx);
+                if (disponibles < d.cantidad) throw new Error("SIN_DISPONIBILIDAD");
+              }
               const g = await tx.grupoReserva.create({
                 data: {
                   propiedadId: meta.propiedadId,
@@ -286,6 +387,18 @@ export async function POST(req: NextRequest) {
                   nombre: meta.nombre,
                   totalPagado: montoCobrado,
                   stripePaymentIntentId,
+                },
+              });
+
+              if (!stripePaymentIntentId) throw new Error("PAGO_STRIPE_INCONSISTENTE");
+              await tx.pagoOnline.create({
+                data: {
+                  propiedadId: meta.propiedadId,
+                  grupoId: g.id,
+                  stripePaymentIntentId,
+                  stripeCheckoutSessionId: session.id,
+                  montoMxn: montoCobrado,
+                  moneda: session.currency ?? "mxn",
                 },
               });
 
@@ -341,102 +454,94 @@ export async function POST(req: NextRequest) {
           });
         }
       } catch (err) {
+        if ((err as { code?: string })?.code === "P2002") {
+          return NextResponse.json({ received: true, duplicado: true });
+        }
+        if (err instanceof Error && ["SIN_DISPONIBILIDAD", "DATOS_RESERVA_INVALIDOS", "PAGO_STRIPE_INCONSISTENTE"].includes(err.message)) {
+          const piId = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id;
+          if (piId) await reembolsarPagoHuesped(piId, undefined, `roomly-no-availability-${piId}`);
+          return NextResponse.json({ received: true, reembolsado: true });
+        }
         console.error("[webhook] GRUPO_ONLINE error:", err);
+        throw err;
       }
     }
 
     if (session.metadata?.tipo === "MANUAL_PAGO" && session.metadata?.reservaId) {
       const reservaId = session.metadata.reservaId;
-
-      // Idempotencia: distingue "Stripe reintenta este mismo evento" (no-op,
-      // normal) de "un segundo link de pago distinto se pagó de verdad"
-      // (pago duplicado real — recepción reenvió el link dos veces y el
-      // huésped alcanzó a pagar ambos). Solo lo segundo dispara reembolso.
-      let yaProcesado = false;
-      try {
-        await prisma.stripeEventoProcesado.create({ data: { id: session.id, tipo: "MANUAL_PAGO" } });
-      } catch (err: unknown) {
-        if ((err as { code?: string })?.code === "P2002") yaProcesado = true;
-        else throw err;
-      }
-
-      const reserva = yaProcesado
-        ? null
-        : await prisma.reserva.findUnique({
-            where: { id: reservaId },
-            include: { huesped: true, tipoDeHabitacion: true, propiedad: true, pagoManual: true },
-          });
-
       const montoRecibido = (session.amount_total ?? 0) / 100;
-      const montoAnterior = reserva?.pagoManual?.estadoDePago === EstadoDePago.ANTICIPO_PAGADO
-        ? Number(reserva.pagoManual.montoAnticipo ?? 0)
-        : 0;
-      const montoAcumulado = montoAnterior + montoRecibido;
-      const estadoPago = reserva
-        ? estadoSegunMontoRecibido(Number(reserva.totalMxn), montoAcumulado)
-        : EstadoDePago.PENDIENTE;
-      if (reserva && estadoPago === EstadoDePago.PENDIENTE) {
-        console.error("[webhook] MANUAL_PAGO sin monto recibido", reservaId, session.id);
-        return new Response("Monto de pago inválido", { status: 400 });
-      }
+      const piId = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id;
+      if (!piId) throw new Error("PAGO_STRIPE_INCONSISTENTE");
 
-      // Claim atómico: si dos entregas de este webhook llegan casi al mismo
-      // tiempo (Stripe puede mandar la misma notificación por más de un
-      // canal), solo la primera logra pasar de PENDIENTE_PAGO a CONFIRMADA —
-      // evita duplicar el correo de confirmación y la alerta al equipo.
-      const claim = reserva
-        ? await prisma.reserva.updateMany({
-            where: { id: reservaId, estado: EstadoReserva.PENDIENTE_PAGO },
-            data: { estado: EstadoReserva.CONFIRMADA },
-          })
-        : { count: 0 };
-
-      // reserva ya no estaba PENDIENTE_PAGO pero este es un evento nuevo
-      // (no un reintento): significa que se pagó un segundo link para una
-      // reserva que otro pago ya había confirmado. El huésped pagó de más
-      // sin que nadie lo note — se reembolsa automático y se avisa al hotel.
-      if (reserva && claim.count === 0) {
-        const piId = typeof session.payment_intent === "string"
-          ? session.payment_intent
-          : (session.payment_intent as Stripe.PaymentIntent | null)?.id ?? null;
-        if (piId) {
-          await reembolsarPagoHuesped(piId).catch((err) =>
-            console.error("[webhook] MANUAL_PAGO pago duplicado — reembolso automático falló:", reservaId, err)
-          );
-        }
-        if (reserva.propiedad.email) {
-          enviarAlertaEquipo({
-            emailEquipo: reserva.propiedad.email,
-            emailHuesped: reserva.huesped.email,
-            telefonoHuesped: reserva.huesped.telefono ?? undefined,
-            origen: "MANUAL",
-            codigoReserva: reserva.codigoReserva,
-            nombreHuesped: reserva.huesped.nombre,
-            nombreHotel: reserva.propiedad.nombre,
-            tipoHabitacion: reserva.tipoDeHabitacion.nombre,
-            fechaIngreso: reserva.fechaIngreso,
-            fechaSalida: reserva.fechaSalida,
-            numPersonas: reserva.numPersonas,
-            totalMxn: Number(reserva.totalMxn),
-            colorPrimario: reserva.propiedad.colorPrimario ?? undefined,
-          }).catch(() => {});
-        }
-      }
-
-      if (reserva && claim.count > 0) {
-        // BUG 5: upsert para no fallar si pagoManual no existe
-        await prisma.reserva.update({
-          where: { id: reservaId },
+      const resultado = await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${reservaId}, 1))`;
+        const existente = await tx.pagoOnline.findUnique({ where: { stripePaymentIntentId: piId } });
+        if (existente) return {
+          existente,
+          reserva: null,
+          aplicado: false,
+          montoReembolso: existente.estado === "REEMBOLSO_PENDIENTE" ? Number(existente.reembolsoPendienteMxn) : 0,
+        };
+        const reserva = await tx.reserva.findFirst({
+          where: { id: reservaId, propiedadId: session.metadata!.propiedadId },
+          include: { huesped: true, tipoDeHabitacion: true, propiedad: true, pagoManual: true },
+        });
+        if (!reserva) throw new Error("RESERVA_INVALIDA");
+        const pagosAnteriores = await tx.pagoOnline.findMany({
+          where: { reservaId, estado: { not: "REEMBOLSADO" } },
+        });
+        const montoAnterior = pagosAnteriores.reduce(
+          (s, pago) => s + Number(pago.montoMxn) - Number(pago.montoReembolsadoMxn) - Number(pago.reembolsoPendienteMxn),
+          0
+        );
+        const restante = Math.max(0, Number(reserva.totalMxn) - montoAnterior);
+        const montoAplicado = Math.min(restante, montoRecibido);
+        const montoReembolso = Math.max(0, montoRecibido - montoAplicado);
+        const pago = await tx.pagoOnline.create({
           data: {
-            pagoManual: {
-              upsert: {
-                create: { estadoDePago: estadoPago, montoAnticipo: estadoPago === EstadoDePago.ANTICIPO_PAGADO ? montoAcumulado : null },
-                update: { estadoDePago: estadoPago, montoAnticipo: estadoPago === EstadoDePago.ANTICIPO_PAGADO ? montoAcumulado : null },
-              },
-            },
+            propiedadId: reserva.propiedadId,
+            reservaId,
+            stripePaymentIntentId: piId,
+            stripeCheckoutSessionId: session.id,
+            montoMxn: montoRecibido,
+            moneda: session.currency ?? "mxn",
+            estado: montoReembolso > 0 ? "REEMBOLSO_PENDIENTE" : "PAGADO",
+            reembolsoPendienteMxn: montoReembolso,
           },
         });
+        await tx.reserva.update({
+          where: { id: reservaId },
+          data: {
+            estado: EstadoReserva.CONFIRMADA,
+            stripePaymentIntentId: piId,
+          },
+        });
+        return { existente: pago, reserva, aplicado: montoAplicado > 0, montoReembolso };
+      });
 
+      if (resultado.montoReembolso > 0) {
+        try {
+          const centavosReembolso = Math.round(resultado.montoReembolso * 100);
+          await reembolsarPagoHuesped(piId, centavosReembolso, `roomly-refund-${resultado.existente.id}-${centavosReembolso}`);
+          const totalReembolsado = Number(resultado.existente.montoReembolsadoMxn) + resultado.montoReembolso;
+          const esCompleto = totalReembolsado + 0.005 >= Number(resultado.existente.montoMxn);
+          await prisma.pagoOnline.update({
+            where: { id: resultado.existente.id },
+            data: {
+              estado: esCompleto ? "REEMBOLSADO" : "REEMBOLSADO_PARCIAL",
+              montoReembolsadoMxn: totalReembolsado,
+              reembolsoPendienteMxn: 0,
+            },
+          });
+          return NextResponse.json({ received: true, reembolsado: true });
+        } catch (err) {
+          await prisma.pagoOnline.update({ where: { id: resultado.existente.id }, data: { estado: "REEMBOLSO_PENDIENTE" } });
+          throw err;
+        }
+      }
+
+      if (resultado.aplicado && resultado.reserva) {
+        const reserva = resultado.reserva;
         const emailParams = {
           codigoReserva: reserva.codigoReserva,
           nombreHuesped: reserva.huesped.nombre,

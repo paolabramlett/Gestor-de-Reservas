@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { rateLimit } from "@/lib/rateLimit";
 import { prisma } from "@/lib/prisma";
-import { reembolsarPagoHuesped } from "@/lib/stripeConnect";
+import { reembolsarPagosOnline } from "@/lib/negocio/pagosOnline";
 import { enviarCancelacion } from "@/lib/emails";
 
 const STRIPE_COMISION_PORCENTAJE = 0.036;
@@ -57,8 +57,21 @@ export async function POST(req: NextRequest) {
     const totalMxn = totalPagado > 0
       ? totalPagado
       : grupo.reservas.reduce((s, r) => s + Number(r.totalMxn), 0);
-    const comision = Math.round((totalMxn * STRIPE_COMISION_PORCENTAJE + STRIPE_COMISION_FIJA) * 100) / 100;
-    const montoReembolso = totalMxn - comision;
+    const comisionCalculada = Math.round((totalMxn * STRIPE_COMISION_PORCENTAJE + STRIPE_COMISION_FIJA) * 100) / 100;
+    const comision = Math.min(totalMxn, comisionCalculada);
+    const montoReembolso = Math.max(0, totalMxn - comision);
+    const pagosStripe = await prisma.pagoOnline.aggregate({
+      where: { grupoId: grupo.id, estado: { in: ["PAGADO", "REEMBOLSADO_PARCIAL"] } },
+      _sum: { montoMxn: true, montoReembolsadoMxn: true },
+    });
+    const netoStripe = Number(pagosStripe._sum.montoMxn ?? 0) - Number(pagosStripe._sum.montoReembolsadoMxn ?? 0);
+    const montoReembolsoStripe = Math.max(0, Math.min(montoReembolso, netoStripe));
+    if (grupo.stripePaymentIntentId && totalPagado > 0 && netoStripe <= 0) {
+      return NextResponse.json(
+        { error: "Este pago es anterior al ledger financiero y requiere conciliación antes de cancelar" },
+        { status: 409 }
+      );
+    }
 
     // BUG 2: cancelar en DB primero; si el reembolso de Stripe falla después, al menos
     // el cuarto queda liberado y el error sube para que el hotel lo procese manualmente
@@ -74,8 +87,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Este grupo ya fue cancelado" }, { status: 400 });
     }
 
-    if (grupo.stripePaymentIntentId) {
-      await reembolsarPagoHuesped(grupo.stripePaymentIntentId, Math.round(montoReembolso * 100));
+    if (montoReembolsoStripe > 0) {
+      await reembolsarPagosOnline({ grupoId: grupo.id, montoMxn: montoReembolsoStripe });
     }
 
     const contacto = grupo.reservas[0].huesped;
@@ -91,12 +104,12 @@ export async function POST(req: NextRequest) {
           grupo.reservas[0].fechaSalida
         ),
         totalMxn,
-        montoReembolsadoMxn: grupo.stripePaymentIntentId ? montoReembolso : undefined,
+        montoReembolsadoMxn: montoReembolsoStripe > 0 ? montoReembolsoStripe : undefined,
         colorPrimario: grupo.propiedad.colorPrimario ?? undefined,
       });
     } catch { /* silently ignore email errors */ }
 
-    return NextResponse.json({ cancelada: true, montoReembolso, comisionRetenida: comision });
+    return NextResponse.json({ cancelada: true, montoReembolso: montoReembolsoStripe, comisionRetenida: comision });
   }
   // ── Fin cancelar grupo ──────────────────────────────────────────────────
 
@@ -140,8 +153,21 @@ export async function POST(req: NextRequest) {
 
   // Calcular reembolso parcial
   const total = Number(reserva.totalMxn);
-  const comision = Math.round((total * STRIPE_COMISION_PORCENTAJE + STRIPE_COMISION_FIJA) * 100) / 100;
-  const montoReembolso = total - comision;
+  const comisionCalculada = Math.round((total * STRIPE_COMISION_PORCENTAJE + STRIPE_COMISION_FIJA) * 100) / 100;
+  const comision = Math.min(total, comisionCalculada);
+  const montoReembolso = Math.max(0, total - comision);
+  const pagosStripe = await prisma.pagoOnline.aggregate({
+    where: { reservaId: reserva.id, estado: { in: ["PAGADO", "REEMBOLSADO_PARCIAL"] } },
+    _sum: { montoMxn: true, montoReembolsadoMxn: true },
+  });
+  const netoStripe = Number(pagosStripe._sum.montoMxn ?? 0) - Number(pagosStripe._sum.montoReembolsadoMxn ?? 0);
+  const montoReembolsoStripe = Math.max(0, Math.min(montoReembolso, netoStripe));
+  if (reserva.stripePaymentIntentId && netoStripe <= 0) {
+    return NextResponse.json(
+      { error: "Este pago es anterior al ledger financiero y requiere conciliación antes de cancelar" },
+      { status: 409 }
+    );
+  }
 
   // Claim atómico ANTES de tocar Stripe: el WHERE exige que siga en
   // CONFIRMADA, así que si dos requests llegan casi al mismo tiempo (doble
@@ -156,8 +182,8 @@ export async function POST(req: NextRequest) {
   }
 
   // Reembolso parcial via Stripe (ya con la reserva marcada CANCELADA)
-  if (reserva.stripePaymentIntentId) {
-    await reembolsarPagoHuesped(reserva.stripePaymentIntentId, Math.round(montoReembolso * 100));
+  if (montoReembolsoStripe > 0) {
+    await reembolsarPagosOnline({ reservaId: reserva.id, montoMxn: montoReembolsoStripe });
   }
 
   // Obtener datos actualizados para el correo
@@ -179,12 +205,12 @@ export async function POST(req: NextRequest) {
       fechaIngreso: reservaActualizada.fechaIngreso,
       fechaSalida: reservaActualizada.fechaSalida,
       totalMxn: Number(reservaActualizada.totalMxn),
-      montoReembolsadoMxn: reserva.stripePaymentIntentId ? montoReembolso : undefined,
+      montoReembolsadoMxn: montoReembolsoStripe > 0 ? montoReembolsoStripe : undefined,
       colorPrimario: reservaActualizada.propiedad.colorPrimario ?? undefined,
     });
   } catch {
     // El correo falla silenciosamente — la cancelación ya fue procesada
   }
 
-  return NextResponse.json({ cancelada: true, montoReembolso, comisionRetenida: comision });
+  return NextResponse.json({ cancelada: true, montoReembolso: montoReembolsoStripe, comisionRetenida: comision });
 }

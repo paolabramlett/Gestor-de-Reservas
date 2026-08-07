@@ -5,8 +5,14 @@ import Stripe from "stripe";
 // negocio sin tocar código.
 const APPLICATION_FEE_PERCENT = Number(process.env.ROOMLY_APPLICATION_FEE_PERCENT ?? "3");
 
-export function calcularApplicationFeeCentavos(montoMxn: number): number {
-  return Math.round(montoMxn * (APPLICATION_FEE_PERCENT / 100) * 100);
+export function calcularApplicationFeeCentavos(
+  montoMxn: number,
+  porcentaje: number = APPLICATION_FEE_PERCENT
+): number {
+  if (!Number.isFinite(montoMxn) || montoMxn <= 0 || !Number.isFinite(porcentaje) || porcentaje < 0 || porcentaje >= 100) {
+    throw new Error("COMISION_PLATAFORMA_INVALIDA");
+  }
+  return Math.round(montoMxn * (porcentaje / 100) * 100);
 }
 
 export type PropiedadConectada = {
@@ -49,7 +55,8 @@ export function datosPagoDestino(
 // inválidos — se detecta el tipo de cargo y se reembolsa como corresponde.
 export async function reembolsarPagoHuesped(
   paymentIntentId: string,
-  montoCentavos?: number
+  montoCentavos?: number,
+  idempotencyKey?: string
 ) {
   const { stripe } = await import("./stripe");
   const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
@@ -61,7 +68,7 @@ export async function reembolsarPagoHuesped(
     ...(esDestinationCharge
       ? { reverse_transfer: true, refund_application_fee: true }
       : {}),
-  });
+  }, idempotencyKey ? { idempotencyKey } : undefined);
 }
 
 export function esErrorConnectPendiente(err: unknown): boolean {

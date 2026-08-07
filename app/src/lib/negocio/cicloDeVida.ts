@@ -89,7 +89,11 @@ export async function completarRegistroCheckIn(
 export async function checkIn(reservaId: string, propiedadId: string) {
   const reserva = await prisma.reserva.findFirst({
     where: { id: reservaId, propiedadId },
-    include: { asignacion: true, pagoManual: true },
+    include: {
+      asignacion: true,
+      pagoManual: true,
+      pagosOnline: { where: { estado: { not: "REEMBOLSADO" } } },
+    },
   });
   if (!reserva) throw new Error("Reserva no encontrada");
   if (reserva.estado !== EstadoReserva.CONFIRMADA)
@@ -97,12 +101,19 @@ export async function checkIn(reservaId: string, propiedadId: string) {
   if (!reserva.asignacion)
     throw new Error("REQUIERE_ASIGNACION");
 
-  // Reservas manuales (pagoManual existe) no pueden hacer check-in con saldo
-  // pendiente. Las reservas online ya están pagadas al 100% desde el booking
-  // (sin pagoManual), así que no aplica esta validación.
-  if (reserva.pagoManual && reserva.pagoManual.estadoDePago !== "PAGADO_COMPLETO") {
-    const anticipo = Number(reserva.pagoManual.montoAnticipo ?? 0);
-    const saldoPendiente = Number(reserva.totalMxn) - anticipo;
+  // Una reserva creada por el equipo puede combinar cobros externos y Stripe.
+  // PagoManual conserva únicamente lo recibido fuera de la plataforma.
+  if (reserva.origen === "MANUAL") {
+    const pagoExterno = reserva.pagoManual?.estadoDePago === "PAGADO_COMPLETO"
+      ? Number(reserva.totalMxn)
+      : reserva.pagoManual?.estadoDePago === "ANTICIPO_PAGADO"
+        ? Number(reserva.pagoManual.montoAnticipo ?? 0)
+        : 0;
+    const pagoStripe = reserva.pagosOnline.reduce(
+      (s, pago) => s + Number(pago.montoMxn) - Number(pago.montoReembolsadoMxn) - Number(pago.reembolsoPendienteMxn),
+      0
+    );
+    const saldoPendiente = Number(reserva.totalMxn) - pagoExterno - pagoStripe;
     if (saldoPendiente > 0) {
       throw new Error(
         `La reserva tiene un saldo pendiente de $${saldoPendiente.toLocaleString("es-MX")} MXN. Registra el pago antes de hacer check-in.`

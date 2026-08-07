@@ -90,6 +90,7 @@ model Propiedad {
   temporadas        Temporada[]
   reservas          Reserva[]
   grupos            GrupoReserva[]
+  pagosOnline       PagoOnline[]
   usuarios          UsuarioPropiedad[]
   invitaciones      InvitacionEquipo[]
 
@@ -237,6 +238,7 @@ model GrupoReserva {
 
   propiedad Propiedad @relation(fields: [propiedadId], references: [id], onDelete: Cascade)
   reservas  Reserva[]
+  pagosOnline PagoOnline[]
 
   @@map("grupos_reserva")
 }
@@ -280,9 +282,43 @@ model Reserva {
   grupo            GrupoReserva?    @relation(fields: [grupoId], references: [id])
   asignacion       AsignacionDeHabitacion?
   pagoManual       PagoManual?
+  pagosOnline      PagoOnline[]
   solicitudesCambio SolicitudCambio[]
 
   @@map("reservas")
+}
+
+enum EstadoPagoOnline {
+  PAGADO
+  REEMBOLSO_PENDIENTE
+  REEMBOLSADO_PARCIAL
+  REEMBOLSADO
+  REEMBOLSO_FALLIDO
+}
+
+model PagoOnline {
+  id                      String           @id @default(cuid())
+  propiedadId             String
+  reservaId               String?
+  grupoId                 String?
+  stripePaymentIntentId   String           @unique
+  stripeCheckoutSessionId String?          @unique
+  montoMxn                Decimal          @db.Decimal(10, 2)
+  moneda                   String           @default("mxn")
+  estado                   EstadoPagoOnline @default(PAGADO)
+  montoReembolsadoMxn     Decimal          @default(0) @db.Decimal(10, 2)
+  reembolsoPendienteMxn   Decimal          @default(0) @db.Decimal(10, 2)
+  creadoEn                 DateTime         @default(now())
+  actualizadoEn           DateTime         @updatedAt
+
+  propiedad Propiedad    @relation(fields: [propiedadId], references: [id], onDelete: Restrict)
+  reserva   Reserva?     @relation(fields: [reservaId], references: [id], onDelete: Restrict)
+  grupo     GrupoReserva? @relation(fields: [grupoId], references: [id], onDelete: Restrict)
+
+  @@index([propiedadId, creadoEn])
+  @@index([reservaId])
+  @@index([grupoId])
+  @@map("pagos_online")
 }
 
 model AsignacionDeHabitacion {

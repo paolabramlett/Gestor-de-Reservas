@@ -7,6 +7,7 @@ import { getPropiedadBySlug } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { datosPagoDestino, esErrorConnectPendiente, mensajeErrorConnect } from "@/lib/stripeConnect";
 import { z } from "zod";
+import { validarDatosReserva } from "@/lib/negocio/reglasReserva";
 
 const habSchema = z.object({
   tipoDeHabitacionId: z.string(),
@@ -45,7 +46,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Verify all tipos belong to this propiedad
-  const tipos = new Map<string, { id: string; nombre: string }>();
+  const tipos = new Map<string, { id: string; nombre: string; capacidadMin: number; capacidadMax: number }>();
   for (const h of habitaciones) {
     if (tipos.has(h.tipoDeHabitacionId)) continue;
     const tipo = await prisma.tipoDeHabitacion.findFirst({
@@ -55,6 +56,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Tipo de habitación no encontrado` }, { status: 400 });
     }
     tipos.set(h.tipoDeHabitacionId, tipo);
+  }
+
+  for (const h of habitaciones) {
+    const tipo = tipos.get(h.tipoDeHabitacionId)!;
+    try {
+      validarDatosReserva(
+        new Date(h.fechaIngreso),
+        new Date(h.fechaSalida),
+        h.numPersonas,
+        tipo.capacidadMin,
+        tipo.capacidadMax
+      );
+    } catch {
+      return NextResponse.json({ error: `Fechas o capacidad inválidas para ${tipo.nombre}` }, { status: 400 });
+    }
   }
 
   // Verificar disponibilidad agregando la demanda por tipo+fechas: pedir 3
@@ -101,9 +117,8 @@ export async function POST(req: NextRequest) {
     lineItems.push({ name: tipo.nombre, amount: Number(total), numPersonas: h.numPersonas });
   }
 
-  const host = req.headers.get("host") ?? "";
-  const proto = host.includes("localhost") ? "http" : "https";
-  const baseUrl = `${proto}://${host}`;
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ??
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
 
   // Serialize room data for metadata (compact format to stay under 500 char limit)
   const habsJson = JSON.stringify(
@@ -141,6 +156,9 @@ export async function POST(req: NextRequest) {
         email,
         telefono: telefono ?? "",
         habitaciones: habsJson,
+        montoEsperadoCentavos: String(Math.round(totalGeneral * 100)),
+        moneda: "mxn",
+        stripeConnectAccountId: propiedad.stripeConnectAccountId ?? "",
       },
       success_url: `${baseUrl}/p/${slug}/pago-grupo-recibido`,
       cancel_url: `${baseUrl}/p/${slug}/reservar?cancelado=1`,

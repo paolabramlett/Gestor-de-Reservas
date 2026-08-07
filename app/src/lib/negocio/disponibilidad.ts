@@ -17,9 +17,10 @@ export type ResultadoDisponibilidad = {
 export async function calcularDisponibilidad(
   tipoDeHabitacionId: string,
   fechaIngreso: Date,
-  fechaSalida: Date
+  fechaSalida: Date,
+  client: Prisma.TransactionClient | typeof prisma = prisma
 ): Promise<number> {
-  const tipo = await prisma.tipoDeHabitacion.findUniqueOrThrow({
+  const tipo = await client.tipoDeHabitacion.findUniqueOrThrow({
     where: { id: tipoDeHabitacionId },
     include: { habitaciones: { where: { activa: true } } },
   });
@@ -31,7 +32,7 @@ export async function calcularDisponibilidad(
   // Cierre del tipo completo (temporada cerrada, sync iCal) → nada disponible.
   // Antes solo se verificaba en buscarDisponibilidad; los checkouts que llaman
   // esta función directo podían reservar un tipo cerrado.
-  const bloqueoTipo = await prisma.bloqueoDetipo.findFirst({
+  const bloqueoTipo = await client.bloqueoDetipo.findFirst({
     where: {
       tipoDeHabitacionId,
       fechaInicio: { lte: fechaSalida },
@@ -41,7 +42,7 @@ export async function calcularDisponibilidad(
   if (bloqueoTipo) return 0;
 
   const [reservas, bloqueos] = await Promise.all([
-    prisma.reserva.findMany({
+    client.reserva.findMany({
       where: {
         tipoDeHabitacionId,
         fechaIngreso: { lt: fechaSalida },
@@ -59,7 +60,7 @@ export async function calcularDisponibilidad(
         asignacion: { select: { habitacionId: true } },
       },
     }),
-    prisma.bloqueoDeHabitacion.findMany({
+    client.bloqueoDeHabitacion.findMany({
       where: {
         habitacionId: { in: habitacionIds },
         fechaInicio: { lt: fechaSalida },
@@ -178,12 +179,24 @@ export async function verificarHabitacionLibre(
 export async function verificarDisponibilidadAtómica(
   tipoDeHabitacionId: string,
   fechaIngreso: Date,
-  fechaSalida: Date
+  fechaSalida: Date,
+  client: Prisma.TransactionClient | typeof prisma = prisma
 ): Promise<boolean> {
   const disponibles = await calcularDisponibilidad(
     tipoDeHabitacionId,
     fechaIngreso,
-    fechaSalida
+    fechaSalida,
+    client
   );
   return disponibles > 0;
+}
+
+// Serializa todas las altas de inventario de un TipoDeHabitación dentro de
+// una transacción PostgreSQL. El lock se libera automáticamente al commit o
+// rollback; dos pagos de la última Habitación ya no pueden confirmar a la vez.
+export async function bloquearInventarioTipo(
+  tx: Prisma.TransactionClient,
+  tipoDeHabitacionId: string
+): Promise<void> {
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${tipoDeHabitacionId}, 0))`;
 }

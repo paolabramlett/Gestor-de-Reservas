@@ -10,6 +10,7 @@ import { verificarDisponibilidadAtómica, verificarHabitacionLibre, calcularDisp
 import { stripe } from "@/lib/stripe";
 import { enviarSolicitudPago, enviarConfirmacion } from "@/lib/emails";
 import { datosPagoDestino, mensajeErrorConnect } from "@/lib/stripeConnect";
+import { validarPagoManual } from "@/lib/negocio/reglasReserva";
 
 export async function crearReservaManualAction(formData: FormData) {
   const usuario = await getCurrentUsuario();
@@ -186,6 +187,11 @@ export async function actualizarPagoYNotasAction(formData: FormData) {
     include: { pagoManual: true, huesped: true, tipoDeHabitacion: true, propiedad: true },
   });
   if (!reserva) throw new Error("Reserva no encontrada");
+
+  if (![EstadoDePago.PENDIENTE, EstadoDePago.ANTICIPO_PAGADO, EstadoDePago.PAGADO_COMPLETO].includes(estadoDePago)) {
+    throw new Error("Estado de pago inválido");
+  }
+  validarPagoManual(Number(reserva.totalMxn), estadoDePago, montoAnticipo);
 
   const estadoAnterior = reserva.pagoManual?.estadoDePago ?? EstadoDePago.PENDIENTE;
 
@@ -367,6 +373,9 @@ export async function solicitarPagoAction(reservaId: string) {
       tipoDeHabitacion: true,
       propiedad: true,
       pagoManual: true,
+      pagosOnline: {
+        where: { estado: { not: "REEMBOLSADO" } },
+      },
     },
   });
 
@@ -378,13 +387,16 @@ export async function solicitarPagoAction(reservaId: string) {
     redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("No se puede solicitar pago en este estado")}`);
   }
 
-  // BUG 4: calcular saldo real, no cobrar el total si ya hay un anticipo registrado
-  const anticipoPagado =
-    reserva.pagoManual?.estadoDePago === "ANTICIPO_PAGADO" && reserva.pagoManual.montoAnticipo
-      ? Number(reserva.pagoManual.montoAnticipo)
-      : 0;
-  if (anticipoPagado > 0 && anticipoPagado >= Number(reserva.totalMxn)) {
-    redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("El anticipo registrado cubre el total — marca como Pagado completo")}`);
+  const pagoExterno = reserva.pagoManual?.estadoDePago === "ANTICIPO_PAGADO"
+    ? Number(reserva.pagoManual.montoAnticipo ?? 0)
+    : 0;
+  const pagoStripe = reserva.pagosOnline.reduce(
+    (s, pago) => s + Number(pago.montoMxn) - Number(pago.montoReembolsadoMxn) - Number(pago.reembolsoPendienteMxn),
+    0
+  );
+  const montoCobrar = Math.max(0, Number(reserva.totalMxn) - pagoExterno - pagoStripe);
+  if (montoCobrar <= 0.005) {
+    redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("Esta reserva ya está pagada por completo")}`);
   }
 
   // Invalidar el Checkout Session anterior si existe
@@ -399,7 +411,6 @@ export async function solicitarPagoAction(reservaId: string) {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ??
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
 
-  const montoCobrar = Number(reserva.totalMxn) - anticipoPagado;
   const expiraEn = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
   let session;
@@ -426,6 +437,10 @@ export async function solicitarPagoAction(reservaId: string) {
         reservaId: reserva.id,
         tipo: "MANUAL_PAGO",
         esPagoCompleto: "true",
+        propiedadId: reserva.propiedadId,
+        montoEsperadoCentavos: String(Math.round(montoCobrar * 100)),
+        moneda: "mxn",
+        stripeConnectAccountId: reserva.propiedad.stripeConnectAccountId ?? "",
       },
       expires_at: Math.floor(expiraEn.getTime() / 1000),
       success_url: `${baseUrl}/p/${reserva.propiedad.slug}/confirmacion?session_id={CHECKOUT_SESSION_ID}`,
@@ -441,13 +456,9 @@ export async function solicitarPagoAction(reservaId: string) {
       data: {
         stripeCheckoutSessionId: session.id,
         linkExpiraEn: expiraEn,
-        estado: EstadoReserva.PENDIENTE_PAGO,
-        pagoManual: {
-          upsert: {
-            create: { estadoDePago: EstadoDePago.PENDIENTE },
-            update: {},
-          },
-        },
+        // La reserva fue registrada por el equipo y sigue confirmada. El link
+        // es una solicitud de cobro, no un PagoManual ni un estado de reserva.
+        estado: reserva.estado === EstadoReserva.PENDIENTE_PAGO ? EstadoReserva.CONFIRMADA : reserva.estado,
       },
     });
   } catch (err) {

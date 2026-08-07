@@ -6,6 +6,8 @@ import { verificarDisponibilidadAtómica } from "@/lib/negocio/disponibilidad";
 import { getPropiedadBySlug } from "@/lib/auth";
 import { datosPagoDestino, esErrorConnectPendiente, mensajeErrorConnect } from "@/lib/stripeConnect";
 import { z } from "zod";
+import { prisma } from "@/lib/prisma";
+import { validarDatosReserva } from "@/lib/negocio/reglasReserva";
 
 const bodySchema = z.object({
   slug: z.string(),
@@ -42,6 +44,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Este hotel no acepta reservas en línea en este momento" }, { status: 403 });
   }
 
+  const tipo = await prisma.tipoDeHabitacion.findFirst({
+    where: { id: data.tipoDeHabitacionId, propiedadId: propiedad.id, activo: true },
+    select: { capacidadMin: true, capacidadMax: true },
+  });
+  if (!tipo) return NextResponse.json({ error: "Tipo de habitación no encontrado" }, { status: 400 });
+  try {
+    validarDatosReserva(fechaIn, fechaOut, data.numPersonas, tipo.capacidadMin, tipo.capacidadMax);
+  } catch {
+    return NextResponse.json({ error: "Fechas o número de personas inválidos" }, { status: 400 });
+  }
+
   const disponible = await verificarDisponibilidadAtómica(
     data.tipoDeHabitacionId,
     fechaIn,
@@ -74,6 +87,9 @@ export async function POST(req: NextRequest) {
         fechaIngreso: data.fechaIngreso,
         fechaSalida: data.fechaSalida,
         numPersonas: String(data.numPersonas),
+        montoEsperadoCentavos: String(Math.round(total * 100)),
+        moneda: "mxn",
+        stripeConnectAccountId: propiedad.stripeConnectAccountId ?? "",
       },
     });
   } catch (err) {

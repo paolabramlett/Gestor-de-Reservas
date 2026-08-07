@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma, OrigenReserva, EstadoReserva, EstadoDePago, TipoEspecialReserva } from "@prisma/client";
 import { ulid } from "ulid";
 import { calcularTotalReserva } from "./tarifas";
-import { verificarDisponibilidadAtómica } from "./disponibilidad";
+import { bloquearInventarioTipo, verificarDisponibilidadAtómica } from "./disponibilidad";
 import { enviarConfirmacion, enviarAlertaEquipo, enviarSolicitudPago } from "@/lib/emails";
 import { stripe } from "@/lib/stripe";
 import { datosPagoDestino, requerirCuentaConectada } from "@/lib/stripeConnect";
@@ -24,33 +24,50 @@ type CrearReservaOnlineInput = {
   fechaSalida: Date;
   numPersonas: number;
   stripePaymentIntentId: string;
+  montoPagadoMxn: number;
 };
 
 export async function crearReservaOnline(input: CrearReservaOnlineInput) {
-  const { total, desglose } = await calcularTotalReserva(
+  const previa = await prisma.reserva.findUnique({
+    where: { stripePaymentIntentId: input.stripePaymentIntentId },
+    include: { huesped: true, tipoDeHabitacion: true, propiedad: true },
+  });
+  if (previa) return previa;
+  const tipo = await prisma.tipoDeHabitacion.findFirst({
+    where: { id: input.tipoDeHabitacionId, propiedadId: input.propiedadId, activo: true },
+    select: { capacidadMin: true, capacidadMax: true },
+  });
+  if (!tipo) throw new Error("TIPO_HABITACION_INVALIDO");
+  validarDatosReserva(input.fechaIngreso, input.fechaSalida, input.numPersonas, tipo.capacidadMin, tipo.capacidadMax);
+  const { desglose } = await calcularTotalReserva(
     input.tipoDeHabitacionId,
     input.fechaIngreso,
     input.fechaSalida,
     input.numPersonas
   );
+  const totalCobrado = input.montoPagadoMxn;
 
   return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    await bloquearInventarioTipo(tx, input.tipoDeHabitacionId);
+    // Un reintento del mismo PaymentIntent debe devolver la Reserva existente
+    // antes de recalcular disponibilidad, porque esa misma Reserva ya consume
+    // la última Habitación y de otro modo se reembolsaría por error.
+    const existente = await tx.reserva.findUnique({
+      where: { stripePaymentIntentId: input.stripePaymentIntentId },
+      include: { huesped: true, tipoDeHabitacion: true, propiedad: true },
+    });
+    if (existente) return existente;
     // Verificar disponibilidad dentro de la transacción
     const disponible = await verificarDisponibilidadAtómica(
       input.tipoDeHabitacionId,
       input.fechaIngreso,
-      input.fechaSalida
+      input.fechaSalida,
+      tx
     );
 
     if (!disponible) {
       throw new Error("SIN_DISPONIBILIDAD");
     }
-
-    // Idempotencia: verificar payment_intent duplicado
-    const existente = await tx.reserva.findUnique({
-      where: { stripePaymentIntentId: input.stripePaymentIntentId },
-    });
-    if (existente) return existente;
 
     // Cada reserva tiene su propio registro de huésped, aunque el correo se repita.
     // Así el nombre/teléfono de una reserva nunca afecta a otra que comparta email.
@@ -58,7 +75,7 @@ export async function crearReservaOnline(input: CrearReservaOnlineInput) {
       data: { nombre: input.nombre, email: input.email, telefono: input.telefono, propiedadId: input.propiedadId },
     });
 
-    return tx.reserva.create({
+    const reserva = await tx.reserva.create({
       data: {
         codigoReserva: generarCodigoReserva(),
         propiedadId: input.propiedadId,
@@ -70,12 +87,22 @@ export async function crearReservaOnline(input: CrearReservaOnlineInput) {
         fechaIngreso: input.fechaIngreso,
         fechaSalida: input.fechaSalida,
         numPersonas: input.numPersonas,
-        totalMxn: total,
+        totalMxn: totalCobrado,
         desglosePorNoche: desglose,
         stripePaymentIntentId: input.stripePaymentIntentId,
       },
       include: { huesped: true, tipoDeHabitacion: true, propiedad: true },
     });
+    await tx.pagoOnline.create({
+      data: {
+        propiedadId: input.propiedadId,
+        reservaId: reserva.id,
+        stripePaymentIntentId: input.stripePaymentIntentId,
+        montoMxn: input.montoPagadoMxn,
+        moneda: "mxn",
+      },
+    });
+    return reserva;
   });
 }
 
@@ -114,12 +141,14 @@ export async function crearReservaManual(input: CrearReservaManualInput) {
   validarPagoManual(total, input.estadoDePago ?? EstadoDePago.PENDIENTE, input.montoAnticipo);
 
   return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    await bloquearInventarioTipo(tx, input.tipoDeHabitacionId);
     // Mismo guard que las reservas online: recepción tampoco debe poder
     // crear dos reservas para el último cuarto sin darse cuenta.
     const disponible = await verificarDisponibilidadAtómica(
       input.tipoDeHabitacionId,
       input.fechaIngreso,
-      input.fechaSalida
+      input.fechaSalida,
+      tx
     );
     if (!disponible) throw new Error("SIN_DISPONIBILIDAD");
 
@@ -217,15 +246,6 @@ export async function crearReservaConLinkDePago(input: CrearReservaConLinkInput)
   if (!tipo) throw new Error("TIPO_HABITACION_INVALIDO");
   validarDatosReserva(input.fechaIngreso, input.fechaSalida, input.numPersonas, tipo.capacidadMin, tipo.capacidadMax);
 
-  // La reserva PENDIENTE_PAGO aparta inventario mientras el link esté
-  // vigente — hay que verificar que ese inventario exista antes de crearla.
-  const disponible = await verificarDisponibilidadAtómica(
-    input.tipoDeHabitacionId,
-    input.fechaIngreso,
-    input.fechaSalida
-  );
-  if (!disponible) throw new Error("SIN_DISPONIBILIDAD");
-
   const { total: totalCalculado, desglose } = await calcularTotalReserva(
     input.tipoDeHabitacionId,
     input.fechaIngreso,
@@ -238,6 +258,14 @@ export async function crearReservaConLinkDePago(input: CrearReservaConLinkInput)
 
   // Create reservation in PENDIENTE_PAGO state
   const reserva = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    await bloquearInventarioTipo(tx, input.tipoDeHabitacionId);
+    const disponible = await verificarDisponibilidadAtómica(
+      input.tipoDeHabitacionId,
+      input.fechaIngreso,
+      input.fechaSalida,
+      tx
+    );
+    if (!disponible) throw new Error("SIN_DISPONIBILIDAD");
     // Cada reserva tiene su propio registro de huésped, aunque el correo se repita.
     const huesped = await tx.huesped.create({
       data: { nombre: input.nombre, email: input.email, telefono: input.telefono, propiedadId: input.propiedadId },
@@ -302,6 +330,10 @@ export async function crearReservaConLinkDePago(input: CrearReservaConLinkInput)
       reservaId: reserva.id,
       tipo: "MANUAL_PAGO",
       esPagoCompleto: input.esPagoCompleto ? "true" : "false",
+      propiedadId: input.propiedadId,
+      montoEsperadoCentavos: String(Math.round(montoCobrar * 100)),
+      moneda: "mxn",
+      stripeConnectAccountId: propiedadConnect.stripeConnectAccountId ?? "",
     },
     expires_at: Math.floor((Date.now() + 24 * 60 * 60 * 1000) / 1000),
     success_url: `${input.baseUrl}/p/${reserva.propiedad.slug}/confirmacion?session_id={CHECKOUT_SESSION_ID}`,
