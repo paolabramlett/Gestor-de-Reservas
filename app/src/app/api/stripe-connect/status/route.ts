@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { getCurrentUsuario } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
-import { evaluarAccesoConnect } from "@/lib/stripeConnectOnboarding";
+import {
+  evaluarAccesoConnect,
+  evaluarEstadoCuentaConnect,
+} from "@/lib/stripeConnectOnboarding";
 
 export async function POST() {
   const usuario = await getCurrentUsuario();
@@ -22,17 +25,14 @@ export async function POST() {
 
   try {
     const account = await stripe.accounts.retrieve(accountId);
-    const habilitado = !!account.charges_enabled;
+    const estado = evaluarEstadoCuentaConnect(account);
 
     await prisma.propiedad.update({
       where: { id: usuario.propiedadId },
-      data: { stripeConnectHabilitado: habilitado },
+      data: { stripeConnectHabilitado: estado.habilitado },
     });
 
-    return NextResponse.json({
-      habilitado,
-      configurado: !!account.details_submitted,
-    });
+    return NextResponse.json(estado);
   } catch (error) {
     console.error("[stripe-connect] status error:", error);
     return NextResponse.json(
