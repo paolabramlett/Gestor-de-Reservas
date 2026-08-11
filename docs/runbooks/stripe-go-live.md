@@ -39,6 +39,29 @@
 - Cron, alertas y runbook de incidentes.
 - Piloto live y rollout gradual.
 
+## Puerta 4 — Contexto inmutable para direct charges
+
+- Estado: APROBADA
+- Fecha: `2026-08-11`
+- Commit: `065d371`
+- Migración aplicada: `20260807150000_direct_charge_context`
+- Base: Supabase PostgreSQL actual, tratada como producción
+- Filas existentes en `pagos_online`: 0
+- Modelo predeterminado histórico: `DESTINATION_LEGACY`
+- `pagos_online_direct_account_check`: verificada; una fila `DIRECT` requiere `stripeConnectAccountId`.
+- `pagos_online_contexto_stripe_inmutable`: verificado; modelo y cuenta originaria no pueden cambiar después de insertar el pago.
+- Prueba local PostgreSQL: inserción `DIRECT` sin cuenta rechazada y cambio posterior de modelo rechazado; transacción revertida.
+- Vitest: 11 archivos aprobados, 84 pruebas aprobadas y 2 E2E omitidas por defecto.
+- TypeScript: aprobado con `tsc --noEmit`.
+
+### Respaldo previo a direct charges
+
+- Archivo: `/Users/paolabramlett/Downloads/roomly-database-backup-before-direct-charges-2026-08-11.dump`
+- Formato: PostgreSQL custom archive.
+- Permisos: `0600`.
+- Catálogo legible: 529 entradas mediante `pg_restore --list`.
+- SHA-256: `60a18f33babe512a3fdd9492e3f9c5d767c6d0709881243b30b2d9a0d6a29b0f`.
+
 ## Puerta 3 — Conciliación histórica
 
 - Estado: APROBADA CON BLOQUEO CONSERVADOR
