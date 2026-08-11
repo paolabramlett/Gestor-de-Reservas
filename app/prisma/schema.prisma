@@ -297,6 +297,14 @@ enum EstadoPagoOnline {
   REEMBOLSO_FALLIDO
 }
 
+// Los pagos existentes fueron destination charges de la plataforma. Los
+// nuevos direct charges conservan el modelo y la cuenta Connect de origen
+// para que consultas y reembolsos siempre usen el contexto correcto.
+enum ModeloCobroStripe {
+  DESTINATION_LEGACY
+  DIRECT
+}
+
 model PagoOnline {
   id                      String           @id @default(cuid())
   propiedadId             String
@@ -304,6 +312,10 @@ model PagoOnline {
   grupoId                 String?
   stripePaymentIntentId   String           @unique
   stripeCheckoutSessionId String?          @unique
+  modeloCobro             ModeloCobroStripe @default(DESTINATION_LEGACY)
+  // Se establece al crear el pago directo; un trigger de la migración impide
+  // cambiar después la cuenta propietaria del PaymentIntent.
+  stripeConnectAccountId  String?
   montoMxn                Decimal          @db.Decimal(10, 2)
   moneda                   String           @default("mxn")
   estado                   EstadoPagoOnline @default(PAGADO)

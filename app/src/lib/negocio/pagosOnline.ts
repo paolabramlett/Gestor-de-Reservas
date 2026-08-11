@@ -31,6 +31,14 @@ export function validarDestinoPago(destinoRecibido: string | null, destinoEspera
   }
 }
 
+// Los eventos de Connect deben llevar explícitamente la cuenta propietaria
+// del objeto Stripe; no basta con metadata que pueda venir de otra cuenta.
+export function validarCuentaEvento(cuentaRecibida: string | null, cuentaEsperada: string): void {
+  if (!cuentaEsperada || cuentaRecibida !== cuentaEsperada) {
+    throw new Error("CUENTA_EVENTO_STRIPE_INCONSISTENTE");
+  }
+}
+
 export function distribuirReembolso(
   montoCentavosSolicitado: number,
   pagos: Array<{ id: string; disponibleCentavos: number }>

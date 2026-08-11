@@ -46,6 +46,26 @@ export function datosPagoDestino(
   };
 }
 
+// Contexto inmutable para un direct charge. El PaymentIntent vive en la
+// cuenta Connect del hotel: la plataforma únicamente recibe su comisión.
+export function crearDirectCharge(
+  propiedad: PropiedadConectada,
+  montoMxn: number
+): {
+  paymentIntentData: { application_fee_amount: number };
+  requestOptions: { stripeAccount: string };
+  stripeAccountId: string;
+} {
+  const stripeAccountId = requerirCuentaConectada(propiedad);
+  return {
+    paymentIntentData: {
+      application_fee_amount: calcularApplicationFeeCentavos(montoMxn),
+    },
+    requestOptions: { stripeAccount: stripeAccountId },
+    stripeAccountId,
+  };
+}
+
 // Reembolso correcto para cargos con Connect (destination charges): sin
 // reverse_transfer, Stripe devuelve el dinero al huésped desde el saldo de
 // LA PLATAFORMA mientras el hotel conserva su transferencia — Roomly

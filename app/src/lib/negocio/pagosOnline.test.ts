@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { distribuirReembolso, validarDestinoPago, validarPagoRecibido } from "./pagosOnline";
+import { distribuirReembolso, validarCuentaEvento, validarDestinoPago, validarPagoRecibido } from "./pagosOnline";
 
 describe("validarPagoRecibido", () => {
   it("acepta únicamente un pago liquidado por el monto y moneda esperados", () => {
@@ -45,5 +45,15 @@ describe("distribuirReembolso", () => {
 describe("validarDestinoPago", () => {
   it("rechaza un cargo enviado a otra cuenta conectada", () => {
     expect(() => validarDestinoPago("acct_hotel_b", "acct_hotel_a")).toThrow("DESTINO_STRIPE_INCONSISTENTE");
+  });
+});
+
+describe("validarCuentaEvento", () => {
+  it.each([null, "acct_otro_hotel"])("rechaza eventos que no pertenecen a la cuenta del hotel", (cuentaRecibida) => {
+    expect(() => validarCuentaEvento(cuentaRecibida, "acct_hotel")).toThrow("CUENTA_EVENTO_STRIPE_INCONSISTENTE");
+  });
+
+  it("acepta un evento de la cuenta Connect esperada", () => {
+    expect(() => validarCuentaEvento("acct_hotel", "acct_hotel")).not.toThrow();
   });
 });
