@@ -4,14 +4,19 @@ import { prisma } from "@/lib/prisma";
 import Image from "next/image";
 import Link from "next/link";
 import { SetupForm } from "./SetupForm";
+import { getCurrentUsuario } from "@/lib/auth";
 
 export default async function SetupPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; cancelado?: string }>;
+  searchParams: Promise<{ error?: string; cancelado?: string; nuevo?: string }>;
 }) {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
+
+  const parametros = await searchParams;
+  const usuarioExistente = await getCurrentUsuario();
+  if (usuarioExistente && parametros.nuevo !== "1") redirect("/panel");
 
   // Ya no bloqueamos si el usuario tiene un hotel — puede pagar una
   // suscripción independiente por cada hotel que administre. El selector
@@ -20,7 +25,7 @@ export default async function SetupPage({
     where: { clerkUserId: userId },
   });
 
-  const { error, cancelado } = await searchParams;
+  const { error, cancelado } = parametros;
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4 py-12">
@@ -54,7 +59,7 @@ export default async function SetupPage({
             </div>
           )}
 
-          <SetupForm error={error} cancelado={cancelado === "1"} />
+          <SetupForm error={error} cancelado={cancelado === "1"} nuevoHotel={parametros.nuevo === "1"} />
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-6">

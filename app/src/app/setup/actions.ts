@@ -4,6 +4,7 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
+import { getCurrentUsuario } from "@/lib/auth";
 
 function generarSlug(nombre: string): string {
   return nombre
@@ -18,6 +19,9 @@ function generarSlug(nombre: string): string {
 export async function iniciarCheckoutAction(formData: FormData) {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
+
+  const nuevoHotel = formData.get("nuevoHotel") === "1";
+  if (!nuevoHotel && (await getCurrentUsuario())) redirect("/panel");
 
   const nombre = (formData.get("nombre") as string)?.trim();
   const slugInput = (formData.get("slug") as string)?.trim();

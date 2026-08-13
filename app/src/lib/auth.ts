@@ -1,12 +1,63 @@
-import { auth } from "@clerk/nextjs/server";
+import { auth, clerkClient, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { prisma } from "./prisma";
 import { RolUsuario } from "@prisma/client";
+import { recuperarMembresiaLegacy } from "./recuperarMembresiaLegacy";
 
 export type { RolUsuario };
 
 export const COOKIE_HOTEL_ACTIVO = "roomly_propiedad_id";
+
+async function intentarRecuperarMembresiaLegacy(clerkUserId: string) {
+  const usuarioClerk = await currentUser();
+  const emailPrimario = usuarioClerk?.primaryEmailAddress;
+  const emailVerificado =
+    usuarioClerk?.id === clerkUserId && emailPrimario?.verification?.status === "verified"
+      ? emailPrimario.emailAddress.trim().toLowerCase()
+      : null;
+
+  const clerk = await clerkClient();
+
+  return recuperarMembresiaLegacy(
+    { clerkUserId, emailVerificado },
+    {
+      buscarPropiedadesLegacy: (email) =>
+        prisma.propiedad.findMany({
+          where: {
+            accesoGratisLegacy: true,
+            email: { equals: email, mode: "insensitive" },
+          },
+          select: {
+            id: true,
+            usuarios: {
+              where: { rol: { in: [RolUsuario.ADMIN, RolUsuario.SUPER_ADMIN] } },
+              select: { id: true, clerkUserId: true },
+            },
+          },
+        }).then((propiedades) =>
+          propiedades.map((propiedad) => ({
+            id: propiedad.id,
+            membresiasAdmin: propiedad.usuarios,
+          }))
+        ),
+      usuarioExisteEnClerk: async (userIdAnterior) => {
+        try {
+          await clerk.users.getUser(userIdAnterior);
+          return true;
+        } catch (error) {
+          if ((error as { status?: number }).status === 404) return false;
+          throw error;
+        }
+      },
+      transferirMembresia: (membresiaId, nuevoClerkUserId) =>
+        prisma.usuarioPropiedad.update({
+          where: { id: membresiaId },
+          data: { clerkUserId: nuevoClerkUserId },
+        }),
+    }
+  );
+}
 
 // Si el usuario pertenece a más de un hotel, respeta cuál eligió con el
 // selector (cookie). Si no hay cookie o ya no aplica (ej. lo quitaron de ese
@@ -15,12 +66,22 @@ export async function getCurrentUsuario() {
   const { userId } = await auth();
   if (!userId) return null;
 
-  const membresias = await prisma.usuarioPropiedad.findMany({
+  let membresias = await prisma.usuarioPropiedad.findMany({
     where: { clerkUserId: userId },
     include: { propiedad: true },
     orderBy: { creadoEn: "desc" },
   });
-  if (membresias.length === 0) return null;
+  if (membresias.length === 0) {
+    const recuperada = await intentarRecuperarMembresiaLegacy(userId);
+    if (!recuperada) return null;
+
+    membresias = await prisma.usuarioPropiedad.findMany({
+      where: { clerkUserId: userId },
+      include: { propiedad: true },
+      orderBy: { creadoEn: "desc" },
+    });
+    if (membresias.length === 0) return null;
+  }
 
   const cookieStore = await cookies();
   const propiedadElegida = cookieStore.get(COOKIE_HOTEL_ACTIVO)?.value;

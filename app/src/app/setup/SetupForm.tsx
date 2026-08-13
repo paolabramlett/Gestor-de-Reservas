@@ -54,9 +54,11 @@ const PLANES: {
 export function SetupForm({
   error,
   cancelado,
+  nuevoHotel,
 }: {
   error?: string;
   cancelado?: boolean;
+  nuevoHotel?: boolean;
 }) {
   const [nombre, setNombre] = useState("");
   const [slug, setSlug] = useState("");
@@ -86,6 +88,7 @@ export function SetupForm({
 
   return (
     <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
+      {nuevoHotel && <input type="hidden" name="nuevoHotel" value="1" />}
       {cancelado && (
         <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
           Cancelaste el pago. Puedes intentarlo de nuevo cuando quieras.
