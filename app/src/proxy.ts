@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 const isPublicRoute = createRouteMatcher([
   "/",
+  "/acceso",
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/p/(.*)",          // portales públicos de propiedades
