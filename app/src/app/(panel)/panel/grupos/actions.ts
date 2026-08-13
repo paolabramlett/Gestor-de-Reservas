@@ -8,7 +8,9 @@ import { redirect } from "next/navigation";
 import { ulid } from "ulid";
 import { stripe } from "@/lib/stripe";
 import { enviarSolicitudPago } from "@/lib/emails";
-import { datosPagoDestino, mensajeErrorConnect } from "@/lib/stripeConnect";
+import { crearClaveIdempotenciaDirectCharge, crearDirectCharge, mensajeErrorConnect } from "@/lib/stripeConnect";
+import { validarCuentaConnectParaCobroDirecto } from "@/lib/stripeConnectAccount.server";
+import { asociarIntentoPagoStripe, registrarIntentoPago } from "@/lib/negocio/intentosPago";
 
 function generarCodigoGrupo(): string {
   const id = ulid();
@@ -356,6 +358,22 @@ export async function solicitarPagoGrupoAction(formData: FormData) {
 
   let session;
   try {
+    const directCharge = crearDirectCharge(grupo.propiedad, monto);
+    await validarCuentaConnectParaCobroDirecto(directCharge.stripeAccountId);
+    const intentoPagoId = crearClaveIdempotenciaDirectCharge("autorizacion-saldo-grupo", [
+      grupo.id,
+      Math.round(monto * 100),
+      Math.round(Number(grupo.totalPagado) * 100),
+    ]);
+    await registrarIntentoPago({
+      intentoId: intentoPagoId,
+      propiedadId: grupo.propiedadId,
+      stripeConnectAccountId: directCharge.stripeAccountId,
+      tipo: "GRUPO_PAGO",
+      montoCentavos: Math.round(monto * 100),
+      moneda: "mxn",
+      datosReserva: { grupoId: grupo.id },
+    });
     session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
@@ -375,7 +393,7 @@ export async function solicitarPagoGrupoAction(formData: FormData) {
         },
       ],
       customer_email: contacto.email,
-      payment_intent_data: datosPagoDestino(grupo.propiedad, monto),
+      payment_intent_data: directCharge.paymentIntentData,
       metadata: {
         tipo: "GRUPO_PAGO",
         grupoId: grupo.id,
@@ -383,12 +401,21 @@ export async function solicitarPagoGrupoAction(formData: FormData) {
         propiedadId: grupo.propiedadId,
         montoEsperadoCentavos: String(Math.round(monto * 100)),
         moneda: "mxn",
-        stripeConnectAccountId: grupo.propiedad.stripeConnectAccountId ?? "",
+        stripeConnectAccountId: directCharge.stripeAccountId,
+        roomlyIntentoId: intentoPagoId,
       },
       expires_at: Math.floor(expiraEn.getTime() / 1000),
       success_url: `${baseUrl}/p/${grupo.propiedad.slug}/pago-grupo-recibido`,
       cancel_url: `${baseUrl}/p/${grupo.propiedad.slug}`,
+    }, {
+      ...directCharge.requestOptions,
+      idempotencyKey: crearClaveIdempotenciaDirectCharge("saldo-grupo", [
+        grupo.id,
+        Math.round(monto * 100),
+        Math.round(Number(grupo.totalPagado) * 100),
+      ]),
     });
+    await asociarIntentoPagoStripe(intentoPagoId, { stripeCheckoutSessionId: session.id });
   } catch (err) {
     redirect(`/panel/grupos/${grupoId}?error=${encodeURIComponent(mensajeErrorConnect(err))}`);
   }

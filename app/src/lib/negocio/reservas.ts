@@ -5,8 +5,10 @@ import { calcularTotalReserva } from "./tarifas";
 import { bloquearInventarioTipo, verificarDisponibilidadAtómica } from "./disponibilidad";
 import { enviarConfirmacion, enviarAlertaEquipo, enviarSolicitudPago } from "@/lib/emails";
 import { stripe } from "@/lib/stripe";
-import { datosPagoDestino, requerirCuentaConectada } from "@/lib/stripeConnect";
+import { crearClaveIdempotenciaDirectCharge, crearDirectCharge, requerirCuentaConectada } from "@/lib/stripeConnect";
 import { resolverMontoCobro, resolverTotalReserva, validarDatosReserva, validarPagoManual } from "./reglasReserva";
+import { validarCuentaConnectParaCobroDirecto } from "@/lib/stripeConnectAccount.server";
+import { asociarIntentoPagoStripe, registrarIntentoPago } from "@/lib/negocio/intentosPago";
 
 export function generarCodigoReserva(): string {
   const id = ulid();
@@ -25,6 +27,8 @@ type CrearReservaOnlineInput = {
   numPersonas: number;
   stripePaymentIntentId: string;
   montoPagadoMxn: number;
+  modeloCobro: "DIRECT" | "DESTINATION_LEGACY";
+  stripeConnectAccountId: string | null;
 };
 
 export async function crearReservaOnline(input: CrearReservaOnlineInput) {
@@ -100,6 +104,8 @@ export async function crearReservaOnline(input: CrearReservaOnlineInput) {
         stripePaymentIntentId: input.stripePaymentIntentId,
         montoMxn: input.montoPagadoMxn,
         moneda: "mxn",
+        modeloCobro: input.modeloCobro,
+        stripeConnectAccountId: input.stripeConnectAccountId,
       },
     });
     return reserva;
@@ -306,6 +312,18 @@ export async function crearReservaConLinkDePago(input: CrearReservaConLinkInput)
   // Create Stripe Checkout Session
   let session;
   try {
+    const directCharge = crearDirectCharge(propiedadConnect, montoCobrar);
+    await validarCuentaConnectParaCobroDirecto(directCharge.stripeAccountId);
+    const intentoPagoId = ulid();
+    await registrarIntentoPago({
+      intentoId: intentoPagoId,
+      propiedadId: input.propiedadId,
+      stripeConnectAccountId: directCharge.stripeAccountId,
+      tipo: "MANUAL_PAGO",
+      montoCentavos: Math.round(montoCobrar * 100),
+      moneda: "mxn",
+      datosReserva: { reservaId: reserva.id },
+    });
     session = await stripe.checkout.sessions.create({
     mode: "payment",
     payment_method_types: ["card"],
@@ -325,7 +343,7 @@ export async function crearReservaConLinkDePago(input: CrearReservaConLinkInput)
       },
     ],
     customer_email: input.email,
-    payment_intent_data: datosPagoDestino(propiedadConnect, montoCobrar),
+    payment_intent_data: directCharge.paymentIntentData,
     metadata: {
       reservaId: reserva.id,
       tipo: "MANUAL_PAGO",
@@ -333,18 +351,29 @@ export async function crearReservaConLinkDePago(input: CrearReservaConLinkInput)
       propiedadId: input.propiedadId,
       montoEsperadoCentavos: String(Math.round(montoCobrar * 100)),
       moneda: "mxn",
-      stripeConnectAccountId: propiedadConnect.stripeConnectAccountId ?? "",
+      stripeConnectAccountId: directCharge.stripeAccountId,
+      roomlyIntentoId: intentoPagoId,
     },
     expires_at: Math.floor((Date.now() + 24 * 60 * 60 * 1000) / 1000),
     success_url: `${input.baseUrl}/p/${reserva.propiedad.slug}/confirmacion?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${input.baseUrl}/p/${reserva.propiedad.slug}`,
+    }, {
+      ...directCharge.requestOptions,
+      idempotencyKey: crearClaveIdempotenciaDirectCharge("reserva-manual", [reserva.id]),
     });
+    await asociarIntentoPagoStripe(intentoPagoId, { stripeCheckoutSessionId: session.id });
     await prisma.reserva.update({
       where: { id: reserva.id },
       data: { stripeCheckoutSessionId: session.id },
     });
   } catch (error) {
-    if (session?.id) await stripe.checkout.sessions.expire(session.id).catch(() => {});
+    if (session?.id) {
+      await stripe.checkout.sessions.expire(
+        session.id,
+        {},
+        { stripeAccount: propiedadConnect.stripeConnectAccountId! }
+      ).catch(() => {});
+    }
     await prisma.$transaction([
       prisma.reserva.delete({ where: { id: reserva.id } }),
       prisma.huesped.delete({ where: { id: reserva.huespedId } }),

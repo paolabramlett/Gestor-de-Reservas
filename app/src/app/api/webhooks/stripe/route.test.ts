@@ -4,6 +4,8 @@ import Stripe from "stripe";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
+vi.mock("server-only", () => ({}));
+
 vi.mock("@/lib/emails", () => ({
   enviarConfirmacion: vi.fn().mockResolvedValue(undefined),
   enviarAlertaEquipo: vi.fn().mockResolvedValue(undefined),
@@ -13,7 +15,7 @@ vi.mock("@/lib/emails", () => ({
 const describeE2E = process.env.RUN_STRIPE_E2E === "1" ? describe : describe.skip;
 const databaseUrl = process.env.DATABASE_URL ?? "";
 const stripeKey = process.env.STRIPE_SECRET_KEY ?? "";
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET ?? "";
+const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET_CONNECT ?? "";
 
 describeE2E("webhook Stripe con PostgreSQL aislado y Stripe Test", () => {
   let prisma: PrismaClient;
@@ -83,14 +85,32 @@ describeE2E("webhook Stripe con PostgreSQL aislado y Stripe Test", () => {
   }
 
   async function crearIntent(tipoDeHabitacionId: string, montoCentavos: number, fechaIngreso: string, fechaSalida: string) {
-    return stripe.paymentIntents.create({
+    const intentoId = crypto.randomUUID();
+    await prisma.intentoDePagoStripe.create({
+      data: {
+        intentoId,
+        propiedadId,
+        stripeConnectAccountId: cuentaConnect,
+        tipo: "RESERVA_INDIVIDUAL",
+        montoCentavos,
+        moneda: "mxn",
+        datosReserva: {
+          tipoDeHabitacionId,
+          nombre: "Huésped E2E",
+          email: "e2e@example.com",
+          telefono: "",
+          fechaIngreso,
+          fechaSalida,
+          numPersonas: 2,
+        },
+      },
+    });
+    const intent = await stripe.paymentIntents.create({
       amount: montoCentavos,
       currency: "mxn",
       payment_method: "pm_card_visa",
       confirm: true,
       automatic_payment_methods: { enabled: true, allow_redirects: "never" },
-      application_fee_amount: Math.round(montoCentavos * 0.01),
-      transfer_data: { destination: cuentaConnect },
       metadata: {
         propiedadId,
         tipoDeHabitacionId,
@@ -101,14 +121,21 @@ describeE2E("webhook Stripe con PostgreSQL aislado y Stripe Test", () => {
         fechaSalida,
         numPersonas: "2",
         montoEsperadoCentavos: String(montoCentavos),
+        roomlyIntentoId: intentoId,
       },
+    }, { stripeAccount: cuentaConnect });
+    await prisma.intentoDePagoStripe.update({
+      where: { intentoId },
+      data: { stripePaymentIntentId: intent.id },
     });
+    return intent;
   }
 
   async function enviarWebhook(intent: Stripe.PaymentIntent, eventId: string) {
     const payload = JSON.stringify({
       id: eventId,
       object: "event",
+      account: cuentaConnect,
       api_version: "2026-06-24.dahlia",
       created: Math.floor(Date.now() / 1000),
       data: { object: intent },
@@ -156,12 +183,40 @@ describeE2E("webhook Stripe con PostgreSQL aislado y Stripe Test", () => {
     expect(await prisma.reserva.count({ where: { tipoDeHabitacionId: tipo.id } })).toBe(1);
 
     const intents = await Promise.all([
-      stripe.paymentIntents.retrieve(intentA.id, { expand: ["latest_charge"] }),
-      stripe.paymentIntents.retrieve(intentB.id, { expand: ["latest_charge"] }),
+      stripe.paymentIntents.retrieve(intentA.id, { expand: ["latest_charge"] }, { stripeAccount: cuentaConnect }),
+      stripe.paymentIntents.retrieve(intentB.id, { expand: ["latest_charge"] }, { stripeAccount: cuentaConnect }),
     ]);
     const reembolsados = intents.filter((intent) =>
       intent.latest_charge && typeof intent.latest_charge !== "string" && intent.latest_charge.amount_refunded === intent.amount_received
     );
     expect(reembolsados).toHaveLength(1);
   }, 60_000);
+
+  it("no mueve un centavo al balance de Roomly ni crea application fee", async () => {
+    const saldoMxnPlataforma = async () => {
+      const balance = await stripe.balance.retrieve();
+      return [...balance.available, ...balance.pending]
+        .filter((saldo) => saldo.currency === "mxn")
+        .reduce((total, saldo) => total + saldo.amount, 0);
+    };
+
+    const saldoAntes = await saldoMxnPlataforma();
+    const tipo = await crearTipoConInventario(199);
+    const intent = await crearIntent(tipo.id, 19_900, "2031-03-10", "2031-03-11");
+    const saldoDespues = await saldoMxnPlataforma();
+
+    expect(intent.application_fee_amount).toBeNull();
+    expect(saldoDespues).toBe(saldoAntes);
+  }, 45_000);
+
+  it("Stripe confirma que el hotel paga comisiones y Stripe asume sus pérdidas", async () => {
+    const cuenta = await stripe.accounts.retrieve(cuentaConnect);
+
+    expect(cuenta.controller?.fees?.payer).toBe("account");
+    expect(cuenta.controller?.losses?.payments).toBe("stripe");
+    expect(cuenta.controller?.requirement_collection).toBe("stripe");
+    expect(cuenta.controller?.stripe_dashboard?.type).toBe("full");
+    expect(cuenta.charges_enabled).toBe(true);
+    expect(cuenta.capabilities?.card_payments).toBe("active");
+  }, 30_000);
 });

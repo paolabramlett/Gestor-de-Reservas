@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { loadStripe } from "@stripe/stripe-js";
+import { useState, useEffect, useMemo } from "react";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { calcularTotalPreviewAction, disponibilidadCantidadPreviewAction } from "@/app/(panel)/panel/reservas/actions";
+import { cargarStripeParaCuenta } from "@/lib/stripeCliente";
 
 type TipoSimple = {
   id: string;
@@ -313,7 +313,6 @@ function AgregarHabitacionPanel({
 
 export default function FormularioReserva(props: Props) {
   const colorPrimario = props.colorPrimario ?? "#111827";
-  const stripePromise = loadStripe(props.stripePublishableKey);
 
   const [nombre, setNombre] = useState("");
   const [email, setEmail] = useState("");
@@ -326,6 +325,14 @@ export default function FormularioReserva(props: Props) {
   const isMulti = habitacionesExtra.length > 0;
 
   const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [stripeAccountId, setStripeAccountId] = useState<string | null>(null);
+  const [intentoId, setIntentoId] = useState(() => crypto.randomUUID());
+  const stripePromise = useMemo(
+    () => stripeAccountId
+      ? cargarStripeParaCuenta(props.stripePublishableKey, stripeAccountId)
+      : null,
+    [props.stripePublishableKey, stripeAccountId]
+  );
   const [paso, setPaso] = useState<"datos" | "pago">("datos");
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -366,7 +373,7 @@ export default function FormularioReserva(props: Props) {
       const res = await fetch("/api/reservas/checkout-grupo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug: props.slug, nombre, email, telefono, habitaciones }),
+        body: JSON.stringify({ slug: props.slug, nombre, email, telefono, intentoId, habitaciones }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -390,6 +397,7 @@ export default function FormularioReserva(props: Props) {
         fechaIngreso: props.fechaIngreso,
         fechaSalida: props.fechaSalida,
         numPersonas: props.numPersonas,
+        intentoId,
       }),
     });
 
@@ -401,12 +409,13 @@ export default function FormularioReserva(props: Props) {
     }
 
     setClientSecret(data.clientSecret);
+    setStripeAccountId(data.stripeAccountId);
     setPaso("pago");
     setCargando(false);
   }
 
   // ── Paso pago (single room) ────────────────────────────────────────────────
-  if (paso === "pago" && clientSecret) {
+  if (paso === "pago" && clientSecret && stripePromise) {
     return (
       <div className="space-y-5">
         <div className="rounded-xl bg-gray-50 border border-gray-200 px-4 py-3 text-sm flex items-center justify-between">
@@ -416,7 +425,12 @@ export default function FormularioReserva(props: Props) {
           </div>
           <button
             type="button"
-            onClick={() => setPaso("datos")}
+            onClick={() => {
+              setClientSecret(null);
+              setStripeAccountId(null);
+              setIntentoId(crypto.randomUUID());
+              setPaso("datos");
+            }}
             className="text-xs text-gray-500 underline underline-offset-2 hover:text-gray-800"
           >
             Editar

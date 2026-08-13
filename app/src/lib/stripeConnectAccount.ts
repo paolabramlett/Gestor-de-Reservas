@@ -1,4 +1,6 @@
 type CuentaConnectRecuperada = {
+  charges_enabled?: boolean;
+  capabilities?: { card_payments?: string | null };
   controller?: {
     fees?: { payer?: string };
     losses?: { payments?: string };
@@ -6,6 +8,16 @@ type CuentaConnectRecuperada = {
     stripe_dashboard?: { type?: string };
   };
 };
+
+export function cuentaConnectPuedeCobrarSinRiesgoPlataforma(
+  cuenta: CuentaConnectRecuperada
+): boolean {
+  return (
+    cuentaConnectEsCompatible(cuenta) &&
+    cuenta.charges_enabled === true &&
+    cuenta.capabilities?.card_payments === "active"
+  );
+}
 
 export function cuentaConnectEsCompatible(cuenta: CuentaConnectRecuperada): boolean {
   const controller = cuenta.controller;

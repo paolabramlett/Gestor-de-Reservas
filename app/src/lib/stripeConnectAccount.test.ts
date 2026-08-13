@@ -15,6 +15,7 @@ vi.mock("@/lib/stripe", () => ({
 }));
 import {
   cuentaConnectEsCompatible,
+  cuentaConnectPuedeCobrarSinRiesgoPlataforma,
   cuentaConnectNecesitaReemplazo,
   cuentaConnectUsaDashboardCompleto,
   esPlataformaConnectNoConfigurada,
@@ -61,6 +62,32 @@ describe("cuentaConnectEsCompatible", () => {
         },
       })
     ).toBe(false);
+  });
+});
+
+describe("cuentaConnectPuedeCobrarSinRiesgoPlataforma", () => {
+  const segura = {
+    charges_enabled: true,
+    capabilities: { card_payments: "active" },
+    controller: {
+      fees: { payer: "account" },
+      losses: { payments: "stripe" },
+      requirement_collection: "stripe",
+      stripe_dashboard: { type: "full" },
+    },
+  };
+
+  it("acepta solo una cuenta habilitada donde Stripe y el hotel asumen el cobro", () => {
+    expect(cuentaConnectPuedeCobrarSinRiesgoPlataforma(segura)).toBe(true);
+  });
+
+  it.each([
+    { ...segura, charges_enabled: false },
+    { ...segura, capabilities: { card_payments: "inactive" } },
+    { ...segura, controller: { ...segura.controller, fees: { payer: "application" } } },
+    { ...segura, controller: { ...segura.controller, losses: { payments: "application" } } },
+  ])("bloquea cualquier desviación de responsabilidades", (cuenta) => {
+    expect(cuentaConnectPuedeCobrarSinRiesgoPlataforma(cuenta)).toBe(false);
   });
 });
 

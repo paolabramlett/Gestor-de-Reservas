@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { stripe } from "@/lib/stripe";
-import { reembolsarPagoHuesped } from "@/lib/stripeConnect";
+import { reembolsarPagosOnline } from "@/lib/negocio/pagosOnline";
 import { enviarRespuestaCambioHotel, enviarCambioAceptadoHuesped } from "@/lib/emails";
 import { verificarDisponibilidadAtómica } from "@/lib/negocio/disponibilidad";
 
@@ -52,21 +51,7 @@ export async function POST(
   // En su lugar, se notifica al hotel para cobro manual.
   if (!esCobro && reserva.stripePaymentIntentId && Math.abs(diferencia) > 0) {
     try {
-      // Verificar que no se haya reembolsado ya más de lo disponible
-      const refundsExistentes = await stripe.refunds.list({ payment_intent: reserva.stripePaymentIntentId });
-      const totalReembolsado = refundsExistentes.data
-        .filter((r) => r.status === "succeeded")
-        .reduce((sum, r) => sum + r.amount, 0);
-      const totalOriginalCentavos = Math.round(Number(reserva.totalMxn) * 100);
-      const disponibleParaReembolso = totalOriginalCentavos - totalReembolsado;
-      const montoCentavos = Math.min(
-        Math.round(Math.abs(diferencia) * 100),
-        disponibleParaReembolso
-      );
-
-      if (montoCentavos > 0) {
-        await reembolsarPagoHuesped(reserva.stripePaymentIntentId, montoCentavos);
-      }
+      await reembolsarPagosOnline({ reservaId: reserva.id, montoMxn: Math.abs(diferencia) });
     } catch (err) {
       // Reembolso fallido: actualizar solicitud y notificar hotel manualmente
       const msg = err instanceof Error ? err.message : "Error desconocido";

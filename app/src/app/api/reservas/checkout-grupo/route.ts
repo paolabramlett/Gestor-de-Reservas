@@ -5,10 +5,17 @@ import { calcularTotalReserva } from "@/lib/negocio/tarifas";
 import { calcularDisponibilidad } from "@/lib/negocio/disponibilidad";
 import { getPropiedadBySlug } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { datosPagoDestino, esErrorConnectPendiente, mensajeErrorConnect } from "@/lib/stripeConnect";
+import {
+  crearClaveIdempotenciaDirectCharge,
+  crearDirectCharge,
+  esErrorConnectPendiente,
+  mensajeErrorConnect,
+} from "@/lib/stripeConnect";
 import { z } from "zod";
 import { validarDatosReserva } from "@/lib/negocio/reglasReserva";
 import { tieneAccesoRoomly } from "@/lib/negocio/suscripciones";
+import { validarCuentaConnectParaCobroDirecto } from "@/lib/stripeConnectAccount.server";
+import { asociarIntentoPagoStripe, registrarIntentoPago } from "@/lib/negocio/intentosPago";
 
 const habSchema = z.object({
   tipoDeHabitacionId: z.string(),
@@ -22,6 +29,7 @@ const bodySchema = z.object({
   nombre: z.string().min(2),
   email: z.string().email(),
   telefono: z.string().optional(),
+  intentoId: z.string().uuid(),
   habitaciones: z.array(habSchema).min(2).max(10),
 });
 
@@ -133,6 +141,17 @@ export async function POST(req: NextRequest) {
 
   let session;
   try {
+    const directCharge = crearDirectCharge(propiedad, totalGeneral);
+    await validarCuentaConnectParaCobroDirecto(directCharge.stripeAccountId);
+    await registrarIntentoPago({
+      intentoId: result.data.intentoId,
+      propiedadId: propiedad.id,
+      stripeConnectAccountId: directCharge.stripeAccountId,
+      tipo: "RESERVA_GRUPO",
+      montoCentavos: Math.round(totalGeneral * 100),
+      moneda: "mxn",
+      datosReserva: { habitaciones, nombre, email, telefono: telefono ?? "" },
+    });
     session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
@@ -148,7 +167,7 @@ export async function POST(req: NextRequest) {
           },
         },
       })),
-      payment_intent_data: datosPagoDestino(propiedad, totalGeneral),
+      payment_intent_data: directCharge.paymentIntentData,
       metadata: {
         tipo: "GRUPO_ONLINE",
         propiedadId: propiedad.id,
@@ -159,11 +178,19 @@ export async function POST(req: NextRequest) {
         habitaciones: habsJson,
         montoEsperadoCentavos: String(Math.round(totalGeneral * 100)),
         moneda: "mxn",
-        stripeConnectAccountId: propiedad.stripeConnectAccountId ?? "",
+        stripeConnectAccountId: directCharge.stripeAccountId,
+        roomlyIntentoId: result.data.intentoId,
       },
       success_url: `${baseUrl}/p/${slug}/pago-grupo-recibido`,
       cancel_url: `${baseUrl}/p/${slug}/reservar?cancelado=1`,
+    }, {
+      ...directCharge.requestOptions,
+      idempotencyKey: crearClaveIdempotenciaDirectCharge("reserva-grupo", [
+        propiedad.id,
+        result.data.intentoId,
+      ]),
     });
+    await asociarIntentoPagoStripe(result.data.intentoId, { stripeCheckoutSessionId: session.id });
   } catch (err) {
     const status = esErrorConnectPendiente(err) ? 409 : 500;
     return NextResponse.json({ error: mensajeErrorConnect(err) }, { status });

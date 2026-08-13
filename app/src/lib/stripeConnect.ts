@@ -1,19 +1,5 @@
 import Stripe from "stripe";
-
-// Comisión de Roomly sobre cada cobro a huéspedes, además de lo que Stripe
-// ya cobra por procesamiento. Configurable por si se ajusta el modelo de
-// negocio sin tocar código.
-const APPLICATION_FEE_PERCENT = Number(process.env.ROOMLY_APPLICATION_FEE_PERCENT ?? "3");
-
-export function calcularApplicationFeeCentavos(
-  montoMxn: number,
-  porcentaje: number = APPLICATION_FEE_PERCENT
-): number {
-  if (!Number.isFinite(montoMxn) || montoMxn <= 0 || !Number.isFinite(porcentaje) || porcentaje < 0 || porcentaje >= 100) {
-    throw new Error("COMISION_PLATAFORMA_INVALIDA");
-  }
-  return Math.round(montoMxn * (porcentaje / 100) * 100);
-}
+import { createHash } from "node:crypto";
 
 export type PropiedadConectada = {
   stripeConnectAccountId: string | null;
@@ -32,38 +18,34 @@ export function requerirCuentaConectada(propiedad: PropiedadConectada): string {
   return propiedad.stripeConnectAccountId;
 }
 
-// Datos para agregar a un Stripe Checkout Session (mode: "payment") o
-// PaymentIntent, para que el cobro llegue directo a la cuenta del hotel
-// (destination charge) con la comisión de Roomly separada automáticamente.
-export function datosPagoDestino(
-  propiedad: PropiedadConectada,
-  montoMxn: number
-): { application_fee_amount: number; transfer_data: { destination: string } } {
-  const destination = requerirCuentaConectada(propiedad);
-  return {
-    application_fee_amount: calcularApplicationFeeCentavos(montoMxn),
-    transfer_data: { destination },
-  };
-}
-
-// Contexto inmutable para un direct charge. El PaymentIntent vive en la
-// cuenta Connect del hotel: la plataforma únicamente recibe su comisión.
+// Contexto inmutable para un direct charge. El PaymentIntent y todo su saldo
+// viven en la cuenta Connect del hotel; Roomly no cobra comisión transaccional.
 export function crearDirectCharge(
   propiedad: PropiedadConectada,
-  montoMxn: number
+  _montoMxn: number
 ): {
-  paymentIntentData: { application_fee_amount: number };
+  paymentIntentData: Record<string, never>;
   requestOptions: { stripeAccount: string };
   stripeAccountId: string;
 } {
   const stripeAccountId = requerirCuentaConectada(propiedad);
   return {
-    paymentIntentData: {
-      application_fee_amount: calcularApplicationFeeCentavos(montoMxn),
-    },
+    // La reservación pertenece íntegramente al hotel. Roomly cobra su plan
+    // SaaS por separado y nunca genera saldo con pagos de huéspedes.
+    paymentIntentData: {},
     requestOptions: { stripeAccount: stripeAccountId },
     stripeAccountId,
   };
+}
+
+export function crearClaveIdempotenciaDirectCharge(
+  operacion: string,
+  componentes: Array<string | number>
+): string {
+  const fingerprint = createHash("sha256")
+    .update(JSON.stringify(componentes))
+    .digest("hex");
+  return `roomly-direct-${operacion}-${fingerprint}`;
 }
 
 // Reembolso correcto para cargos con Connect (destination charges): sin
@@ -89,6 +71,24 @@ export async function reembolsarPagoHuesped(
       ? { reverse_transfer: true, refund_application_fee: true }
       : {}),
   }, idempotencyKey ? { idempotencyKey } : undefined);
+}
+
+// Un direct charge pertenece a la cuenta Connect, por lo que el reembolso
+// debe crearse en ese mismo contexto. No existe transferencia que revertir.
+export async function reembolsarPagoDirectoHuesped(
+  paymentIntentId: string,
+  stripeConnectAccountId: string,
+  montoCentavos?: number,
+  idempotencyKey?: string
+) {
+  const { stripe } = await import("./stripe");
+  return stripe.refunds.create({
+    payment_intent: paymentIntentId,
+    ...(montoCentavos != null ? { amount: montoCentavos } : {}),
+  }, {
+    stripeAccount: stripeConnectAccountId,
+    ...(idempotencyKey ? { idempotencyKey } : {}),
+  });
 }
 
 export function esErrorConnectPendiente(err: unknown): boolean {

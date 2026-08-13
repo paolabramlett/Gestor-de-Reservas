@@ -4,8 +4,18 @@ import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
 import {
   cuentaConnectEsCompatible,
+  cuentaConnectPuedeCobrarSinRiesgoPlataforma,
   cuentaConnectNecesitaReemplazo,
 } from "@/lib/stripeConnectAccount";
+
+export async function validarCuentaConnectParaCobroDirecto(accountId: string): Promise<void> {
+  const cuenta = await stripe.accounts.retrieve(accountId);
+  if (!cuentaConnectPuedeCobrarSinRiesgoPlataforma(cuenta)) {
+    throw new Error(
+      "CONNECT_CONFIGURACION_INSEGURA: Stripe no confirma que el hotel asuma comisiones y que Stripe asuma sus pérdidas. El cobro fue bloqueado."
+    );
+  }
+}
 
 type DatosPropiedadConnect = {
   id: string;

@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { stripe } from "@/lib/stripe";
-import { reembolsarPagoHuesped } from "@/lib/stripeConnect";
+import { reembolsarPagosOnline } from "@/lib/negocio/pagosOnline";
 import { enviarCancelacion } from "@/lib/emails";
 import { EstadoReserva } from "@prisma/client";
 
@@ -197,20 +196,8 @@ export async function cancelarReserva(input: CancelacionInput) {
     const montoCentavos = Math.round(montoReembolsadoMxn * 100);
 
     if (montoCentavos > 0) {
-      // Verificar que no haya un reembolso ya emitido por el monto completo
-      const refundsExistentes = await stripe.refunds.list({ payment_intent: reserva.stripePaymentIntentId });
-      const totalReembolsado = refundsExistentes.data
-        .filter((r) => r.status === "succeeded")
-        .reduce((sum, r) => sum + r.amount, 0);
-      const disponibleParaReembolso = Math.round(montoTotal * 100) - totalReembolsado;
-
-      if (disponibleParaReembolso <= 0) {
-        throw new Error("Esta reserva ya fue reembolsada completamente");
-      }
-      const montoFinal = Math.min(montoCentavos, disponibleParaReembolso);
-
       try {
-        await reembolsarPagoHuesped(reserva.stripePaymentIntentId, montoFinal);
+        await reembolsarPagosOnline({ reservaId: reserva.id, montoMxn: montoCentavos / 100 });
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Error al procesar reembolso";
         throw new Error(`Reembolso fallido: ${msg}`);

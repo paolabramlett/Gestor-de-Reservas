@@ -7,16 +7,20 @@ import { prisma } from "@/lib/prisma";
 import Stripe from "stripe";
 import { ulid } from "ulid";
 import { calcularTotalReserva } from "@/lib/negocio/tarifas";
-import { reembolsarPagoHuesped } from "@/lib/stripeConnect";
+import { reembolsarPagoDirectoHuesped, reembolsarPagoHuesped } from "@/lib/stripeConnect";
 import { bloquearInventarioTipo, calcularDisponibilidad } from "@/lib/negocio/disponibilidad";
-import { validarDestinoPago, validarPagoRecibido } from "@/lib/negocio/pagosOnline";
+import { validarCuentaEvento, validarDestinoPago, validarPagoRecibido } from "@/lib/negocio/pagosOnline";
+import { exigirIntentoPagoAutorizado, marcarIntentoPagoPagado, obtenerIntentoPago } from "@/lib/negocio/intentosPago";
 
 function generarCodigoGrupo(): string {
   const id = ulid();
   return `GRP-${id.slice(-8, -4)}-${id.slice(-4)}`;
 }
 
-async function validarSesionDePago(session: Stripe.Checkout.Session): Promise<Stripe.PaymentIntent> {
+async function validarSesionDePago(
+  session: Stripe.Checkout.Session,
+  cuentaEvento: string | null
+): Promise<{ intent: Stripe.PaymentIntent; cuentaCobroDirecto: string | null }> {
   const esperado = Number(session.metadata?.montoEsperadoCentavos);
   validarPagoRecibido({
     paymentStatus: session.payment_status,
@@ -28,16 +32,28 @@ async function validarSesionDePago(session: Stripe.Checkout.Session): Promise<St
     ? session.payment_intent
     : session.payment_intent?.id;
   if (!piId) throw new Error("PAGO_STRIPE_INCONSISTENTE");
+  const intentoId = session.metadata?.roomlyIntentoId;
+  const intento = intentoId ? await obtenerIntentoPago(intentoId) : null;
+  const propiedadId = session.metadata?.propiedadId;
+  const propiedad = !intento && propiedadId
+    ? await prisma.propiedad.findUnique({ where: { id: propiedadId }, select: { stripeConnectAccountId: true } })
+    : null;
+  const cuentaEsperada = intento?.stripeConnectAccountId ?? propiedad?.stripeConnectAccountId ?? "";
+  if (cuentaEvento) {
+    validarCuentaEvento(cuentaEvento, cuentaEsperada);
+    const intent = await stripe.paymentIntents.retrieve(piId, {}, { stripeAccount: cuentaEvento });
+    if (intent.transfer_data?.destination) throw new Error("DESTINO_STRIPE_INCONSISTENTE");
+    return { intent, cuentaCobroDirecto: cuentaEvento };
+  }
+
+  // Compatibilidad exclusiva con cobros históricos creados en Roomly y
+  // transferidos al hotel. Los nuevos checkouts siempre llevan event.account.
   const intent = await stripe.paymentIntents.retrieve(piId);
   const destino = typeof intent.transfer_data?.destination === "string"
     ? intent.transfer_data.destination
     : intent.transfer_data?.destination?.id ?? null;
-  const propiedadId = session.metadata?.propiedadId;
-  const propiedad = propiedadId
-    ? await prisma.propiedad.findUnique({ where: { id: propiedadId }, select: { stripeConnectAccountId: true } })
-    : null;
-  validarDestinoPago(destino, propiedad?.stripeConnectAccountId ?? "");
-  return intent;
+  validarDestinoPago(destino, cuentaEsperada);
+  return { intent, cuentaCobroDirecto: null };
 }
 
 export async function POST(req: NextRequest) {
@@ -53,15 +69,18 @@ export async function POST(req: NextRequest) {
   // account.updated de Stripe Connect), distinto del endpoint de "Tu cuenta"
   // (suscripciones, pagos, etc.), aunque ambos apunten a esta misma URL.
   // Probamos los dos secretos conocidos antes de rechazar la firma.
-  const secretos = [process.env.STRIPE_WEBHOOK_SECRET, process.env.STRIPE_WEBHOOK_SECRET_CONNECT].filter(
-    (s): s is string => !!s
-  );
+  const secretos = [
+    { tipo: "PLATAFORMA" as const, valor: process.env.STRIPE_WEBHOOK_SECRET },
+    { tipo: "CONNECT" as const, valor: process.env.STRIPE_WEBHOOK_SECRET_CONNECT },
+  ].filter((item): item is { tipo: "PLATAFORMA" | "CONNECT"; valor: string } => !!item.valor);
 
   let event: Stripe.Event | null = null;
+  let origenFirma: "PLATAFORMA" | "CONNECT" | null = null;
   let ultimoError: unknown;
   for (const secreto of secretos) {
     try {
-      event = stripe.webhooks.constructEvent(body, sig, secreto);
+      event = stripe.webhooks.constructEvent(body, sig, secreto.valor);
+      origenFirma = secreto.tipo;
       break;
     } catch (err) {
       ultimoError = err;
@@ -74,6 +93,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 400 });
   }
 
+  const esEventoCuentaConectada = !!event.account || event.type === "account.updated";
+  if ((esEventoCuentaConectada && origenFirma !== "CONNECT") || (!esEventoCuentaConectada && origenFirma !== "PLATAFORMA")) {
+    return NextResponse.json({ error: "Origen de webhook incorrecto" }, { status: 400 });
+  }
+  const claveStripe = process.env.STRIPE_SECRET_KEY ?? "";
+  const modoEsperado = claveStripe.startsWith("sk_live_")
+    ? "LIVE"
+    : claveStripe.startsWith("sk_test_")
+      ? "TEST"
+      : null;
+  if ((modoEsperado === "LIVE" && !event.livemode) || (modoEsperado === "TEST" && event.livemode)) {
+    return NextResponse.json({ error: "Modo de webhook incorrecto" }, { status: 400 });
+  }
+
   if (event.type === "payment_intent.succeeded") {
     const intent = event.data.object as Stripe.PaymentIntent;
     const meta = intent.metadata;
@@ -83,22 +116,54 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ received: true });
     }
 
+    let cuentaCobroDirecto: string | null = null;
     try {
       const propiedadPago = await prisma.propiedad.findUnique({
         where: { id: meta.propiedadId },
         select: { stripeConnectAccountId: true },
       });
       if (!propiedadPago?.stripeConnectAccountId) throw new Error("DESTINO_STRIPE_INCONSISTENTE");
+      const intentoPago = meta.roomlyIntentoId ? await obtenerIntentoPago(meta.roomlyIntentoId) : null;
+      const cuentaAutorizada = intentoPago?.stripeConnectAccountId ?? propiedadPago.stripeConnectAccountId;
       const destino = typeof intent.transfer_data?.destination === "string"
         ? intent.transfer_data.destination
         : intent.transfer_data?.destination?.id ?? null;
-      validarDestinoPago(destino, propiedadPago.stripeConnectAccountId);
+      const esCobroDirecto = destino === null;
+      if (esCobroDirecto) {
+        validarCuentaEvento(event.account ?? null, cuentaAutorizada);
+        cuentaCobroDirecto = cuentaAutorizada;
+      } else {
+        validarDestinoPago(destino, propiedadPago.stripeConnectAccountId);
+      }
       validarPagoRecibido({
         paymentStatus: intent.status === "succeeded" ? "paid" : intent.status,
         moneda: intent.currency,
         montoRecibidoCentavos: intent.amount_received,
         montoEsperadoCentavos: Number(meta.montoEsperadoCentavos),
       });
+      if (esCobroDirecto) {
+        const intentoAutorizado = await exigirIntentoPagoAutorizado({
+          intentoId: meta.roomlyIntentoId ?? "",
+          propiedadId: meta.propiedadId,
+          stripeConnectAccountId: cuentaAutorizada,
+          montoCentavos: intent.amount_received,
+          moneda: "mxn",
+          stripePaymentIntentId: intent.id,
+        });
+        const datos = intentoAutorizado.datosReserva as {
+          tipoDeHabitacionId: string; nombre: string; email: string; telefono: string;
+          fechaIngreso: string; fechaSalida: string; numPersonas: number;
+        };
+        Object.assign(meta, {
+          tipoDeHabitacionId: datos.tipoDeHabitacionId,
+          nombre: datos.nombre,
+          email: datos.email,
+          telefono: datos.telefono,
+          fechaIngreso: datos.fechaIngreso,
+          fechaSalida: datos.fechaSalida,
+          numPersonas: String(datos.numPersonas),
+        });
+      }
       const reserva = await crearReservaOnline({
         propiedadId: meta.propiedadId,
         tipoDeHabitacionId: meta.tipoDeHabitacionId,
@@ -110,7 +175,10 @@ export async function POST(req: NextRequest) {
         numPersonas: Number(meta.numPersonas),
         stripePaymentIntentId: intent.id,
         montoPagadoMxn: intent.amount_received / 100,
+        modeloCobro: esCobroDirecto ? "DIRECT" : "DESTINATION_LEGACY",
+        stripeConnectAccountId: esCobroDirecto ? cuentaAutorizada : null,
       });
+      if (esCobroDirecto) await marcarIntentoPagoPagado(meta.roomlyIntentoId);
 
       // 11.5 + 11.8: emails usando los datos del PaymentIntent metadata + propiedad
       const propiedad = await prisma.propiedad.findUnique({
@@ -154,8 +222,18 @@ export async function POST(req: NextRequest) {
         "TIPO_HABITACION_INVALIDO",
         "FECHAS_INVALIDAS",
         "CAPACIDAD_INVALIDA",
+        "INTENTO_PAGO_NO_AUTORIZADO",
       ].includes(err.message)) {
-        await reembolsarPagoHuesped(intent.id, undefined, `roomly-no-availability-${intent.id}`);
+        if (cuentaCobroDirecto) {
+          await reembolsarPagoDirectoHuesped(
+            intent.id,
+            cuentaCobroDirecto,
+            undefined,
+            `roomly-no-availability-${intent.id}`
+          );
+        } else {
+          await reembolsarPagoHuesped(intent.id, undefined, `roomly-no-availability-${intent.id}`);
+        }
         return NextResponse.json({ reembolsado: true });
       }
       throw err;
@@ -164,9 +242,22 @@ export async function POST(req: NextRequest) {
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
+    let cuentaCheckoutDirecto: string | null = null;
     if (["GRUPO_PAGO", "GRUPO_ONLINE", "MANUAL_PAGO"].includes(session.metadata?.tipo ?? "")) {
       try {
-        await validarSesionDePago(session);
+        const validacion = await validarSesionDePago(session, event.account ?? null);
+        cuentaCheckoutDirecto = validacion.cuentaCobroDirecto;
+        if (cuentaCheckoutDirecto) {
+          await exigirIntentoPagoAutorizado({
+            intentoId: session.metadata?.roomlyIntentoId ?? "",
+            propiedadId: session.metadata?.propiedadId ?? "",
+            stripeConnectAccountId: cuentaCheckoutDirecto,
+            montoCentavos: session.amount_total ?? 0,
+            moneda: "mxn",
+            stripePaymentIntentId: validacion.intent.id,
+            stripeCheckoutSessionId: session.id,
+          });
+        }
       } catch (err) {
         console.error("[webhook] Checkout inconsistente:", session.id, err);
         const piId = typeof session.payment_intent === "string"
@@ -175,7 +266,11 @@ export async function POST(req: NextRequest) {
         // Si Stripe ya capturó dinero pero el monto, moneda, tenant o destino
         // no coincide con lo cotizado, no hay una reserva válida que crear.
         if (session.payment_status === "paid" && piId) {
-          await reembolsarPagoHuesped(piId, undefined, `roomly-invalid-checkout-${piId}`);
+          if (event.account) {
+            await reembolsarPagoDirectoHuesped(piId, event.account, undefined, `roomly-invalid-checkout-${piId}`);
+          } else {
+            await reembolsarPagoHuesped(piId, undefined, `roomly-invalid-checkout-${piId}`);
+          }
           return NextResponse.json({ received: true, reembolsado: true });
         }
         return NextResponse.json({ error: "Pago inconsistente" }, { status: 400 });
@@ -212,6 +307,8 @@ export async function POST(req: NextRequest) {
               stripeCheckoutSessionId: session.id,
               montoMxn: montoCobrado,
               moneda: session.currency ?? "mxn",
+              modeloCobro: cuentaCheckoutDirecto ? "DIRECT" : "DESTINATION_LEGACY",
+              stripeConnectAccountId: cuentaCheckoutDirecto,
               estado: esExceso ? "REEMBOLSO_PENDIENTE" : "PAGADO",
               reembolsoPendienteMxn: esExceso ? montoCobrado : 0,
             },
@@ -243,7 +340,11 @@ export async function POST(req: NextRequest) {
         });
         if (resultadoGrupo.reembolsar) {
           try {
-            await reembolsarPagoHuesped(piId);
+            if (cuentaCheckoutDirecto) {
+              await reembolsarPagoDirectoHuesped(piId, cuentaCheckoutDirecto);
+            } else {
+              await reembolsarPagoHuesped(piId);
+            }
             await prisma.pagoOnline.update({
               where: { id: resultadoGrupo.pagoId },
               data: { estado: "REEMBOLSADO", montoReembolsadoMxn: montoCobrado, reembolsoPendienteMxn: 0 },
@@ -282,6 +383,7 @@ export async function POST(req: NextRequest) {
             colorPrimario: grupo.propiedad.colorPrimario ?? undefined,
           });
         }
+        if (cuentaCheckoutDirecto) await marcarIntentoPagoPagado(session.metadata.roomlyIntentoId);
       } catch (err) {
         if ((err as { code?: string })?.code === "P2002") {
           const piDuplicado = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id;
@@ -290,7 +392,11 @@ export async function POST(req: NextRequest) {
             : null;
           if (piDuplicado && pagoPendiente?.estado === "REEMBOLSO_PENDIENTE") {
             const centavos = Math.round(Number(pagoPendiente.reembolsoPendienteMxn) * 100);
-            await reembolsarPagoHuesped(piDuplicado, centavos, `roomly-refund-${pagoPendiente.id}-${centavos}`);
+            if (pagoPendiente.stripeConnectAccountId) {
+              await reembolsarPagoDirectoHuesped(piDuplicado, pagoPendiente.stripeConnectAccountId, centavos, `roomly-refund-${pagoPendiente.id}-${centavos}`);
+            } else {
+              await reembolsarPagoHuesped(piDuplicado, centavos, `roomly-refund-${pagoPendiente.id}-${centavos}`);
+            }
             await prisma.pagoOnline.update({
               where: { id: pagoPendiente.id },
               data: { estado: "REEMBOLSADO", montoReembolsadoMxn: pagoPendiente.montoMxn, reembolsoPendienteMxn: 0 },
@@ -314,6 +420,27 @@ export async function POST(req: NextRequest) {
           ? session.payment_intent : null;
         const montoCobrado = session.amount_total ? session.amount_total / 100 : 0;
         if (!stripePaymentIntentId) throw new Error("PAGO_STRIPE_INCONSISTENTE");
+        if (cuentaCheckoutDirecto) {
+          const intentoAutorizado = await exigirIntentoPagoAutorizado({
+            intentoId: meta.roomlyIntentoId ?? "",
+            propiedadId: meta.propiedadId,
+            stripeConnectAccountId: cuentaCheckoutDirecto,
+            montoCentavos: session.amount_total ?? 0,
+            moneda: "mxn",
+            stripePaymentIntentId,
+            stripeCheckoutSessionId: session.id,
+          });
+          const datos = intentoAutorizado.datosReserva as {
+            habitaciones: Array<{ tipoDeHabitacionId: string; fechaIngreso: string; fechaSalida: string; numPersonas: number }>;
+            nombre: string; email: string; telefono: string;
+          };
+          meta.nombre = datos.nombre;
+          meta.email = datos.email;
+          meta.telefono = datos.telefono;
+          meta.habitaciones = JSON.stringify(datos.habitaciones.map((h) => ({
+            t: h.tipoDeHabitacionId, i: h.fechaIngreso, o: h.fechaSalida, n: h.numPersonas,
+          })));
+        }
         const pagoExistente = await prisma.pagoOnline.findUnique({
           where: { stripePaymentIntentId },
           select: { id: true },
@@ -325,7 +452,11 @@ export async function POST(req: NextRequest) {
         let fechaSalidaMax: Date | null = null;
         let totalPersonas = 0;
         const roomsData: { t: string; fechaIn: Date; fechaOut: Date; n: number; total: number; desglose: unknown }[] = [];
-        const lineItems = await stripe.checkout.sessions.listLineItems(session.id, { limit: 100 });
+        const lineItems = await stripe.checkout.sessions.listLineItems(
+          session.id,
+          { limit: 100 },
+          cuentaCheckoutDirecto ? { stripeAccount: cuentaCheckoutDirecto } : undefined
+        );
         if (lineItems.data.length !== habsRaw.length) throw new Error("PAGO_STRIPE_INCONSISTENTE");
 
         for (const [index, h] of habsRaw.entries()) {
@@ -360,7 +491,13 @@ export async function POST(req: NextRequest) {
         for (const d of demandaPorTipoYFechas.values()) {
           const disponibles = await calcularDisponibilidad(d.t, d.fechaIn, d.fechaOut);
           if (disponibles < d.cantidad) {
-            if (stripePaymentIntentId) await reembolsarPagoHuesped(stripePaymentIntentId, undefined, `roomly-no-availability-${stripePaymentIntentId}`);
+            if (stripePaymentIntentId) {
+              if (cuentaCheckoutDirecto) {
+                await reembolsarPagoDirectoHuesped(stripePaymentIntentId, cuentaCheckoutDirecto, undefined, `roomly-no-availability-${stripePaymentIntentId}`);
+              } else {
+                await reembolsarPagoHuesped(stripePaymentIntentId, undefined, `roomly-no-availability-${stripePaymentIntentId}`);
+              }
+            }
             console.error("[webhook] GRUPO_ONLINE sin disponibilidad al confirmar — reembolsado:", session.id);
             return NextResponse.json({ reembolsado: true });
           }
@@ -399,6 +536,8 @@ export async function POST(req: NextRequest) {
                   stripeCheckoutSessionId: session.id,
                   montoMxn: montoCobrado,
                   moneda: session.currency ?? "mxn",
+                  modeloCobro: cuentaCheckoutDirecto ? "DIRECT" : "DESTINATION_LEGACY",
+                  stripeConnectAccountId: cuentaCheckoutDirecto,
                 },
               });
 
@@ -453,13 +592,20 @@ export async function POST(req: NextRequest) {
             colorPrimario: propiedad.colorPrimario ?? undefined,
           });
         }
+        if (cuentaCheckoutDirecto) await marcarIntentoPagoPagado(meta.roomlyIntentoId);
       } catch (err) {
         if ((err as { code?: string })?.code === "P2002") {
           return NextResponse.json({ received: true, duplicado: true });
         }
-        if (err instanceof Error && ["SIN_DISPONIBILIDAD", "DATOS_RESERVA_INVALIDOS", "PAGO_STRIPE_INCONSISTENTE"].includes(err.message)) {
+        if (err instanceof Error && ["SIN_DISPONIBILIDAD", "DATOS_RESERVA_INVALIDOS", "PAGO_STRIPE_INCONSISTENTE", "INTENTO_PAGO_NO_AUTORIZADO"].includes(err.message)) {
           const piId = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id;
-          if (piId) await reembolsarPagoHuesped(piId, undefined, `roomly-no-availability-${piId}`);
+          if (piId) {
+            if (cuentaCheckoutDirecto) {
+              await reembolsarPagoDirectoHuesped(piId, cuentaCheckoutDirecto, undefined, `roomly-no-availability-${piId}`);
+            } else {
+              await reembolsarPagoHuesped(piId, undefined, `roomly-no-availability-${piId}`);
+            }
+          }
           return NextResponse.json({ received: true, reembolsado: true });
         }
         console.error("[webhook] GRUPO_ONLINE error:", err);
@@ -505,6 +651,8 @@ export async function POST(req: NextRequest) {
             stripeCheckoutSessionId: session.id,
             montoMxn: montoRecibido,
             moneda: session.currency ?? "mxn",
+            modeloCobro: cuentaCheckoutDirecto ? "DIRECT" : "DESTINATION_LEGACY",
+            stripeConnectAccountId: cuentaCheckoutDirecto,
             estado: montoReembolso > 0 ? "REEMBOLSO_PENDIENTE" : "PAGADO",
             reembolsoPendienteMxn: montoReembolso,
           },
@@ -522,7 +670,11 @@ export async function POST(req: NextRequest) {
       if (resultado.montoReembolso > 0) {
         try {
           const centavosReembolso = Math.round(resultado.montoReembolso * 100);
-          await reembolsarPagoHuesped(piId, centavosReembolso, `roomly-refund-${resultado.existente.id}-${centavosReembolso}`);
+          if (resultado.existente.stripeConnectAccountId) {
+            await reembolsarPagoDirectoHuesped(piId, resultado.existente.stripeConnectAccountId, centavosReembolso, `roomly-refund-${resultado.existente.id}-${centavosReembolso}`);
+          } else {
+            await reembolsarPagoHuesped(piId, centavosReembolso, `roomly-refund-${resultado.existente.id}-${centavosReembolso}`);
+          }
           const totalReembolsado = Number(resultado.existente.montoReembolsadoMxn) + resultado.montoReembolso;
           const esCompleto = totalReembolsado + 0.005 >= Number(resultado.existente.montoMxn);
           await prisma.pagoOnline.update({
@@ -567,6 +719,7 @@ export async function POST(req: NextRequest) {
             : Promise.resolve(),
         ]).catch(() => {});
       }
+      if (cuentaCheckoutDirecto) await marcarIntentoPagoPagado(session.metadata.roomlyIntentoId);
     }
   }
 

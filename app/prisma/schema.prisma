@@ -92,6 +92,7 @@ model Propiedad {
   reservas          Reserva[]
   grupos            GrupoReserva[]
   pagosOnline       PagoOnline[]
+  intentosDePago    IntentoDePagoStripe[]
   usuarios          UsuarioPropiedad[]
   invitaciones      InvitacionEquipo[]
 
@@ -303,6 +304,33 @@ enum EstadoPagoOnline {
 enum ModeloCobroStripe {
   DESTINATION_LEGACY
   DIRECT
+}
+
+enum EstadoIntentoDePagoStripe {
+  PENDIENTE
+  PAGADO
+  CANCELADO
+}
+
+model IntentoDePagoStripe {
+  id                     String                    @id @default(cuid())
+  intentoId              String                    @unique
+  propiedadId            String
+  stripeConnectAccountId String
+  tipo                    String
+  montoCentavos           Int
+  moneda                  String                    @default("mxn")
+  datosReserva            Json
+  estado                  EstadoIntentoDePagoStripe @default(PENDIENTE)
+  stripePaymentIntentId   String?                   @unique
+  stripeCheckoutSessionId String?                   @unique
+  creadoEn                DateTime                  @default(now())
+  actualizadoEn           DateTime                  @updatedAt
+
+  propiedad Propiedad @relation(fields: [propiedadId], references: [id], onDelete: Restrict)
+
+  @@index([propiedadId, estado])
+  @@map("intentos_de_pago_stripe")
 }
 
 model PagoOnline {

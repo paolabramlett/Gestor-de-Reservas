@@ -4,11 +4,18 @@ import { stripe } from "@/lib/stripe";
 import { calcularTotalReserva } from "@/lib/negocio/tarifas";
 import { verificarDisponibilidadAtómica } from "@/lib/negocio/disponibilidad";
 import { getPropiedadBySlug } from "@/lib/auth";
-import { datosPagoDestino, esErrorConnectPendiente, mensajeErrorConnect } from "@/lib/stripeConnect";
+import {
+  crearClaveIdempotenciaDirectCharge,
+  crearDirectCharge,
+  esErrorConnectPendiente,
+  mensajeErrorConnect,
+} from "@/lib/stripeConnect";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { validarDatosReserva } from "@/lib/negocio/reglasReserva";
 import { tieneAccesoRoomly } from "@/lib/negocio/suscripciones";
+import { validarCuentaConnectParaCobroDirecto } from "@/lib/stripeConnectAccount.server";
+import { asociarIntentoPagoStripe, registrarIntentoPago } from "@/lib/negocio/intentosPago";
 
 const bodySchema = z.object({
   slug: z.string(),
@@ -19,6 +26,7 @@ const bodySchema = z.object({
   fechaIngreso: z.string().date(),
   fechaSalida: z.string().date(),
   numPersonas: z.number().int().min(1),
+  intentoId: z.string().uuid(),
 });
 
 export async function POST(req: NextRequest) {
@@ -74,11 +82,32 @@ export async function POST(req: NextRequest) {
   );
 
   let intent;
+  let stripeAccountId: string;
   try {
+    const directCharge = crearDirectCharge(propiedad, total);
+    await validarCuentaConnectParaCobroDirecto(directCharge.stripeAccountId);
+    await registrarIntentoPago({
+      intentoId: data.intentoId,
+      propiedadId: propiedad.id,
+      stripeConnectAccountId: directCharge.stripeAccountId,
+      tipo: "RESERVA_INDIVIDUAL",
+      montoCentavos: Math.round(total * 100),
+      moneda: "mxn",
+      datosReserva: {
+        tipoDeHabitacionId: data.tipoDeHabitacionId,
+        nombre: data.nombre,
+        email: data.email,
+        telefono: data.telefono ?? "",
+        fechaIngreso: data.fechaIngreso,
+        fechaSalida: data.fechaSalida,
+        numPersonas: data.numPersonas,
+      },
+    });
+    stripeAccountId = directCharge.stripeAccountId;
     intent = await stripe.paymentIntents.create({
       amount: Math.round(total * 100), // centavos
       currency: "mxn",
-      ...datosPagoDestino(propiedad, total),
+      ...directCharge.paymentIntentData,
       metadata: {
         propiedadId: propiedad.id,
         tipoDeHabitacionId: data.tipoDeHabitacionId,
@@ -90,13 +119,21 @@ export async function POST(req: NextRequest) {
         numPersonas: String(data.numPersonas),
         montoEsperadoCentavos: String(Math.round(total * 100)),
         moneda: "mxn",
-        stripeConnectAccountId: propiedad.stripeConnectAccountId ?? "",
+        stripeConnectAccountId: directCharge.stripeAccountId,
+        roomlyIntentoId: data.intentoId,
       },
+    }, {
+      ...directCharge.requestOptions,
+      idempotencyKey: crearClaveIdempotenciaDirectCharge("reserva-publica", [
+        propiedad.id,
+        data.intentoId,
+      ]),
     });
+    await asociarIntentoPagoStripe(data.intentoId, { stripePaymentIntentId: intent.id });
   } catch (err) {
     const status = esErrorConnectPendiente(err) ? 409 : 500;
     return NextResponse.json({ error: mensajeErrorConnect(err) }, { status });
   }
 
-  return NextResponse.json({ clientSecret: intent.client_secret });
+  return NextResponse.json({ clientSecret: intent.client_secret, stripeAccountId });
 }

@@ -6,7 +6,7 @@ type PagoRecibido = {
 };
 
 import { prisma } from "@/lib/prisma";
-import { reembolsarPagoHuesped } from "@/lib/stripeConnect";
+import { reembolsarPagoDirectoHuesped, reembolsarPagoHuesped } from "@/lib/stripeConnect";
 
 export function validarPagoRecibido(input: PagoRecibido): void {
   if (
@@ -62,33 +62,49 @@ export async function reembolsarPagosOnline(input: {
   montoMxn: number;
 }): Promise<void> {
   if ((input.reservaId ? 1 : 0) + (input.grupoId ? 1 : 0) !== 1) throw new Error("DESTINO_REEMBOLSO_INVALIDO");
-  const pagos = await prisma.pagoOnline.findMany({
-    where: {
-      ...(input.reservaId ? { reservaId: input.reservaId } : { grupoId: input.grupoId }),
-      estado: { in: ["PAGADO", "REEMBOLSADO_PARCIAL"] },
-    },
-    orderBy: { creadoEn: "desc" },
+  const claveLock = input.reservaId ?? input.grupoId!;
+  const { pagos, distribucion } = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${claveLock}, 7))`;
+    const pagos = await tx.pagoOnline.findMany({
+      where: {
+        ...(input.reservaId ? { reservaId: input.reservaId } : { grupoId: input.grupoId }),
+        estado: { in: ["PAGADO", "REEMBOLSADO_PARCIAL"] },
+      },
+      orderBy: { creadoEn: "desc" },
+    });
+    const distribucion = distribuirReembolso(
+      montoCentavos(input.montoMxn),
+      pagos.map((pago) => ({
+        id: pago.id,
+        disponibleCentavos: montoCentavos(Number(pago.montoMxn)) - Math.round(Number(pago.montoReembolsadoMxn) * 100),
+      }))
+    );
+    for (const parte of distribucion) {
+      await tx.pagoOnline.update({
+        where: { id: parte.id },
+        data: { estado: "REEMBOLSO_PENDIENTE", reembolsoPendienteMxn: parte.montoCentavos / 100 },
+      });
+    }
+    return { pagos, distribucion };
   });
-  const distribucion = distribuirReembolso(
-    montoCentavos(input.montoMxn),
-    pagos.map((pago) => ({
-      id: pago.id,
-      disponibleCentavos: montoCentavos(Number(pago.montoMxn)) - Math.round(Number(pago.montoReembolsadoMxn) * 100),
-    }))
-  );
 
   for (const parte of distribucion) {
     const pago = pagos.find((p) => p.id === parte.id)!;
-    await prisma.pagoOnline.update({
-      where: { id: pago.id },
-      data: { estado: "REEMBOLSO_PENDIENTE", reembolsoPendienteMxn: parte.montoCentavos / 100 },
-    });
     try {
-      await reembolsarPagoHuesped(
-        pago.stripePaymentIntentId,
-        parte.montoCentavos,
-        `roomly-refund-${pago.id}-${Math.round(Number(pago.montoReembolsadoMxn) * 100)}-${parte.montoCentavos}`
-      );
+      const idempotencyKey = `roomly-refund-${pago.id}-${Math.round(Number(pago.montoReembolsadoMxn) * 100)}-${parte.montoCentavos}`;
+      if (pago.modeloCobro === "DIRECT" && !pago.stripeConnectAccountId) {
+        throw new Error("CUENTA_ORIGEN_STRIPE_FALTANTE");
+      }
+      if (pago.modeloCobro === "DIRECT") {
+        await reembolsarPagoDirectoHuesped(
+          pago.stripePaymentIntentId,
+          pago.stripeConnectAccountId!,
+          parte.montoCentavos,
+          idempotencyKey
+        );
+      } else {
+        await reembolsarPagoHuesped(pago.stripePaymentIntentId, parte.montoCentavos, idempotencyKey);
+      }
       const nuevoReembolsado = Number(pago.montoReembolsadoMxn) + parte.montoCentavos / 100;
       await prisma.pagoOnline.update({
         where: { id: pago.id },

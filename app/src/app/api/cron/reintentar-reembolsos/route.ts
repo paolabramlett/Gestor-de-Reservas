@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { reembolsarPagoHuesped } from "@/lib/stripeConnect";
+import { reembolsarPagoDirectoHuesped, reembolsarPagoHuesped } from "@/lib/stripeConnect";
 
 export async function GET(req: NextRequest) {
   const auth = req.headers.get("authorization");
@@ -21,11 +21,20 @@ export async function GET(req: NextRequest) {
   for (const pago of pendientes) {
     const centavos = Math.round(Number(pago.reembolsoPendienteMxn) * 100);
     try {
-      await reembolsarPagoHuesped(
-        pago.stripePaymentIntentId,
-        centavos,
-        `roomly-refund-${pago.id}-${Math.round(Number(pago.montoReembolsadoMxn) * 100)}-${centavos}`
-      );
+      const idempotencyKey = `roomly-refund-${pago.id}-${Math.round(Number(pago.montoReembolsadoMxn) * 100)}-${centavos}`;
+      if (pago.modeloCobro === "DIRECT" && !pago.stripeConnectAccountId) {
+        throw new Error("CUENTA_ORIGEN_STRIPE_FALTANTE");
+      }
+      if (pago.modeloCobro === "DIRECT") {
+        await reembolsarPagoDirectoHuesped(
+          pago.stripePaymentIntentId,
+          pago.stripeConnectAccountId!,
+          centavos,
+          idempotencyKey
+        );
+      } else {
+        await reembolsarPagoHuesped(pago.stripePaymentIntentId, centavos, idempotencyKey);
+      }
       const totalReembolsado = Number(pago.montoReembolsadoMxn) + centavos / 100;
       await prisma.pagoOnline.update({
         where: { id: pago.id },

@@ -9,8 +9,10 @@ import { calcularPrecioNoche, calcularTotalReserva } from "@/lib/negocio/tarifas
 import { verificarDisponibilidadAtómica, verificarHabitacionLibre, calcularDisponibilidad } from "@/lib/negocio/disponibilidad";
 import { stripe } from "@/lib/stripe";
 import { enviarSolicitudPago, enviarConfirmacion } from "@/lib/emails";
-import { datosPagoDestino, mensajeErrorConnect } from "@/lib/stripeConnect";
+import { crearClaveIdempotenciaDirectCharge, crearDirectCharge, mensajeErrorConnect } from "@/lib/stripeConnect";
 import { validarPagoManual } from "@/lib/negocio/reglasReserva";
+import { validarCuentaConnectParaCobroDirecto } from "@/lib/stripeConnectAccount.server";
+import { asociarIntentoPagoStripe, registrarIntentoPago } from "@/lib/negocio/intentosPago";
 
 export async function crearReservaManualAction(formData: FormData) {
   const usuario = await getCurrentUsuario();
@@ -402,7 +404,15 @@ export async function solicitarPagoAction(reservaId: string) {
   // Invalidar el Checkout Session anterior si existe
   if (reserva.stripeCheckoutSessionId) {
     try {
-      await stripe.checkout.sessions.expire(reserva.stripeCheckoutSessionId);
+      const intentoAnterior = await prisma.intentoDePagoStripe.findUnique({
+        where: { stripeCheckoutSessionId: reserva.stripeCheckoutSessionId },
+        select: { stripeConnectAccountId: true },
+      });
+      await stripe.checkout.sessions.expire(
+        reserva.stripeCheckoutSessionId,
+        {},
+        intentoAnterior ? { stripeAccount: intentoAnterior.stripeConnectAccountId } : undefined
+      );
     } catch {
       // Session ya expiró o fue completada — ignorar
     }
@@ -415,6 +425,22 @@ export async function solicitarPagoAction(reservaId: string) {
 
   let session;
   try {
+    const directCharge = crearDirectCharge(reserva.propiedad, montoCobrar);
+    await validarCuentaConnectParaCobroDirecto(directCharge.stripeAccountId);
+    const intentoPagoId = crearClaveIdempotenciaDirectCharge("autorizacion-saldo-reserva", [
+      reserva.id,
+      Math.round(montoCobrar * 100),
+      reserva.stripeCheckoutSessionId ?? "sin-sesion-previa",
+    ]);
+    await registrarIntentoPago({
+      intentoId: intentoPagoId,
+      propiedadId: reserva.propiedadId,
+      stripeConnectAccountId: directCharge.stripeAccountId,
+      tipo: "MANUAL_PAGO",
+      montoCentavos: Math.round(montoCobrar * 100),
+      moneda: "mxn",
+      datosReserva: { reservaId: reserva.id },
+    });
     session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
@@ -432,7 +458,7 @@ export async function solicitarPagoAction(reservaId: string) {
         },
       ],
       customer_email: reserva.huesped.email,
-      payment_intent_data: datosPagoDestino(reserva.propiedad, montoCobrar),
+      payment_intent_data: directCharge.paymentIntentData,
       metadata: {
         reservaId: reserva.id,
         tipo: "MANUAL_PAGO",
@@ -440,12 +466,21 @@ export async function solicitarPagoAction(reservaId: string) {
         propiedadId: reserva.propiedadId,
         montoEsperadoCentavos: String(Math.round(montoCobrar * 100)),
         moneda: "mxn",
-        stripeConnectAccountId: reserva.propiedad.stripeConnectAccountId ?? "",
+        stripeConnectAccountId: directCharge.stripeAccountId,
+        roomlyIntentoId: intentoPagoId,
       },
       expires_at: Math.floor(expiraEn.getTime() / 1000),
       success_url: `${baseUrl}/p/${reserva.propiedad.slug}/confirmacion?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/p/${reserva.propiedad.slug}`,
+    }, {
+      ...directCharge.requestOptions,
+      idempotencyKey: crearClaveIdempotenciaDirectCharge("saldo-reserva", [
+        reserva.id,
+        Math.round(montoCobrar * 100),
+        reserva.stripeCheckoutSessionId ?? "sin-sesion-previa",
+      ]),
     });
+    await asociarIntentoPagoStripe(intentoPagoId, { stripeCheckoutSessionId: session.id });
   } catch (err) {
     redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent(mensajeErrorConnect(err))}`);
   }
@@ -462,7 +497,15 @@ export async function solicitarPagoAction(reservaId: string) {
       },
     });
   } catch (err) {
-    await stripe.checkout.sessions.expire(session.id).catch(() => {});
+    const intentoSesion = await prisma.intentoDePagoStripe.findUnique({
+      where: { stripeCheckoutSessionId: session.id },
+      select: { stripeConnectAccountId: true },
+    });
+    await stripe.checkout.sessions.expire(
+      session.id,
+      {},
+      intentoSesion ? { stripeAccount: intentoSesion.stripeConnectAccountId } : undefined
+    ).catch(() => {});
     redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent(mensajeErrorConnect(err))}`);
   }
 
