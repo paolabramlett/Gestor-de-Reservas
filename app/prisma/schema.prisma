@@ -52,39 +52,58 @@ enum PlanRoomly {
   PRO
 }
 
+enum MetodoPagoExterno {
+  EFECTIVO
+  TRANSFERENCIA
+  TERMINAL_EXTERNA
+  OTRO
+}
+
+enum TipoAjustePagoExterno {
+  ANULACION
+  REEMBOLSO
+}
+
+enum EstadoComprobantePago {
+  NO_SOLICITADO
+  PENDIENTE
+  ENVIADO
+  FALLIDO
+}
+
 // ─── Multi-tenant root ───────────────────────────────────────────────────────
 
 model Propiedad {
-  id              String   @id @default(cuid())
-  clerkOrgId      String   @unique
-  slug            String   @unique
-  nombre          String
-  descripcion     String?
-  logoUrl         String?
-  colorPrimario   String?
-  colorSecundario String?
-  telefono        String?
-  email           String?
-  direccion       String?
-  stripeCustomerId      String?
-  stripeSubscriptionId  String?
+  id                        String     @id @default(cuid())
+  clerkOrgId                String     @unique
+  slug                      String     @unique
+  nombre                    String
+  descripcion               String?
+  logoUrl                   String?
+  colorPrimario             String?
+  colorSecundario           String?
+  telefono                  String?
+  email                     String?
+  direccion                 String?
+  stripeCustomerId          String?
+  stripeSubscriptionId      String?
   // Cuenta de Stripe Connect (Express) del hotel — a donde va DIRECTO el
   // dinero de sus huéspedes. Distinta de stripeCustomerId (que es la
   // suscripción del hotel A Roomly, dinero que sí es de Roomly).
-  stripeConnectAccountId   String?  @unique
-  stripeConnectHabilitado  Boolean  @default(false)
-  planActivo            PlanRoomly @default(ESENCIAL)
-  suscripcionActiva     Boolean    @default(false)
-  accesoGratisLegacy    Boolean    @default(false)
-  canceladaAlFinalDePeriodo Boolean  @default(false)
+  stripeConnectAccountId    String?    @unique
+  stripeConnectHabilitado   Boolean    @default(false)
+  planActivo                PlanRoomly @default(ESENCIAL)
+  suscripcionActiva         Boolean    @default(false)
+  accesoGratisLegacy        Boolean    @default(false)
+  canceladaAlFinalDePeriodo Boolean    @default(false)
   finDePeriodoActual        DateTime?
-  horaCheckIn           String   @default("15:00")
-  horaCheckOut          String   @default("12:00")
-  horasParaLateCheckIn  Int      @default(2)
-  costoLateCheckIn      Decimal? @db.Decimal(10, 2)
-  horasParaNoShow       Int      @default(6)
-  creadoEn        DateTime @default(now())
-  actualizadoEn   DateTime @updatedAt
+  horaCheckIn               String     @default("15:00")
+  horaCheckOut              String     @default("12:00")
+  horasParaLateCheckIn      Int        @default(2)
+  costoLateCheckIn          Decimal?   @db.Decimal(10, 2)
+  horasParaNoShow           Int        @default(6)
+  creadoEn                  DateTime   @default(now())
+  actualizadoEn             DateTime   @updatedAt
 
   tiposDeHabitacion TipoDeHabitacion[]
   habitaciones      Habitacion[]
@@ -92,6 +111,7 @@ model Propiedad {
   reservas          Reserva[]
   grupos            GrupoReserva[]
   pagosOnline       PagoOnline[]
+  pagosExternos     PagoExterno[]
   intentosDePago    IntentoDePagoStripe[]
   usuarios          UsuarioPropiedad[]
   invitaciones      InvitacionEquipo[]
@@ -106,7 +126,9 @@ model UsuarioPropiedad {
   rol         RolUsuario
   creadoEn    DateTime   @default(now())
 
-  propiedad Propiedad @relation(fields: [propiedadId], references: [id], onDelete: Cascade)
+  propiedad                   Propiedad           @relation(fields: [propiedadId], references: [id], onDelete: Cascade)
+  pagosExternosCreados        PagoExterno[]
+  ajustesPagosExternosCreados AjustePagoExterno[]
 
   @@unique([clerkUserId, propiedadId])
   @@map("usuarios_propiedad")
@@ -132,23 +154,23 @@ model InvitacionEquipo {
 // ─── Habitaciones ────────────────────────────────────────────────────────────
 
 model TipoDeHabitacion {
-  id                  String          @id @default(cuid())
-  propiedadId         String
-  nombre              String
-  descripcion         String?
-  capacidadMin        Int
-  capacidadMax        Int
-  fotos               String[]
-  amenidades          String[]
-  tarifaBasePrice        Decimal          @db.Decimal(10, 2)
-  tarifaBaseModalidad    ModalidadTarifa
-  suplementoPorPersona   Decimal?         @db.Decimal(10, 2)
-  activo                 Boolean          @default(true)
-  icalToken           String           @unique @default(cuid())
-  creadoEn            DateTime        @default(now())
-  actualizadoEn       DateTime        @updatedAt
+  id                   String          @id @default(cuid())
+  propiedadId          String
+  nombre               String
+  descripcion          String?
+  capacidadMin         Int
+  capacidadMax         Int
+  fotos                String[]
+  amenidades           String[]
+  tarifaBasePrice      Decimal         @db.Decimal(10, 2)
+  tarifaBaseModalidad  ModalidadTarifa
+  suplementoPorPersona Decimal?        @db.Decimal(10, 2)
+  activo               Boolean         @default(true)
+  icalToken            String          @unique @default(cuid())
+  creadoEn             DateTime        @default(now())
+  actualizadoEn        DateTime        @updatedAt
 
-  propiedad      Propiedad        @relation(fields: [propiedadId], references: [id], onDelete: Cascade)
+  propiedad      Propiedad       @relation(fields: [propiedadId], references: [id], onDelete: Cascade)
   habitaciones   Habitacion[]
   temporadas     Temporada[]
   reservas       Reserva[]
@@ -168,8 +190,8 @@ model Habitacion {
   creadoEn           DateTime @default(now())
   actualizadoEn      DateTime @updatedAt
 
-  propiedad        Propiedad        @relation(fields: [propiedadId], references: [id], onDelete: Cascade)
-  tipoDeHabitacion TipoDeHabitacion @relation(fields: [tipoDeHabitacionId], references: [id])
+  propiedad        Propiedad                @relation(fields: [propiedadId], references: [id], onDelete: Cascade)
+  tipoDeHabitacion TipoDeHabitacion         @relation(fields: [tipoDeHabitacionId], references: [id])
   asignaciones     AsignacionDeHabitacion[]
   bloqueos         BloqueoDeHabitacion[]
 
@@ -180,17 +202,17 @@ model Habitacion {
 // ─── Tarifas y temporadas ────────────────────────────────────────────────────
 
 model Temporada {
-  id                 String          @id @default(cuid())
-  propiedadId        String
-  tipoDeHabitacionId String
-  nombre             String
-  fechaInicio        DateTime        @db.Date
-  fechaFin           DateTime        @db.Date
-  precio               Decimal          @db.Decimal(10, 2)
+  id                   String          @id @default(cuid())
+  propiedadId          String
+  tipoDeHabitacionId   String
+  nombre               String
+  fechaInicio          DateTime        @db.Date
+  fechaFin             DateTime        @db.Date
+  precio               Decimal         @db.Decimal(10, 2)
   modalidad            ModalidadTarifa
-  suplementoPorPersona Decimal?         @db.Decimal(10, 2)
-  creadoEn           DateTime        @default(now())
-  actualizadoEn      DateTime        @updatedAt
+  suplementoPorPersona Decimal?        @db.Decimal(10, 2)
+  creadoEn             DateTime        @default(now())
+  actualizadoEn        DateTime        @updatedAt
 
   propiedad        Propiedad        @relation(fields: [propiedadId], references: [id], onDelete: Cascade)
   tipoDeHabitacion TipoDeHabitacion @relation(fields: [tipoDeHabitacionId], references: [id])
@@ -219,8 +241,8 @@ model Huesped {
 // Registro de eventos de Stripe ya procesados — evita doble contabilización
 // cuando Stripe reintenta un webhook (idempotencia).
 model StripeEventoProcesado {
-  id         String   @id
-  tipo       String
+  id          String   @id
+  tipo        String
   procesadoEn DateTime @default(now())
 
   @@map("stripe_eventos_procesados")
@@ -229,17 +251,17 @@ model StripeEventoProcesado {
 // ─── Grupos de reserva ───────────────────────────────────────────────────────
 
 model GrupoReserva {
-  id          String   @id @default(cuid())
-  propiedadId String
-  codigoGrupo String   @unique
-  nombre      String
-  notas       String?
+  id                    String   @id @default(cuid())
+  propiedadId           String
+  codigoGrupo           String   @unique
+  nombre                String
+  notas                 String?
   totalPagado           Decimal  @default(0) @db.Decimal(10, 2)
   stripePaymentIntentId String?
   creadoEn              DateTime @default(now())
 
-  propiedad Propiedad @relation(fields: [propiedadId], references: [id], onDelete: Cascade)
-  reservas  Reserva[]
+  propiedad   Propiedad    @relation(fields: [propiedadId], references: [id], onDelete: Cascade)
+  reservas    Reserva[]
   pagosOnline PagoOnline[]
 
   @@map("grupos_reserva")
@@ -248,43 +270,44 @@ model GrupoReserva {
 // ─── Reservas ────────────────────────────────────────────────────────────────
 
 model Reserva {
-  id                    String        @id @default(cuid())
-  codigoReserva         String        @unique
-  propiedadId           String
-  tipoDeHabitacionId    String
-  huespedId             String
-  grupoId               String?
-  origen                OrigenReserva
-  estado                EstadoReserva @default(CONFIRMADA)
-  fechaIngreso          DateTime      @db.Date
-  fechaSalida           DateTime      @db.Date
-  numPersonas           Int
-  nombreHuesped         String        @default("")
-  totalMxn              Decimal       @db.Decimal(10, 2)
-  desglosePorNoche      Json
-  stripePaymentIntentId    String?       @unique
-  stripeCheckoutSessionId  String?       @unique
-  linkExpiraEn             DateTime?
-  tipoEspecial             TipoEspecialReserva?
-  lateCheckInEn            DateTime?
-  cargoLateCheckIn         Decimal?      @db.Decimal(10, 2)
-  documentoTipo            String?
-  documentoNumero          String?
-  nacionalidad             String?
-  placasVehiculo           String?
-  politicasAceptadas       Boolean       @default(false)
-  politicasAceptadasEn     DateTime?
-  registroCheckInEn        DateTime?
-  creadoEn              DateTime      @default(now())
-  actualizadoEn         DateTime      @updatedAt
+  id                      String               @id @default(cuid())
+  codigoReserva           String               @unique
+  propiedadId             String
+  tipoDeHabitacionId      String
+  huespedId               String
+  grupoId                 String?
+  origen                  OrigenReserva
+  estado                  EstadoReserva        @default(CONFIRMADA)
+  fechaIngreso            DateTime             @db.Date
+  fechaSalida             DateTime             @db.Date
+  numPersonas             Int
+  nombreHuesped           String               @default("")
+  totalMxn                Decimal              @db.Decimal(10, 2)
+  desglosePorNoche        Json
+  stripePaymentIntentId   String?              @unique
+  stripeCheckoutSessionId String?              @unique
+  linkExpiraEn            DateTime?
+  tipoEspecial            TipoEspecialReserva?
+  lateCheckInEn           DateTime?
+  cargoLateCheckIn        Decimal?             @db.Decimal(10, 2)
+  documentoTipo           String?
+  documentoNumero         String?
+  nacionalidad            String?
+  placasVehiculo          String?
+  politicasAceptadas      Boolean              @default(false)
+  politicasAceptadasEn    DateTime?
+  registroCheckInEn       DateTime?
+  creadoEn                DateTime             @default(now())
+  actualizadoEn           DateTime             @updatedAt
 
-  propiedad        Propiedad        @relation(fields: [propiedadId], references: [id], onDelete: Cascade)
-  tipoDeHabitacion TipoDeHabitacion @relation(fields: [tipoDeHabitacionId], references: [id])
-  huesped          Huesped          @relation(fields: [huespedId], references: [id])
-  grupo            GrupoReserva?    @relation(fields: [grupoId], references: [id])
-  asignacion       AsignacionDeHabitacion?
-  pagoManual       PagoManual?
-  pagosOnline      PagoOnline[]
+  propiedad         Propiedad               @relation(fields: [propiedadId], references: [id], onDelete: Cascade)
+  tipoDeHabitacion  TipoDeHabitacion        @relation(fields: [tipoDeHabitacionId], references: [id])
+  huesped           Huesped                 @relation(fields: [huespedId], references: [id])
+  grupo             GrupoReserva?           @relation(fields: [grupoId], references: [id])
+  asignacion        AsignacionDeHabitacion?
+  pagoManual        PagoManual?
+  pagosOnline       PagoOnline[]
+  pagosExternos     PagoExterno[]
   solicitudesCambio SolicitudCambio[]
 
   @@map("reservas")
@@ -313,10 +336,10 @@ enum EstadoIntentoDePagoStripe {
 }
 
 model IntentoDePagoStripe {
-  id                     String                    @id @default(cuid())
-  intentoId              String                    @unique
-  propiedadId            String
-  stripeConnectAccountId String
+  id                      String                    @id @default(cuid())
+  intentoId               String                    @unique
+  propiedadId             String
+  stripeConnectAccountId  String
   tipo                    String
   montoCentavos           Int
   moneda                  String                    @default("mxn")
@@ -334,26 +357,26 @@ model IntentoDePagoStripe {
 }
 
 model PagoOnline {
-  id                      String           @id @default(cuid())
+  id                      String            @id @default(cuid())
   propiedadId             String
   reservaId               String?
   grupoId                 String?
-  stripePaymentIntentId   String           @unique
-  stripeCheckoutSessionId String?          @unique
+  stripePaymentIntentId   String            @unique
+  stripeCheckoutSessionId String?           @unique
   modeloCobro             ModeloCobroStripe @default(DESTINATION_LEGACY)
   // Se establece al crear el pago directo; un trigger de la migración impide
   // cambiar después la cuenta propietaria del PaymentIntent.
   stripeConnectAccountId  String?
-  montoMxn                Decimal          @db.Decimal(10, 2)
-  moneda                   String           @default("mxn")
-  estado                   EstadoPagoOnline @default(PAGADO)
-  montoReembolsadoMxn     Decimal          @default(0) @db.Decimal(10, 2)
-  reembolsoPendienteMxn   Decimal          @default(0) @db.Decimal(10, 2)
-  creadoEn                 DateTime         @default(now())
-  actualizadoEn           DateTime         @updatedAt
+  montoMxn                Decimal           @db.Decimal(10, 2)
+  moneda                  String            @default("mxn")
+  estado                  EstadoPagoOnline  @default(PAGADO)
+  montoReembolsadoMxn     Decimal           @default(0) @db.Decimal(10, 2)
+  reembolsoPendienteMxn   Decimal           @default(0) @db.Decimal(10, 2)
+  creadoEn                DateTime          @default(now())
+  actualizadoEn           DateTime          @updatedAt
 
-  propiedad Propiedad    @relation(fields: [propiedadId], references: [id], onDelete: Restrict)
-  reserva   Reserva?     @relation(fields: [reservaId], references: [id], onDelete: Restrict)
+  propiedad Propiedad     @relation(fields: [propiedadId], references: [id], onDelete: Restrict)
+  reserva   Reserva?      @relation(fields: [reservaId], references: [id], onDelete: Restrict)
   grupo     GrupoReserva? @relation(fields: [grupoId], references: [id], onDelete: Restrict)
 
   @@index([propiedadId, creadoEn])
@@ -387,6 +410,49 @@ model PagoManual {
   @@map("pagos_manuales")
 }
 
+model PagoExterno {
+  id                     String                @id @default(cuid())
+  propiedadId            String
+  reservaId              String
+  montoMxn               Decimal               @db.Decimal(10, 2)
+  metodo                 MetodoPagoExterno
+  fechaPago              DateTime
+  nota                   String?
+  creadoPorUsuarioId     String?
+  idempotencyKey         String                @unique
+  reemplazaPagoExternoId String?
+  estadoComprobante      EstadoComprobantePago @default(NO_SOLICITADO)
+  comprobanteEnviadoEn   DateTime?
+  comprobanteError       String?
+  creadoEn               DateTime              @default(now())
+  propiedad              Propiedad             @relation(fields: [propiedadId], references: [id], onDelete: Restrict)
+  reserva                Reserva               @relation(fields: [reservaId], references: [id], onDelete: Restrict)
+  creadoPor              UsuarioPropiedad?     @relation(fields: [creadoPorUsuarioId], references: [id], onDelete: SetNull)
+  reemplaza              PagoExterno?          @relation("CorreccionPagoExterno", fields: [reemplazaPagoExternoId], references: [id], onDelete: Restrict)
+  reemplazos             PagoExterno[]         @relation("CorreccionPagoExterno")
+  ajustes                AjustePagoExterno[]
+
+  @@index([reservaId, creadoEn])
+  @@index([propiedadId, fechaPago])
+  @@map("pagos_externos")
+}
+
+model AjustePagoExterno {
+  id                 String                @id @default(cuid())
+  pagoExternoId      String
+  tipo               TipoAjustePagoExterno
+  montoMxn           Decimal               @db.Decimal(10, 2)
+  motivo             String
+  creadoPorUsuarioId String?
+  idempotencyKey     String                @unique
+  creadoEn           DateTime              @default(now())
+  pagoExterno        PagoExterno           @relation(fields: [pagoExternoId], references: [id], onDelete: Restrict)
+  creadoPor          UsuarioPropiedad?     @relation(fields: [creadoPorUsuarioId], references: [id], onDelete: SetNull)
+
+  @@index([pagoExternoId, creadoEn])
+  @@map("ajustes_pagos_externos")
+}
+
 // ─── Bloqueos ────────────────────────────────────────────────────────────────
 
 // ─── Solicitudes de cambio ───────────────────────────────────────────────────
@@ -400,19 +466,19 @@ enum EstadoCambio {
 }
 
 model SolicitudCambio {
-  id                String       @id @default(cuid())
-  reservaId         String
-  token             String       @unique @default(cuid())
+  id        String @id @default(cuid())
+  reservaId String
+  token     String @unique @default(cuid())
 
-  fechaIngresoNueva DateTime     @db.Date
-  fechaSalidaNueva  DateTime     @db.Date
-  totalActual       Decimal      @db.Decimal(10, 2)
-  totalNuevo        Decimal      @db.Decimal(10, 2)
-  diferencia        Decimal      @db.Decimal(10, 2)
+  fechaIngresoNueva DateTime @db.Date
+  fechaSalidaNueva  DateTime @db.Date
+  totalActual       Decimal  @db.Decimal(10, 2)
+  totalNuevo        Decimal  @db.Decimal(10, 2)
+  diferencia        Decimal  @db.Decimal(10, 2)
 
-  estado            EstadoCambio @default(PENDIENTE)
-  expiresAt         DateTime
-  creadoEn          DateTime     @default(now())
+  estado    EstadoCambio @default(PENDIENTE)
+  expiresAt DateTime
+  creadoEn  DateTime     @default(now())
 
   reserva Reserva @relation(fields: [reservaId], references: [id], onDelete: Cascade)
 
