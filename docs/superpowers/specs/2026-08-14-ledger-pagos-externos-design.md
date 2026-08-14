@@ -1,7 +1,7 @@
 # Ledger de pagos externos y estados financieros derivados
 
 Fecha: 2026-08-14  
-Estado: aprobado en conversación; pendiente de aprobación del documento
+Estado: aprobado
 
 ## Problema
 
