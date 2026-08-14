@@ -1,5 +1,9 @@
 import { EstadoDePago, TipoEspecialReserva } from "@prisma/client";
 
+export function rutaReservaDespuesDeGuardarNotas(reservaId: string): string {
+  return `/panel/reservas/${encodeURIComponent(reservaId)}?notas=guardadas`;
+}
+
 const TIPOS_CON_PRECIO_MANUAL = new Set<TipoEspecialReserva>([
   TipoEspecialReserva.PRECIO_ACORDADO,
   TipoEspecialReserva.PROMOCION,

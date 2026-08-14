@@ -45,13 +45,13 @@ export default async function ReservaDetallePage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; notas?: string }>;
 }) {
   const usuario = await getCurrentUsuario();
   if (!usuario) redirect("/sign-in");
 
   const { id } = await params;
-  const { error } = await searchParams;
+  const { error, notas } = await searchParams;
 
   const reserva = await prisma.reserva.findFirst({
     where: { id, propiedadId: usuario.propiedadId },
@@ -200,6 +200,12 @@ export default async function ReservaDetallePage({
       {error && (
         <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
           {decodeURIComponent(error)}
+        </div>
+      )}
+
+      {notas === "guardadas" && (
+        <div className="mb-4 rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700" role="status">
+          Notas guardadas correctamente.
         </div>
       )}
 

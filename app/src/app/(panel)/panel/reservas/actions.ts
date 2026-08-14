@@ -10,7 +10,7 @@ import { verificarDisponibilidadAtómica, verificarHabitacionLibre, calcularDisp
 import { stripe } from "@/lib/stripe";
 import { enviarSolicitudPago, enviarConfirmacion } from "@/lib/emails";
 import { crearClaveIdempotenciaDirectCharge, crearDirectCharge, mensajeErrorConnect } from "@/lib/stripeConnect";
-import { validarPagoManual } from "@/lib/negocio/reglasReserva";
+import { rutaReservaDespuesDeGuardarNotas, validarPagoManual } from "@/lib/negocio/reglasReserva";
 import { validarCuentaConnectParaCobroDirecto } from "@/lib/stripeConnectAccount.server";
 import { asociarIntentoPagoStripe, registrarIntentoPago } from "@/lib/negocio/intentosPago";
 import { calcularResumenPagoReserva } from "@/lib/negocio/pagosOnline";
@@ -267,7 +267,7 @@ export async function actualizarNotasReservaAction(formData: FormData) {
     create: { reservaId, estadoDePago: EstadoDePago.PENDIENTE, notas },
   });
 
-  redirect(`/panel/reservas/${reservaId}`);
+  redirect(rutaReservaDespuesDeGuardarNotas(reservaId));
 }
 
 export async function actualizarDatosReservaAction(formData: FormData) {

@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { estadoSegunMontoRecibido, resolverTotalReserva, resolverMontoCobro, validarPagoManual } from "./reglasReserva";
+import {
+  estadoSegunMontoRecibido,
+  resolverTotalReserva,
+  resolverMontoCobro,
+  rutaReservaDespuesDeGuardarNotas,
+  validarPagoManual,
+} from "./reglasReserva";
+
+describe("retroalimentación al guardar notas", () => {
+  it("regresa al detalle con una confirmación visible", () => {
+    expect(rutaReservaDespuesDeGuardarNotas("reserva-123"))
+      .toBe("/panel/reservas/reserva-123?notas=guardadas");
+  });
+});
 
 describe("reglas de precio de una reserva", () => {
   it("ignora un total sobrescrito cuando la reserva es normal", () => {
