@@ -16,15 +16,37 @@ export type CandidatoPagoExternoLegacy = {
 };
 
 export function clasificarPagoManualLegacy(input: PagoManualLegacy): CandidatoPagoExternoLegacy | null {
+  if (input.stripeNetoCentavos < 0) {
+    const montoCentavos = input.montoAnticipoCentavos ?? aCentavos(aMxn(input.totalCentavos - input.stripeNetoCentavos));
+    return {
+      montoCentavos: aCentavos(aMxn(montoCentavos)),
+      nota: input.nota ?? "",
+      requiereRevision: true,
+      motivoRevision: "STRIPE_NETO_NEGATIVO",
+    };
+  }
+
   if (input.estado === "PENDIENTE" && input.montoAnticipoCentavos === null) return null;
 
   if (input.estado === "PAGADO_COMPLETO" && input.montoAnticipoCentavos === null) {
     const montoCentavos = aCentavos(aMxn(input.totalCentavos - input.stripeNetoCentavos));
     if (montoCentavos === 0) return null;
-    const motivoRevision = input.stripeNetoCentavos < 0
-      ? "STRIPE_NETO_NEGATIVO"
-      : montoCentavos < 0
-        ? "SALDO_EXTERNAL_NEGATIVO"
+    const motivoRevision = montoCentavos < 0 ? "SALDO_EXTERNO_NEGATIVO" : null;
+    return {
+      montoCentavos,
+      nota: input.nota ?? "",
+      requiereRevision: motivoRevision !== null,
+      motivoRevision,
+    };
+  }
+
+  if (input.estado === "PAGADO_COMPLETO" && input.montoAnticipoCentavos !== null) {
+    const montoCentavos = aCentavos(aMxn(input.montoAnticipoCentavos));
+    const saldoEsperadoCentavos = aCentavos(aMxn(input.totalCentavos - input.stripeNetoCentavos));
+    const motivoRevision = montoCentavos <= 0
+      ? "MONTO_NO_POSITIVO"
+      : montoCentavos !== saldoEsperadoCentavos
+        ? "MONTO_NO_COINCIDE_SALDO"
         : null;
     return {
       montoCentavos,

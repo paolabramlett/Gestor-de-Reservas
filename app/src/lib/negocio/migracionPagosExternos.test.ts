@@ -20,6 +20,20 @@ describe("clasificarPagoManualLegacy", () => {
     })).toMatchObject({ montoCentavos: 300_000, requiereRevision: false });
   });
 
+  it("migra un completo legacy con el saldo explícito que no cubrió Stripe", () => {
+    expect(clasificarPagoManualLegacy({
+      estado: "PAGADO_COMPLETO",
+      montoAnticipoCentavos: 300_000,
+      totalCentavos: 600_000,
+      stripeNetoCentavos: 300_000,
+    })).toEqual({
+      montoCentavos: 300_000,
+      nota: "",
+      requiereRevision: false,
+      motivoRevision: null,
+    });
+  });
+
   it("migra un anticipo explícito y conserva la nota", () => {
     expect(clasificarPagoManualLegacy({
       estado: "ANTICIPO_PAGADO",
@@ -32,6 +46,19 @@ describe("clasificarPagoManualLegacy", () => {
       nota: "Transferencia recibida",
       requiereRevision: false,
       motivoRevision: null,
+    });
+  });
+
+  it("marca para revisión un anticipo con neto Stripe negativo", () => {
+    expect(clasificarPagoManualLegacy({
+      estado: "ANTICIPO_PAGADO",
+      montoAnticipoCentavos: 200_000,
+      totalCentavos: 600_000,
+      stripeNetoCentavos: -1,
+    })).toMatchObject({
+      montoCentavos: 200_000,
+      requiereRevision: true,
+      motivoRevision: "STRIPE_NETO_NEGATIVO",
     });
   });
 
@@ -87,6 +114,19 @@ describe("clasificarPagoManualLegacy", () => {
     });
   });
 
+  it("prioriza la revisión del contexto Stripe negativo en un pendiente", () => {
+    expect(clasificarPagoManualLegacy({
+      estado: "PENDIENTE",
+      montoAnticipoCentavos: 200_000,
+      totalCentavos: 600_000,
+      stripeNetoCentavos: -1,
+    })).toMatchObject({
+      montoCentavos: 200_000,
+      requiereRevision: true,
+      motivoRevision: "STRIPE_NETO_NEGATIVO",
+    });
+  });
+
   it("no migra un completo cuando Stripe ya cubría todo el total", () => {
     expect(clasificarPagoManualLegacy({
       estado: "PAGADO_COMPLETO",
@@ -105,7 +145,7 @@ describe("clasificarPagoManualLegacy", () => {
     })).toMatchObject({
       montoCentavos: -1,
       requiereRevision: true,
-      motivoRevision: "SALDO_EXTERNAL_NEGATIVO",
+      motivoRevision: "SALDO_EXTERNO_NEGATIVO",
     });
   });
 
