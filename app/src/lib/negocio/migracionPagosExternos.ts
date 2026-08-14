@@ -16,6 +16,8 @@ export type CandidatoPagoExternoLegacy = {
 };
 
 export function clasificarPagoManualLegacy(input: PagoManualLegacy): CandidatoPagoExternoLegacy | null {
+  if (input.montoAnticipoCentavos === null && input.estado !== "PAGADO_COMPLETO") return null;
+
   if (input.stripeNetoCentavos < 0) {
     const montoCentavos = input.montoAnticipoCentavos ?? aCentavos(aMxn(input.totalCentavos - input.stripeNetoCentavos));
     return {
@@ -25,8 +27,6 @@ export function clasificarPagoManualLegacy(input: PagoManualLegacy): CandidatoPa
       motivoRevision: "STRIPE_NETO_NEGATIVO",
     };
   }
-
-  if (input.estado === "PENDIENTE" && input.montoAnticipoCentavos === null) return null;
 
   if (input.estado === "PAGADO_COMPLETO" && input.montoAnticipoCentavos === null) {
     const montoCentavos = aCentavos(aMxn(input.totalCentavos - input.stripeNetoCentavos));
@@ -59,15 +59,6 @@ export function clasificarPagoManualLegacy(input: PagoManualLegacy): CandidatoPa
   if (input.estado === "PENDIENTE" && input.montoAnticipoCentavos !== null) {
     return {
       montoCentavos: aCentavos(aMxn(input.montoAnticipoCentavos)),
-      nota: input.nota ?? "",
-      requiereRevision: true,
-      motivoRevision: "ESTADO_AMBIGUO",
-    };
-  }
-
-  if (input.estado === "ANTICIPO_PAGADO" && input.montoAnticipoCentavos === null) {
-    return {
-      montoCentavos: 0,
       nota: input.nota ?? "",
       requiereRevision: true,
       motivoRevision: "ESTADO_AMBIGUO",

@@ -11,6 +11,15 @@ describe("clasificarPagoManualLegacy", () => {
     })).toBeNull();
   });
 
+  it("no migra un pendiente sin importe aunque Stripe sea inconsistente", () => {
+    expect(clasificarPagoManualLegacy({
+      estado: "PENDIENTE",
+      montoAnticipoCentavos: null,
+      totalCentavos: 600_000,
+      stripeNetoCentavos: -1,
+    })).toBeNull();
+  });
+
   it("migra un completo legacy solo por el saldo no cubierto por Stripe", () => {
     expect(clasificarPagoManualLegacy({
       estado: "PAGADO_COMPLETO",
@@ -162,17 +171,34 @@ describe("clasificarPagoManualLegacy", () => {
     });
   });
 
-  it("marca para revisión un anticipo sin importe explícito", () => {
+  it("no migra un anticipo sin importe explícito", () => {
     expect(clasificarPagoManualLegacy({
       estado: "ANTICIPO_PAGADO",
       montoAnticipoCentavos: null,
       totalCentavos: 600_000,
       stripeNetoCentavos: 0,
-    })).toEqual({
-      montoCentavos: 0,
-      nota: "",
+    })).toBeNull();
+  });
+
+  it("no migra un anticipo sin importe aunque Stripe sea inconsistente", () => {
+    expect(clasificarPagoManualLegacy({
+      estado: "ANTICIPO_PAGADO",
+      montoAnticipoCentavos: null,
+      totalCentavos: 600_000,
+      stripeNetoCentavos: -1,
+    })).toBeNull();
+  });
+
+  it("marca para revisión un completo con importe explícito que no coincide con el saldo", () => {
+    expect(clasificarPagoManualLegacy({
+      estado: "PAGADO_COMPLETO",
+      montoAnticipoCentavos: 200_000,
+      totalCentavos: 600_000,
+      stripeNetoCentavos: 300_000,
+    })).toMatchObject({
+      montoCentavos: 200_000,
       requiereRevision: true,
-      motivoRevision: "ESTADO_AMBIGUO",
+      motivoRevision: "MONTO_NO_COINCIDE_SALDO",
     });
   });
 
