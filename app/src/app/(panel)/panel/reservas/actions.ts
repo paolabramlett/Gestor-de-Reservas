@@ -13,6 +13,7 @@ import { crearClaveIdempotenciaDirectCharge, crearDirectCharge, mensajeErrorConn
 import { validarPagoManual } from "@/lib/negocio/reglasReserva";
 import { validarCuentaConnectParaCobroDirecto } from "@/lib/stripeConnectAccount.server";
 import { asociarIntentoPagoStripe, registrarIntentoPago } from "@/lib/negocio/intentosPago";
+import { calcularResumenPagoReserva } from "@/lib/negocio/pagosOnline";
 
 export async function crearReservaManualAction(formData: FormData) {
   const usuario = await getCurrentUsuario();
@@ -179,21 +180,43 @@ export async function actualizarPagoYNotasAction(formData: FormData) {
   const estadoDePago = formData.get("estadoDePago") as EstadoDePago;
   const notas = (formData.get("notas") as string) || undefined;
   const montoAnticipoRaw = formData.get("montoAnticipo") as string;
-  const montoAnticipo =
+  const montoAnticipoSolicitado =
     estadoDePago === EstadoDePago.ANTICIPO_PAGADO && montoAnticipoRaw
       ? Number(montoAnticipoRaw)
       : null;
 
   const reserva = await prisma.reserva.findFirst({
     where: { id: reservaId, propiedadId: usuario.propiedadId },
-    include: { pagoManual: true, huesped: true, tipoDeHabitacion: true, propiedad: true },
+    include: {
+      pagoManual: true,
+      pagosOnline: {
+        select: {
+          estado: true,
+          montoMxn: true,
+          montoReembolsadoMxn: true,
+          reembolsoPendienteMxn: true,
+        },
+      },
+      huesped: true,
+      tipoDeHabitacion: true,
+      propiedad: true,
+    },
   });
   if (!reserva) throw new Error("Reserva no encontrada");
 
   if (![EstadoDePago.PENDIENTE, EstadoDePago.ANTICIPO_PAGADO, EstadoDePago.PAGADO_COMPLETO].includes(estadoDePago)) {
     throw new Error("Estado de pago inválido");
   }
-  validarPagoManual(Number(reserva.totalMxn), estadoDePago, montoAnticipo);
+  const resumenStripe = calcularResumenPagoReserva({
+    totalMxn: Number(reserva.totalMxn),
+    pagoManual: null,
+    pagosOnline: reserva.pagosOnline,
+  });
+  const saldoSinPagoManual = resumenStripe.saldoPendienteMxn;
+  const montoAnticipo = estadoDePago === EstadoDePago.PAGADO_COMPLETO
+    ? saldoSinPagoManual
+    : montoAnticipoSolicitado;
+  validarPagoManual(saldoSinPagoManual, estadoDePago, montoAnticipo);
 
   const estadoAnterior = reserva.pagoManual?.estadoDePago ?? EstadoDePago.PENDIENTE;
 
@@ -221,6 +244,28 @@ export async function actualizarPagoYNotasAction(formData: FormData) {
       colorPrimario: reserva.propiedad.colorPrimario ?? undefined,
     }).catch(() => {});
   }
+
+  redirect(`/panel/reservas/${reservaId}`);
+}
+
+export async function actualizarNotasReservaAction(formData: FormData) {
+  const usuario = await getCurrentUsuario();
+  if (!usuario) redirect("/sign-in");
+
+  const reservaId = formData.get("reservaId") as string;
+  const notasRaw = formData.get("notas");
+  const notas = typeof notasRaw === "string" && notasRaw.trim() ? notasRaw.trim() : null;
+  const reserva = await prisma.reserva.findFirst({
+    where: { id: reservaId, propiedadId: usuario.propiedadId, origen: "MANUAL" },
+    select: { id: true },
+  });
+  if (!reserva) throw new Error("Reserva no encontrada");
+
+  await prisma.pagoManual.upsert({
+    where: { reservaId },
+    update: { notas },
+    create: { reservaId, estadoDePago: EstadoDePago.PENDIENTE, notas },
+  });
 
   redirect(`/panel/reservas/${reservaId}`);
 }
@@ -384,19 +429,15 @@ export async function solicitarPagoAction(reservaId: string) {
   if (!reserva) redirect(`/panel/reservas`);
   if (reserva.origen !== "MANUAL") redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("Solo aplica a reservas manuales")}`);
   if (reserva.tipoEspecial === "CORTESIA") redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("Las cortesías no requieren pago")}`);
-  if (reserva.pagoManual?.estadoDePago === "PAGADO_COMPLETO") redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("Esta reserva ya está pagada por completo")}`);
   if (reserva.estado === "CANCELADA" || reserva.estado === "NO_SHOW" || reserva.estado === "COMPLETADA") {
     redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("No se puede solicitar pago en este estado")}`);
   }
 
-  const pagoExterno = reserva.pagoManual?.estadoDePago === "ANTICIPO_PAGADO"
-    ? Number(reserva.pagoManual.montoAnticipo ?? 0)
-    : 0;
-  const pagoStripe = reserva.pagosOnline.reduce(
-    (s, pago) => s + Number(pago.montoMxn) - Number(pago.montoReembolsadoMxn) - Number(pago.reembolsoPendienteMxn),
-    0
-  );
-  const montoCobrar = Math.max(0, Number(reserva.totalMxn) - pagoExterno - pagoStripe);
+  const montoCobrar = calcularResumenPagoReserva({
+    totalMxn: Number(reserva.totalMxn),
+    pagoManual: reserva.pagoManual,
+    pagosOnline: reserva.pagosOnline,
+  }).saldoPendienteMxn;
   if (montoCobrar <= 0.005) {
     redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("Esta reserva ya está pagada por completo")}`);
   }

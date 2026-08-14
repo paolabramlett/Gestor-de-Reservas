@@ -5,8 +5,68 @@ type PagoRecibido = {
   montoEsperadoCentavos: number;
 };
 
+type PagoManualResumen = {
+  estadoDePago: string;
+  montoAnticipo: unknown;
+} | null;
+
+type PagoOnlineResumen = {
+  estado: string;
+  montoMxn: unknown;
+  montoReembolsadoMxn: unknown;
+  reembolsoPendienteMxn: unknown;
+};
+
+export type ResumenPagoReserva = {
+  montoPagadoMxn: number;
+  montoStripeMxn: number;
+  montoExternoMxn: number;
+  saldoPendienteMxn: number;
+  pagoCompleto: boolean;
+  metodo: "Stripe" | "Pago externo" | "Stripe + pago externo" | "Sin pagos";
+};
+
 import { prisma } from "@/lib/prisma";
 import { reembolsarPagoDirectoHuesped, reembolsarPagoHuesped } from "@/lib/stripeConnect";
+
+export function calcularResumenPagoReserva(input: {
+  totalMxn: number;
+  pagoManual: PagoManualResumen;
+  pagosOnline: PagoOnlineResumen[];
+}): ResumenPagoReserva {
+  const totalMxn = Math.max(0, Number(input.totalMxn) || 0);
+  const montoExternoMxn = input.pagoManual?.estadoDePago === "PAGADO_COMPLETO"
+    ? Number(input.pagoManual.montoAnticipo) > 0
+      ? Math.max(0, Number(input.pagoManual.montoAnticipo))
+      : totalMxn
+    : input.pagoManual?.estadoDePago === "ANTICIPO_PAGADO"
+      ? Math.max(0, Number(input.pagoManual.montoAnticipo) || 0)
+      : 0;
+  const montoStripeMxn = input.pagosOnline.reduce((total, pago) => {
+    if (pago.estado === "REEMBOLSADO") return total;
+    const neto = Number(pago.montoMxn) - Number(pago.montoReembolsadoMxn) - Number(pago.reembolsoPendienteMxn);
+    return total + Math.max(0, neto || 0);
+  }, 0);
+  const montoPagadoMxn = Math.min(totalMxn, montoExternoMxn + montoStripeMxn);
+  const saldoPendienteMxn = Math.max(0, totalMxn - montoPagadoMxn);
+  const pagoCompleto = saldoPendienteMxn < 0.005;
+  const metodo = montoStripeMxn > 0 && montoExternoMxn > 0
+    ? "Stripe + pago externo"
+    : montoStripeMxn > 0
+      ? "Stripe"
+      : montoExternoMxn > 0
+        ? "Pago externo"
+        : "Sin pagos";
+
+  return {
+    montoPagadoMxn,
+    montoStripeMxn,
+    montoExternoMxn,
+    saldoPendienteMxn,
+    pagoCompleto,
+    metodo,
+  };
+}
 
 export function validarPagoRecibido(input: PagoRecibido): void {
   if (

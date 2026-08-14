@@ -5,6 +5,7 @@ import { useRef, useState } from "react";
 type Props = {
   reservaId: string;
   totalMxn: number;
+  otrosPagosMxn: number;
   estadoDePagoInicial: string;
   montoAnticipoInicial: number;
   notasIniciales: string;
@@ -20,6 +21,7 @@ const LABEL_ESTADO: Record<string, string> = {
 export function PagoForm({
   reservaId,
   totalMxn,
+  otrosPagosMxn,
   estadoDePagoInicial,
   montoAnticipoInicial,
   notasIniciales,
@@ -31,7 +33,8 @@ export function PagoForm({
   const formRef = useRef<HTMLFormElement>(null);
   const bypassRef = useRef(false);
 
-  const resta = Math.max(0, totalMxn - anticipo);
+  const totalDisponible = Math.max(0, totalMxn - otrosPagosMxn);
+  const resta = Math.max(0, totalDisponible - anticipo);
   const mostrarAnticipo = estado === "ANTICIPO_PAGADO";
 
   // Bajar de "Pagado completo" a un estado menor es una acción sensible:
@@ -78,7 +81,7 @@ export function PagoForm({
             type="number"
             name="montoAnticipo"
             min={0}
-            max={totalMxn}
+            max={totalDisponible}
             step="0.01"
             value={anticipo || ""}
             onChange={(e) => setAnticipo(Number(e.target.value) || 0)}
@@ -91,6 +94,12 @@ export function PagoForm({
                 <span>Total reserva</span>
                 <span>${totalMxn.toLocaleString("es-MX")} MXN</span>
               </div>
+              {otrosPagosMxn > 0 && (
+                <div className="flex justify-between text-green-700">
+                  <span>Pagado con Stripe</span>
+                  <span>− ${otrosPagosMxn.toLocaleString("es-MX")} MXN</span>
+                </div>
+              )}
               <div className="flex justify-between text-green-700">
                 <span>Anticipo pagado</span>
                 <span>− ${anticipo.toLocaleString("es-MX")} MXN</span>

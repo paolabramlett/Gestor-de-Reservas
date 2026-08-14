@@ -3,6 +3,7 @@ import { redirect, notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import {
   asignarHabitacionAction,
+  actualizarNotasReservaAction,
   actualizarPagoYNotasAction,
   actualizarDatosReservaAction,
   solicitarPagoAction,
@@ -18,6 +19,7 @@ import { PropuestaCambioPanel } from "../PropuestaCambioPanel";
 import { BotonesEstadoReserva, CancelarDialogClient } from "../BotonesEstadoReserva";
 import { SolicitarPagoButton } from "../SolicitarPagoButton";
 import { PagoForm } from "./PagoForm";
+import { calcularResumenPagoReserva } from "@/lib/negocio/pagosOnline";
 import Link from "next/link";
 
 const ESTADO_LABEL: Record<string, string> = {
@@ -58,6 +60,14 @@ export default async function ReservaDetallePage({
       tipoDeHabitacion: true,
       asignacion: { include: { habitacion: true } },
       pagoManual: true,
+      pagosOnline: {
+        select: {
+          estado: true,
+          montoMxn: true,
+          montoReembolsadoMxn: true,
+          reembolsoPendienteMxn: true,
+        },
+      },
       grupo: true,
     },
   });
@@ -91,6 +101,14 @@ export default async function ReservaDetallePage({
   const estado = reserva.estado;
 
   const esEditable = estado === "CONFIRMADA" || estado === "EN_CURSO";
+  const resumenPago = calcularResumenPagoReserva({
+    totalMxn: Number(reserva.totalMxn),
+    pagoManual: reserva.pagoManual,
+    pagosOnline: reserva.pagosOnline,
+  });
+  const saldoPendiente = resumenPago.saldoPendienteMxn > 0.005
+    ? resumenPago.saldoPendienteMxn
+    : null;
   // BUG 7: la sección de pago también se muestra en PENDIENTE_PAGO para poder reenviar el link
   const esPagoNotasVisible = esPagoManual && (esEditable || estado === "PENDIENTE_PAGO");
 
@@ -194,13 +212,7 @@ export default async function ReservaDetallePage({
             checkInAction={checkInAction}
             checkOutAction={checkOutAction}
             noShowAction={noShowAction}
-            saldoPendiente={
-              reserva.pagoManual?.estadoDePago === "PENDIENTE"
-                ? Number(reserva.totalMxn)
-                : reserva.pagoManual?.estadoDePago === "ANTICIPO_PAGADO" && reserva.pagoManual.montoAnticipo
-                ? Number(reserva.totalMxn) - Number(reserva.pagoManual.montoAnticipo)
-                : null
-            }
+            saldoPendiente={saldoPendiente}
             registro={{
               documentoTipo: reserva.documentoTipo,
               documentoNumero: reserva.documentoNumero,
@@ -509,10 +521,10 @@ export default async function ReservaDetallePage({
         <div className="bg-white rounded-lg border border-gray-200 p-5 mb-6">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-gray-700">Pago y notas</h2>
-            {usuario.propiedad.planActivo === "PRO" && usuario.propiedad.stripeConnectHabilitado && reserva.tipoEspecial !== "CORTESIA" && reserva.pagoManual?.estadoDePago !== "PAGADO_COMPLETO" && (
+            {saldoPendiente !== null && usuario.propiedad.planActivo === "PRO" && usuario.propiedad.stripeConnectHabilitado && reserva.tipoEspecial !== "CORTESIA" && (
               <SolicitarPagoButton
                 reservaId={reserva.id}
-                totalMxn={Number(reserva.totalMxn)}
+                totalMxn={saldoPendiente}
                 emailHuesped={reserva.huesped.email}
                 yaTieneLinkActivo={
                   reserva.estado === "PENDIENTE_PAGO" &&
@@ -524,13 +536,63 @@ export default async function ReservaDetallePage({
             )}
           </div>
 
-          {usuario.propiedad.planActivo === "PRO" && !usuario.propiedad.stripeConnectHabilitado && (
+          {saldoPendiente !== null && usuario.propiedad.planActivo === "PRO" && !usuario.propiedad.stripeConnectHabilitado && (
             <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
               Conecta tu cuenta de Stripe en Configuración → Pagos para poder solicitar pagos con tarjeta.
             </p>
           )}
 
-          {estado === "PENDIENTE_PAGO" ? (
+          {!resumenPago.pagoCompleto && resumenPago.montoPagadoMxn > 0 && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 mb-4 text-sm">
+              <div className="flex justify-between gap-3 text-blue-700">
+                <span>Pagado ({resumenPago.metodo})</span>
+                <span>${resumenPago.montoPagadoMxn.toLocaleString("es-MX")} MXN</span>
+              </div>
+              <div className="flex justify-between gap-3 font-semibold text-blue-900 mt-1">
+                <span>Saldo pendiente</span>
+                <span>${resumenPago.saldoPendienteMxn.toLocaleString("es-MX")} MXN</span>
+              </div>
+            </div>
+          )}
+
+          {resumenPago.pagoCompleto ? (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-semibold text-green-800">Pago completo</span>
+                  <span className="text-sm font-semibold text-green-800">
+                    ${resumenPago.montoPagadoMxn.toLocaleString("es-MX")} MXN
+                  </span>
+                </div>
+                <dl className="mt-2 space-y-1 text-sm">
+                  <div className="flex justify-between gap-3 text-green-700">
+                    <dt>Método</dt>
+                    <dd>{resumenPago.metodo}</dd>
+                  </div>
+                  <div className="flex justify-between gap-3 text-green-700">
+                    <dt>Saldo pendiente</dt>
+                    <dd>$0 MXN</dd>
+                  </div>
+                </dl>
+              </div>
+
+              <form action={actualizarNotasReservaAction} className="space-y-3">
+                <input type="hidden" name="reservaId" value={reserva.id} />
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Notas internas</label>
+                  <textarea
+                    name="notas"
+                    rows={3}
+                    defaultValue={reserva.pagoManual?.notas ?? ""}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+                <button type="submit" className="rounded-lg bg-gray-900 text-white px-4 py-2 text-sm font-medium hover:bg-gray-700">
+                  Guardar notas
+                </button>
+              </form>
+            </div>
+          ) : estado === "PENDIENTE_PAGO" ? (
             <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
               El formulario de pago está bloqueado mientras el huésped tiene un link activo. Usa el botón de arriba para reenviar o espera a que complete el pago.
             </p>
@@ -538,6 +600,7 @@ export default async function ReservaDetallePage({
             <PagoForm
               reservaId={reserva.id}
               totalMxn={Number(reserva.totalMxn)}
+              otrosPagosMxn={resumenPago.montoStripeMxn}
               estadoDePagoInicial={reserva.pagoManual?.estadoDePago ?? "PENDIENTE"}
               montoAnticipoInicial={reserva.pagoManual?.montoAnticipo ? Number(reserva.pagoManual.montoAnticipo) : 0}
               notasIniciales={reserva.pagoManual?.notas ?? ""}
@@ -548,23 +611,24 @@ export default async function ReservaDetallePage({
       )}
 
       {/* Info de pago en estados terminales */}
-      {esPagoManual && !esEditable && reserva.pagoManual && (
+      {esPagoManual && !esPagoNotasVisible && (
         <div className="bg-white rounded-lg border border-gray-200 p-5 mb-6">
           <h2 className="text-sm font-semibold text-gray-700 mb-3">Pago</h2>
-          <p className="text-sm text-gray-700">{reserva.pagoManual.estadoDePago.replace(/_/g, " ").toLowerCase()}</p>
-          {reserva.pagoManual.estadoDePago === "ANTICIPO_PAGADO" && reserva.pagoManual.montoAnticipo && (
-            <div className="mt-2 space-y-1 text-sm">
-              <div className="flex justify-between text-gray-600">
-                <span>Anticipo pagado</span>
-                <span>${Number(reserva.pagoManual.montoAnticipo).toLocaleString("es-MX")} MXN</span>
-              </div>
-              <div className="flex justify-between font-medium text-gray-800">
-                <span>Falta por pagar</span>
-                <span>${(Number(reserva.totalMxn) - Number(reserva.pagoManual.montoAnticipo)).toLocaleString("es-MX")} MXN</span>
-              </div>
+          <div className="space-y-1 text-sm">
+            <div className="flex justify-between text-gray-600">
+              <span>Pagado</span>
+              <span>${resumenPago.montoPagadoMxn.toLocaleString("es-MX")} MXN</span>
             </div>
-          )}
-          {reserva.pagoManual.notas && (
+            <div className="flex justify-between text-gray-600">
+              <span>Método</span>
+              <span>{resumenPago.metodo}</span>
+            </div>
+            <div className="flex justify-between font-medium text-gray-800">
+              <span>Saldo pendiente</span>
+              <span>${resumenPago.saldoPendienteMxn.toLocaleString("es-MX")} MXN</span>
+            </div>
+          </div>
+          {reserva.pagoManual?.notas && (
             <p className="text-sm text-gray-500 mt-2">{reserva.pagoManual.notas}</p>
           )}
         </div>

@@ -1,5 +1,72 @@
 import { describe, expect, it } from "vitest";
-import { distribuirReembolso, validarCuentaEvento, validarDestinoPago, validarPagoRecibido } from "./pagosOnline";
+import {
+  calcularResumenPagoReserva,
+  distribuirReembolso,
+  validarCuentaEvento,
+  validarDestinoPago,
+  validarPagoRecibido,
+} from "./pagosOnline";
+
+describe("calcularResumenPagoReserva", () => {
+  it("considera liquidada una reserva pagada por Stripe aunque el registro manual siga pendiente", () => {
+    expect(calcularResumenPagoReserva({
+      totalMxn: 4_000,
+      pagoManual: { estadoDePago: "PENDIENTE", montoAnticipo: null },
+      pagosOnline: [{
+        estado: "PAGADO",
+        montoMxn: 4_000,
+        montoReembolsadoMxn: 0,
+        reembolsoPendienteMxn: 0,
+      }],
+    })).toEqual({
+      montoPagadoMxn: 4_000,
+      montoStripeMxn: 4_000,
+      montoExternoMxn: 0,
+      saldoPendienteMxn: 0,
+      pagoCompleto: true,
+      metodo: "Stripe",
+    });
+  });
+
+  it("descuenta reembolsos y conserva disponible únicamente el saldo real", () => {
+    expect(calcularResumenPagoReserva({
+      totalMxn: 4_000,
+      pagoManual: { estadoDePago: "ANTICIPO_PAGADO", montoAnticipo: 500 },
+      pagosOnline: [{
+        estado: "REEMBOLSADO_PARCIAL",
+        montoMxn: 2_000,
+        montoReembolsadoMxn: 250,
+        reembolsoPendienteMxn: 250,
+      }],
+    })).toMatchObject({
+      montoPagadoMxn: 2_000,
+      montoStripeMxn: 1_500,
+      montoExternoMxn: 500,
+      saldoPendienteMxn: 2_000,
+      pagoCompleto: false,
+      metodo: "Stripe + pago externo",
+    });
+  });
+
+  it("conserva el importe externo real si Stripe se reembolsa después de completar un pago mixto", () => {
+    expect(calcularResumenPagoReserva({
+      totalMxn: 4_000,
+      pagoManual: { estadoDePago: "PAGADO_COMPLETO", montoAnticipo: 2_000 },
+      pagosOnline: [{
+        estado: "REEMBOLSADO",
+        montoMxn: 2_000,
+        montoReembolsadoMxn: 2_000,
+        reembolsoPendienteMxn: 0,
+      }],
+    })).toMatchObject({
+      montoPagadoMxn: 2_000,
+      montoExternoMxn: 2_000,
+      saldoPendienteMxn: 2_000,
+      pagoCompleto: false,
+      metodo: "Pago externo",
+    });
+  });
+});
 
 describe("validarPagoRecibido", () => {
   it("acepta únicamente un pago liquidado por el monto y moneda esperados", () => {
