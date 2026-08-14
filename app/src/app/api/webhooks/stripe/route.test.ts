@@ -153,6 +153,28 @@ describeE2E("webhook Stripe con PostgreSQL aislado y Stripe Test", () => {
     }));
   }
 
+  async function enviarWebhookCheckout(session: Stripe.Checkout.Session, eventId: string) {
+    const payload = JSON.stringify({
+      id: eventId,
+      object: "event",
+      account: cuentaConnect,
+      api_version: "2026-06-24.dahlia",
+      created: Math.floor(Date.now() / 1000),
+      data: { object: session },
+      livemode: false,
+      pending_webhooks: 1,
+      request: { id: null, idempotency_key: null },
+      type: "checkout.session.completed",
+    });
+    const signature = Stripe.webhooks.generateTestHeaderString({ payload, secret: webhookSecret });
+    const { POST } = await import("./route");
+    return POST(new NextRequest("http://localhost/api/webhooks/stripe", {
+      method: "POST",
+      body: payload,
+      headers: { "stripe-signature": signature, "content-type": "application/json" },
+    }));
+  }
+
   it("crea una sola Reserva y un solo PagoOnline al repetir el mismo webhook", async () => {
     const tipo = await crearTipoConInventario(150);
     const intent = await crearIntent(tipo.id, 15_000, "2031-01-10", "2031-01-11");
@@ -219,4 +241,76 @@ describeE2E("webhook Stripe con PostgreSQL aislado y Stripe Test", () => {
     expect(cuenta.charges_enabled).toBe(true);
     expect(cuenta.capabilities?.card_payments).toBe("active");
   }, 30_000);
+
+  it("confirma una Reserva manual al recibir el Checkout pagado con PrismaPg", async () => {
+    const tipo = await crearTipoConInventario(210);
+    const huesped = await prisma.huesped.create({
+      data: {
+        propiedadId,
+        nombre: "Huésped manual E2E",
+        email: `manual-${Date.now()}@example.com`,
+      },
+    });
+    const reserva = await prisma.reserva.create({
+      data: {
+        propiedadId,
+        tipoDeHabitacionId: tipo.id,
+        huespedId: huesped.id,
+        codigoReserva: `RES-E2E-${Date.now()}`,
+        origen: "MANUAL",
+        estado: "PENDIENTE_PAGO",
+        fechaIngreso: new Date("2031-04-10T00:00:00.000Z"),
+        fechaSalida: new Date("2031-04-11T00:00:00.000Z"),
+        numPersonas: 2,
+        nombreHuesped: huesped.nombre,
+        totalMxn: 210,
+        desglosePorNoche: [],
+      },
+    });
+    const intentoId = crypto.randomUUID();
+    const sessionId = `cs_test_manual_e2e_${Date.now()}`;
+    const intent = await stripe.paymentIntents.create({
+      amount: 21_000,
+      currency: "mxn",
+      payment_method: "pm_card_visa",
+      confirm: true,
+      automatic_payment_methods: { enabled: true, allow_redirects: "never" },
+    }, { stripeAccount: cuentaConnect });
+    await prisma.intentoDePagoStripe.create({
+      data: {
+        intentoId,
+        propiedadId,
+        stripeConnectAccountId: cuentaConnect,
+        tipo: "MANUAL_PAGO",
+        montoCentavos: 21_000,
+        moneda: "mxn",
+        datosReserva: { reservaId: reserva.id },
+        stripePaymentIntentId: intent.id,
+        stripeCheckoutSessionId: sessionId,
+      },
+    });
+
+    const response = await enviarWebhookCheckout({
+      id: sessionId,
+      object: "checkout.session",
+      amount_total: 21_000,
+      currency: "mxn",
+      payment_intent: intent.id,
+      payment_status: "paid",
+      metadata: {
+        tipo: "MANUAL_PAGO",
+        propiedadId,
+        reservaId: reserva.id,
+        roomlyIntentoId: intentoId,
+        montoEsperadoCentavos: "21000",
+      },
+    } as unknown as Stripe.Checkout.Session, `evt_e2e_manual_${Date.now()}`);
+
+    expect(response.status).toBe(200);
+    expect(await prisma.reserva.findUniqueOrThrow({ where: { id: reserva.id } })).toMatchObject({
+      estado: "CONFIRMADA",
+      stripePaymentIntentId: intent.id,
+    });
+    expect(await prisma.pagoOnline.count({ where: { stripePaymentIntentId: intent.id } })).toBe(1);
+  }, 45_000);
 });

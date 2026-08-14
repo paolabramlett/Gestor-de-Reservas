@@ -290,7 +290,7 @@ export async function POST(req: NextRequest) {
         const resultadoGrupo = await prisma.$transaction(async (tx) => {
           // Serializa pagos distintos del mismo grupo. Sin este lock, dos
           // checkouts simultáneos pueden leer el mismo saldo y sobrecobrarlo.
-          await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${grupoId}, 2))`;
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${grupoId}, 2))`;
           const grupoBase = await tx.grupoReserva.findFirst({
             where: { id: grupoId, propiedadId: session.metadata!.propiedadId },
             include: { reservas: { where: { estado: { notIn: [EstadoReserva.CANCELADA, EstadoReserva.NO_SHOW] } } } },
@@ -620,7 +620,7 @@ export async function POST(req: NextRequest) {
       if (!piId) throw new Error("PAGO_STRIPE_INCONSISTENTE");
 
       const resultado = await prisma.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${reservaId}, 1))`;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${reservaId}, 1))`;
         const existente = await tx.pagoOnline.findUnique({ where: { stripePaymentIntentId: piId } });
         if (existente) return {
           existente,

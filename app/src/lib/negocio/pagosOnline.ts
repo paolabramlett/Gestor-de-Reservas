@@ -64,7 +64,7 @@ export async function reembolsarPagosOnline(input: {
   if ((input.reservaId ? 1 : 0) + (input.grupoId ? 1 : 0) !== 1) throw new Error("DESTINO_REEMBOLSO_INVALIDO");
   const claveLock = input.reservaId ?? input.grupoId!;
   const { pagos, distribucion } = await prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${claveLock}, 7))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${claveLock}, 7))`;
     const pagos = await tx.pagoOnline.findMany({
       where: {
         ...(input.reservaId ? { reservaId: input.reservaId } : { grupoId: input.grupoId }),
