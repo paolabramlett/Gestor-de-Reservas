@@ -28,6 +28,7 @@ export type ResumenPagoReserva = {
 
 import { prisma } from "@/lib/prisma";
 import { reembolsarPagoDirectoHuesped, reembolsarPagoHuesped } from "@/lib/stripeConnect";
+import { aCentavos, aMxn, calcularResumenFinanciero } from "./resumenFinanciero";
 
 export function calcularResumenPagoReserva(input: {
   totalMxn: number;
@@ -42,26 +43,32 @@ export function calcularResumenPagoReserva(input: {
     : input.pagoManual?.estadoDePago === "ANTICIPO_PAGADO"
       ? Math.max(0, Number(input.pagoManual.montoAnticipo) || 0)
       : 0;
-  const montoStripeMxn = input.pagosOnline.reduce((total, pago) => {
-    if (pago.estado === "REEMBOLSADO") return total;
-    const neto = Number(pago.montoMxn) - Number(pago.montoReembolsadoMxn) - Number(pago.reembolsoPendienteMxn);
-    return total + Math.max(0, neto || 0);
-  }, 0);
-  const montoPagadoMxn = Math.min(totalMxn, montoExternoMxn + montoStripeMxn);
-  const saldoPendienteMxn = Math.max(0, totalMxn - montoPagadoMxn);
-  const pagoCompleto = saldoPendienteMxn < 0.005;
-  const metodo = montoStripeMxn > 0 && montoExternoMxn > 0
+  const resumen = calcularResumenFinanciero({
+    totalReservaCentavos: aCentavos(totalMxn),
+    pagosStripe: input.pagosOnline.map((pago) => ({
+      cobradoCentavos: pago.estado === "REEMBOLSADO" ? 0 : aCentavos(Number(pago.montoMxn) || 0),
+      reembolsadoCentavos: pago.estado === "REEMBOLSADO" ? 0 : aCentavos(Number(pago.montoReembolsadoMxn) || 0),
+      reembolsoPendienteCentavos: pago.estado === "REEMBOLSADO" ? 0 : aCentavos(Number(pago.reembolsoPendienteMxn) || 0),
+    })),
+    pagosExternos: [{ cobradoCentavos: aCentavos(montoExternoMxn), ajustesCentavos: 0 }],
+  });
+  const montoStripeMxn = aMxn(resumen.stripeNetoCentavos);
+  const montoExternoResumenMxn = aMxn(resumen.externoNetoCentavos);
+  const montoPagadoMxn = aMxn(resumen.pagadoNetoCentavos);
+  const saldoPendienteMxn = aMxn(resumen.saldoPendienteCentavos);
+  const pagoCompleto = resumen.estado === "PAGO_COMPLETO";
+  const metodo = montoStripeMxn > 0 && montoExternoResumenMxn > 0
     ? "Stripe + pago externo"
     : montoStripeMxn > 0
       ? "Stripe"
-      : montoExternoMxn > 0
+      : montoExternoResumenMxn > 0
         ? "Pago externo"
         : "Sin pagos";
 
   return {
     montoPagadoMxn,
     montoStripeMxn,
-    montoExternoMxn,
+    montoExternoMxn: montoExternoResumenMxn,
     saldoPendienteMxn,
     pagoCompleto,
     metodo,

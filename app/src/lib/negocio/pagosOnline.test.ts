@@ -66,6 +66,21 @@ describe("calcularResumenPagoReserva", () => {
       metodo: "Pago externo",
     });
   });
+
+  it("mantiene la compatibilidad de un pago externo completo sin anticipo registrado", () => {
+    expect(calcularResumenPagoReserva({
+      totalMxn: 1_250,
+      pagoManual: { estadoDePago: "PAGADO_COMPLETO", montoAnticipo: 0 },
+      pagosOnline: [],
+    })).toEqual({
+      montoPagadoMxn: 1_250,
+      montoStripeMxn: 0,
+      montoExternoMxn: 1_250,
+      saldoPendienteMxn: 0,
+      pagoCompleto: true,
+      metodo: "Pago externo",
+    });
+  });
 });
 
 describe("validarPagoRecibido", () => {
