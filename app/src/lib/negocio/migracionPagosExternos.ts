@@ -16,6 +16,17 @@ export type CandidatoPagoExternoLegacy = {
 };
 
 export function clasificarPagoManualLegacy(input: PagoManualLegacy): CandidatoPagoExternoLegacy | null {
+  if (input.estado === "PENDIENTE" && input.montoAnticipoCentavos === null) return null;
+
+  if (input.estado === "ANTICIPO_PAGADO" && input.montoAnticipoCentavos === null) {
+    return {
+      montoCentavos: 0,
+      nota: input.nota ?? "",
+      requiereRevision: true,
+      motivoRevision: "ESTADO_AMBIGUO",
+    };
+  }
+
   if (input.montoAnticipoCentavos === null && input.estado !== "PAGADO_COMPLETO") return null;
 
   if (input.stripeNetoCentavos < 0) {

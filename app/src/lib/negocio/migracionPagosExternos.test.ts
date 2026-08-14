@@ -171,22 +171,32 @@ describe("clasificarPagoManualLegacy", () => {
     });
   });
 
-  it("no migra un anticipo sin importe explícito", () => {
+  it("conserva para revisión un anticipo sin importe explícito", () => {
     expect(clasificarPagoManualLegacy({
       estado: "ANTICIPO_PAGADO",
       montoAnticipoCentavos: null,
       totalCentavos: 600_000,
       stripeNetoCentavos: 0,
-    })).toBeNull();
+    })).toEqual({
+      montoCentavos: 0,
+      nota: "",
+      requiereRevision: true,
+      motivoRevision: "ESTADO_AMBIGUO",
+    });
   });
 
-  it("no migra un anticipo sin importe aunque Stripe sea inconsistente", () => {
+  it("conserva un anticipo sin importe con Stripe inconsistente sin inventar dinero", () => {
     expect(clasificarPagoManualLegacy({
       estado: "ANTICIPO_PAGADO",
       montoAnticipoCentavos: null,
       totalCentavos: 600_000,
       stripeNetoCentavos: -1,
-    })).toBeNull();
+    })).toEqual({
+      montoCentavos: 0,
+      nota: "",
+      requiereRevision: true,
+      motivoRevision: "ESTADO_AMBIGUO",
+    });
   });
 
   it("marca para revisión un completo con importe explícito que no coincide con el saldo", () => {
