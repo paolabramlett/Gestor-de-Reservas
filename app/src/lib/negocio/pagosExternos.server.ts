@@ -1,0 +1,577 @@
+import type { Prisma, RolUsuario } from "@prisma/client";
+import { prisma } from "../prisma";
+import { puedeMutarPagosExternos } from "./permisosPagosExternos";
+import { aCentavos, aMxn, calcularResumenFinanciero } from "./resumenFinanciero";
+
+export type ActorPagoExterno = {
+  usuarioPropiedadId: string;
+  propiedadId: string;
+  rol: RolUsuario;
+};
+
+export type RegistrarPagoExternoInput = {
+  reservaId: string;
+  montoCentavos: number;
+  metodo: "EFECTIVO" | "TRANSFERENCIA" | "TERMINAL_EXTERNA" | "OTRO";
+  fechaPago: Date;
+  nota?: string;
+  enviarComprobante: boolean;
+  idempotencyKey: string;
+};
+
+export type CorregirPagoExternoInput = {
+  pagoExternoId: string;
+  nuevoMontoCentavos: number;
+  metodo: RegistrarPagoExternoInput["metodo"];
+  fechaPago: Date;
+  motivo: string;
+  nota?: string;
+  idempotencyKey: string;
+};
+
+export type AjustarPagoExternoInput = {
+  pagoExternoId: string;
+  tipo: "ANULACION" | "REEMBOLSO";
+  montoCentavos: number;
+  motivo: string;
+  idempotencyKey: string;
+};
+
+export type AjustePagoExternoLedger = {
+  id: string;
+  pagoExternoId: string;
+  tipo: "ANULACION" | "REEMBOLSO";
+  montoCentavos: number;
+  motivo: string;
+  creadoPorUsuarioId: string | null;
+  idempotencyKey: string;
+  creadoEn: Date;
+};
+
+export type PagoExternoLedger = {
+  id: string;
+  propiedadId: string;
+  reservaId: string;
+  montoCentavos: number;
+  metodo: RegistrarPagoExternoInput["metodo"];
+  fechaPago: Date;
+  nota: string | null;
+  creadoPorUsuarioId: string | null;
+  idempotencyKey: string;
+  reemplazaPagoExternoId: string | null;
+  estadoComprobante: "NO_SOLICITADO" | "PENDIENTE" | "ENVIADO" | "FALLIDO";
+  ajustes: AjustePagoExternoLedger[];
+  creadoEn: Date;
+};
+
+export type PagoStripeLedger = {
+  id: string;
+  cobradoCentavos: number;
+  reembolsadoCentavos: number;
+  reembolsoPendienteCentavos: number;
+  creadoEn: Date;
+};
+
+export type DatosLedgerReserva = {
+  reserva: {
+    id: string;
+    propiedadId: string;
+    estado: "PENDIENTE_PAGO" | "CONFIRMADA" | "EN_CURSO" | "COMPLETADA" | "CANCELADA" | "NO_SHOW";
+    totalReservaCentavos: number;
+  };
+  pagosStripe: PagoStripeLedger[];
+  pagosExternos: PagoExternoLedger[];
+};
+
+export type NuevoPagoExterno = Omit<PagoExternoLedger, "id" | "ajustes" | "creadoEn">;
+export type NuevoAjustePagoExterno = Omit<AjustePagoExternoLedger, "id" | "creadoEn">;
+
+export type TransaccionPagosExternos = {
+  adquirirLockReserva(reservaId: string): Promise<void>;
+  buscarPagoPorIdempotencia(
+    propiedadId: string,
+    idempotencyKey: string
+  ): Promise<PagoExternoLedger | null>;
+  buscarAjustePorIdempotencia(
+    propiedadId: string,
+    idempotencyKey: string
+  ): Promise<AjustePagoExternoLedger | null>;
+  cargarLedgerReserva(
+    propiedadId: string,
+    reservaId: string
+  ): Promise<DatosLedgerReserva | null>;
+  crearPagoExterno(data: NuevoPagoExterno): Promise<PagoExternoLedger>;
+  crearAjustePagoExterno(data: NuevoAjustePagoExterno): Promise<AjustePagoExternoLedger>;
+};
+
+export type RepositorioPagosExternos = {
+  cargarActor(
+    usuarioPropiedadId: string,
+    propiedadId: string
+  ): Promise<ActorPagoExterno | null>;
+  transaccion<T>(trabajo: (tx: TransaccionPagosExternos) => Promise<T>): Promise<T>;
+  buscarReservaIdDePagoExterno(
+    propiedadId: string,
+    pagoExternoId: string
+  ): Promise<string | null>;
+  leerLedgerReserva(
+    propiedadId: string,
+    reservaId: string
+  ): Promise<DatosLedgerReserva | null>;
+};
+
+export class ErrorPagoExterno extends Error {
+  constructor(readonly codigo: string) {
+    super(codigo);
+    this.name = "ErrorPagoExterno";
+  }
+}
+
+type ConfiguracionPagosExternos = {
+  ledgerHabilitado: () => boolean;
+};
+
+export function crearServicioPagosExternos(
+  repositorio: RepositorioPagosExternos,
+  configuracion: ConfiguracionPagosExternos
+) {
+  async function validarEscritura(actorSolicitado: ActorPagoExterno) {
+    const actor = await repositorio.cargarActor(
+      actorSolicitado.usuarioPropiedadId,
+      actorSolicitado.propiedadId
+    );
+    if (!actor || !puedeMutarPagosExternos(actor.rol)) {
+      throw new ErrorPagoExterno("ROL_PAGO_EXTERNO_DENEGADO");
+    }
+    if (!configuracion.ledgerHabilitado()) {
+      throw new ErrorPagoExterno("PAGOS_EXTERNOS_DESHABILITADOS");
+    }
+    return actor;
+  }
+
+  function calcularResumen(ledger: DatosLedgerReserva) {
+    return calcularResumenFinanciero({
+      totalReservaCentavos: ledger.reserva.totalReservaCentavos,
+      pagosStripe: ledger.pagosStripe,
+      pagosExternos: ledger.pagosExternos.map((pago) => ({
+        cobradoCentavos: pago.montoCentavos,
+        ajustesCentavos: pago.ajustes.reduce(
+          (total, ajuste) => total + ajuste.montoCentavos,
+          0
+        ),
+      })),
+    });
+  }
+
+  return {
+    async obtenerLedgerReserva(actor: ActorPagoExterno, reservaId: string) {
+      const actorAutorizado = await repositorio.cargarActor(
+        actor.usuarioPropiedadId,
+        actor.propiedadId
+      );
+      if (!actorAutorizado) throw new ErrorPagoExterno("ROL_PAGO_EXTERNO_DENEGADO");
+      const ledger = await repositorio.leerLedgerReserva(
+        actorAutorizado.propiedadId,
+        reservaId
+      );
+      if (!ledger) throw new ErrorPagoExterno("RESERVA_NO_ENCONTRADA");
+      return { ...ledger, resumen: calcularResumen(ledger) };
+    },
+
+    async registrarPagoExterno(actor: ActorPagoExterno, input: RegistrarPagoExternoInput) {
+      actor = await validarEscritura(actor);
+
+      return repositorio.transaccion(async (tx) => {
+        await tx.adquirirLockReserva(input.reservaId);
+        const existente = await tx.buscarPagoPorIdempotencia(
+          actor.propiedadId,
+          input.idempotencyKey
+        );
+        if (existente) {
+          if (existente.reservaId !== input.reservaId) {
+            throw new ErrorPagoExterno("IDEMPOTENCIA_CONFLICTO");
+          }
+          return existente;
+        }
+
+        const ledger = await tx.cargarLedgerReserva(actor.propiedadId, input.reservaId);
+        if (!ledger) throw new ErrorPagoExterno("RESERVA_NO_ENCONTRADA");
+
+        const resumen = calcularResumen(ledger);
+        if (["CANCELADA", "NO_SHOW", "COMPLETADA"].includes(ledger.reserva.estado)) {
+          throw new ErrorPagoExterno("ESTADO_RESERVA_NO_ADMITE_COBRO");
+        }
+        if (
+          !Number.isSafeInteger(input.montoCentavos) ||
+          input.montoCentavos <= 0 ||
+          input.montoCentavos > resumen.saldoPendienteCentavos
+        ) {
+          throw new ErrorPagoExterno("SALDO_INSUFICIENTE");
+        }
+
+        return tx.crearPagoExterno({
+          propiedadId: actor.propiedadId,
+          reservaId: ledger.reserva.id,
+          montoCentavos: input.montoCentavos,
+          metodo: input.metodo,
+          fechaPago: input.fechaPago,
+          nota: input.nota?.trim() || null,
+          creadoPorUsuarioId: actor.usuarioPropiedadId,
+          idempotencyKey: input.idempotencyKey,
+          reemplazaPagoExternoId: null,
+          estadoComprobante: input.enviarComprobante ? "PENDIENTE" : "NO_SOLICITADO",
+        });
+      });
+    },
+
+    async corregirPagoExterno(actor: ActorPagoExterno, input: CorregirPagoExternoInput) {
+      actor = await validarEscritura(actor);
+      const reservaId = await repositorio.buscarReservaIdDePagoExterno(
+        actor.propiedadId,
+        input.pagoExternoId
+      );
+      if (!reservaId) throw new ErrorPagoExterno("PAGO_EXTERNO_NO_ENCONTRADO");
+
+      return repositorio.transaccion(async (tx) => {
+        await tx.adquirirLockReserva(reservaId);
+        const [reemplazoExistente, anulacionExistente] = await Promise.all([
+          tx.buscarPagoPorIdempotencia(actor.propiedadId, input.idempotencyKey),
+          tx.buscarAjustePorIdempotencia(actor.propiedadId, input.idempotencyKey),
+        ]);
+        if (reemplazoExistente && anulacionExistente) {
+          if (
+            reemplazoExistente.reemplazaPagoExternoId !== input.pagoExternoId ||
+            anulacionExistente.pagoExternoId !== input.pagoExternoId ||
+            anulacionExistente.tipo !== "ANULACION"
+          ) {
+            throw new ErrorPagoExterno("IDEMPOTENCIA_CONFLICTO");
+          }
+          return { anulacion: anulacionExistente, reemplazo: reemplazoExistente };
+        }
+        if (reemplazoExistente || anulacionExistente) {
+          throw new ErrorPagoExterno("IDEMPOTENCIA_INCONSISTENTE");
+        }
+
+        const ledger = await tx.cargarLedgerReserva(actor.propiedadId, reservaId);
+        if (!ledger) throw new ErrorPagoExterno("PAGO_EXTERNO_NO_ENCONTRADO");
+        const original = ledger.pagosExternos.find(
+          (pago) => pago.id === input.pagoExternoId
+        );
+        if (!original) throw new ErrorPagoExterno("PAGO_EXTERNO_NO_ENCONTRADO");
+
+        calcularResumen(ledger);
+        const montoDisponible = original.montoCentavos - original.ajustes.reduce(
+          (total, ajuste) => total + ajuste.montoCentavos,
+          0
+        );
+        if (montoDisponible <= 0) {
+          throw new ErrorPagoExterno("AJUSTE_SUPERA_DISPONIBLE");
+        }
+        if (!input.motivo.trim()) {
+          throw new ErrorPagoExterno("MOTIVO_AJUSTE_REQUERIDO");
+        }
+
+        const ledgerTrasAnulacion: DatosLedgerReserva = {
+          ...ledger,
+          pagosExternos: ledger.pagosExternos.map((pago) =>
+            pago.id === original.id
+              ? {
+                  ...pago,
+                  ajustes: [
+                    ...pago.ajustes,
+                    {
+                      id: "validacion",
+                      pagoExternoId: pago.id,
+                      tipo: "ANULACION",
+                      montoCentavos: montoDisponible,
+                      motivo: input.motivo,
+                      creadoPorUsuarioId: actor.usuarioPropiedadId,
+                      idempotencyKey: input.idempotencyKey,
+                      creadoEn: new Date(0),
+                    },
+                  ],
+                }
+              : pago
+          ),
+        };
+        const saldoTrasAnulacion = calcularResumen(ledgerTrasAnulacion).saldoPendienteCentavos;
+        if (
+          !Number.isSafeInteger(input.nuevoMontoCentavos) ||
+          input.nuevoMontoCentavos <= 0 ||
+          input.nuevoMontoCentavos > saldoTrasAnulacion
+        ) {
+          throw new ErrorPagoExterno("SALDO_INSUFICIENTE");
+        }
+
+        const anulacion = await tx.crearAjustePagoExterno({
+          pagoExternoId: original.id,
+          tipo: "ANULACION",
+          montoCentavos: montoDisponible,
+          motivo: input.motivo.trim(),
+          creadoPorUsuarioId: actor.usuarioPropiedadId,
+          idempotencyKey: input.idempotencyKey,
+        });
+        const reemplazo = await tx.crearPagoExterno({
+          propiedadId: actor.propiedadId,
+          reservaId,
+          montoCentavos: input.nuevoMontoCentavos,
+          metodo: input.metodo,
+          fechaPago: input.fechaPago,
+          nota: input.nota?.trim() || null,
+          creadoPorUsuarioId: actor.usuarioPropiedadId,
+          idempotencyKey: input.idempotencyKey,
+          reemplazaPagoExternoId: original.id,
+          estadoComprobante: "NO_SOLICITADO",
+        });
+        return { anulacion, reemplazo };
+      });
+    },
+
+    async ajustarPagoExterno(actor: ActorPagoExterno, input: AjustarPagoExternoInput) {
+      actor = await validarEscritura(actor);
+      const reservaId = await repositorio.buscarReservaIdDePagoExterno(
+        actor.propiedadId,
+        input.pagoExternoId
+      );
+      if (!reservaId) throw new ErrorPagoExterno("PAGO_EXTERNO_NO_ENCONTRADO");
+
+      return repositorio.transaccion(async (tx) => {
+        await tx.adquirirLockReserva(reservaId);
+        const existente = await tx.buscarAjustePorIdempotencia(
+          actor.propiedadId,
+          input.idempotencyKey
+        );
+        if (existente) {
+          if (
+            existente.pagoExternoId !== input.pagoExternoId ||
+            existente.tipo !== input.tipo
+          ) {
+            throw new ErrorPagoExterno("IDEMPOTENCIA_CONFLICTO");
+          }
+          return existente;
+        }
+
+        const ledger = await tx.cargarLedgerReserva(actor.propiedadId, reservaId);
+        if (!ledger) throw new ErrorPagoExterno("PAGO_EXTERNO_NO_ENCONTRADO");
+        const original = ledger.pagosExternos.find(
+          (pago) => pago.id === input.pagoExternoId
+        );
+        if (!original) throw new ErrorPagoExterno("PAGO_EXTERNO_NO_ENCONTRADO");
+
+        calcularResumen(ledger);
+        const montoDisponible = original.montoCentavos - original.ajustes.reduce(
+          (total, ajuste) => total + ajuste.montoCentavos,
+          0
+        );
+        if (!input.motivo.trim()) {
+          throw new ErrorPagoExterno("MOTIVO_AJUSTE_REQUERIDO");
+        }
+        const montoValido = Number.isSafeInteger(input.montoCentavos) &&
+          input.montoCentavos > 0 &&
+          input.montoCentavos <= montoDisponible;
+        if (
+          !montoValido ||
+          (input.tipo === "ANULACION" && input.montoCentavos !== montoDisponible)
+        ) {
+          throw new ErrorPagoExterno("AJUSTE_SUPERA_DISPONIBLE");
+        }
+
+        return tx.crearAjustePagoExterno({
+          pagoExternoId: original.id,
+          tipo: input.tipo,
+          montoCentavos: input.montoCentavos,
+          motivo: input.motivo.trim(),
+          creadoPorUsuarioId: actor.usuarioPropiedadId,
+          idempotencyKey: input.idempotencyKey,
+        });
+      });
+    },
+  };
+}
+
+type PagoExternoPrisma = Prisma.PagoExternoGetPayload<{
+  include: { ajustes: true };
+}>;
+
+function mapearAjustePrisma(
+  ajuste: Prisma.AjustePagoExternoGetPayload<Record<string, never>>
+): AjustePagoExternoLedger {
+  return {
+    id: ajuste.id,
+    pagoExternoId: ajuste.pagoExternoId,
+    tipo: ajuste.tipo,
+    montoCentavos: aCentavos(Number(ajuste.montoMxn)),
+    motivo: ajuste.motivo,
+    creadoPorUsuarioId: ajuste.creadoPorUsuarioId,
+    idempotencyKey: ajuste.idempotencyKey,
+    creadoEn: ajuste.creadoEn,
+  };
+}
+
+function mapearPagoExternoPrisma(pago: PagoExternoPrisma): PagoExternoLedger {
+  return {
+    id: pago.id,
+    propiedadId: pago.propiedadId,
+    reservaId: pago.reservaId,
+    montoCentavos: aCentavos(Number(pago.montoMxn)),
+    metodo: pago.metodo,
+    fechaPago: pago.fechaPago,
+    nota: pago.nota,
+    creadoPorUsuarioId: pago.creadoPorUsuarioId,
+    idempotencyKey: pago.idempotencyKey,
+    reemplazaPagoExternoId: pago.reemplazaPagoExternoId,
+    estadoComprobante: pago.estadoComprobante,
+    ajustes: pago.ajustes.map(mapearAjustePrisma),
+    creadoEn: pago.creadoEn,
+  };
+}
+
+type ClienteLecturaLedger = Pick<Prisma.TransactionClient, "reserva">;
+
+async function cargarLedgerPrisma(
+  cliente: ClienteLecturaLedger,
+  propiedadId: string,
+  reservaId: string
+): Promise<DatosLedgerReserva | null> {
+  const reserva = await cliente.reserva.findFirst({
+    where: { id: reservaId, propiedadId },
+    select: {
+      id: true,
+      propiedadId: true,
+      estado: true,
+      totalMxn: true,
+      pagosOnline: {
+        orderBy: [{ creadoEn: "asc" }, { id: "asc" }],
+        select: {
+          id: true,
+          montoMxn: true,
+          montoReembolsadoMxn: true,
+          reembolsoPendienteMxn: true,
+          creadoEn: true,
+        },
+      },
+      pagosExternos: {
+        orderBy: [{ creadoEn: "asc" }, { id: "asc" }],
+        include: {
+          ajustes: { orderBy: [{ creadoEn: "asc" }, { id: "asc" }] },
+        },
+      },
+    },
+  });
+  if (!reserva) return null;
+
+  return {
+    reserva: {
+      id: reserva.id,
+      propiedadId: reserva.propiedadId,
+      estado: reserva.estado,
+      totalReservaCentavos: aCentavos(Number(reserva.totalMxn)),
+    },
+    pagosStripe: reserva.pagosOnline.map((pago) => ({
+      id: pago.id,
+      cobradoCentavos: aCentavos(Number(pago.montoMxn)),
+      reembolsadoCentavos: aCentavos(Number(pago.montoReembolsadoMxn)),
+      reembolsoPendienteCentavos: aCentavos(Number(pago.reembolsoPendienteMxn)),
+      creadoEn: pago.creadoEn,
+    })),
+    pagosExternos: reserva.pagosExternos.map(mapearPagoExternoPrisma),
+  };
+}
+function crearTransaccionPrisma(tx: Prisma.TransactionClient): TransaccionPagosExternos {
+  return {
+    async adquirirLockReserva(reservaId) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${reservaId}, 19))`;
+    },
+    async buscarPagoPorIdempotencia(propiedadId, idempotencyKey) {
+      const pago = await tx.pagoExterno.findFirst({
+        where: { propiedadId, idempotencyKey },
+        include: { ajustes: true },
+      });
+      return pago ? mapearPagoExternoPrisma(pago) : null;
+    },
+    async buscarAjustePorIdempotencia(propiedadId, idempotencyKey) {
+      const ajuste = await tx.ajustePagoExterno.findFirst({
+        where: { idempotencyKey, pagoExterno: { propiedadId } },
+      });
+      return ajuste ? mapearAjustePrisma(ajuste) : null;
+    },
+    cargarLedgerReserva(propiedadId, reservaId) {
+      return cargarLedgerPrisma(tx, propiedadId, reservaId);
+    },
+    async crearPagoExterno(data) {
+      const pago = await tx.pagoExterno.create({
+        data: {
+          propiedadId: data.propiedadId,
+          reservaId: data.reservaId,
+          montoMxn: aMxn(data.montoCentavos),
+          metodo: data.metodo,
+          fechaPago: data.fechaPago,
+          nota: data.nota,
+          creadoPorUsuarioId: data.creadoPorUsuarioId,
+          idempotencyKey: data.idempotencyKey,
+          reemplazaPagoExternoId: data.reemplazaPagoExternoId,
+          estadoComprobante: data.estadoComprobante,
+        },
+        include: { ajustes: true },
+      });
+      return mapearPagoExternoPrisma(pago);
+    },
+    async crearAjustePagoExterno(data) {
+      const ajuste = await tx.ajustePagoExterno.create({
+        data: {
+          pagoExternoId: data.pagoExternoId,
+          tipo: data.tipo,
+          montoMxn: aMxn(data.montoCentavos),
+          motivo: data.motivo,
+          creadoPorUsuarioId: data.creadoPorUsuarioId,
+          idempotencyKey: data.idempotencyKey,
+        },
+      });
+      return mapearAjustePrisma(ajuste);
+    },
+  };
+}
+
+export function crearRepositorioPrismaPagosExternos(
+  cliente: typeof prisma
+): RepositorioPagosExternos {
+  return {
+    async cargarActor(usuarioPropiedadId, propiedadId) {
+      const actor = await cliente.usuarioPropiedad.findFirst({
+        where: { id: usuarioPropiedadId, propiedadId },
+        select: { id: true, propiedadId: true, rol: true },
+      });
+      return actor
+        ? {
+            usuarioPropiedadId: actor.id,
+            propiedadId: actor.propiedadId,
+            rol: actor.rol,
+          }
+        : null;
+    },
+    transaccion(trabajo) {
+      return cliente.$transaction((tx) => trabajo(crearTransaccionPrisma(tx)));
+    },
+    async buscarReservaIdDePagoExterno(propiedadId, pagoExternoId) {
+      const pago = await cliente.pagoExterno.findFirst({
+        where: { id: pagoExternoId, propiedadId },
+        select: { reservaId: true },
+      });
+      return pago?.reservaId ?? null;
+    },
+    leerLedgerReserva(propiedadId, reservaId) {
+      return cargarLedgerPrisma(cliente, propiedadId, reservaId);
+    },
+  };
+}
+
+const repositorioPrisma = crearRepositorioPrismaPagosExternos(prisma);
+
+const servicioPagosExternos = crearServicioPagosExternos(repositorioPrisma, {
+  ledgerHabilitado: () => process.env.PAGOS_EXTERNOS_LEDGER_ENABLED === "true",
+});
+
+export const obtenerLedgerReserva = servicioPagosExternos.obtenerLedgerReserva;
+export const registrarPagoExterno = servicioPagosExternos.registrarPagoExterno;
+export const corregirPagoExterno = servicioPagosExternos.corregirPagoExterno;
+export const ajustarPagoExterno = servicioPagosExternos.ajustarPagoExterno;
