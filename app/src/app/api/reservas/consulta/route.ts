@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { rateLimit } from "@/lib/rateLimit";
 import { prisma } from "@/lib/prisma";
+import { aCentavos, aMxn, calcularResumenFinanciero } from "@/lib/negocio/resumenFinanciero";
 
 const STRIPE_COMISION_PORCENTAJE = 0.036;
 const STRIPE_COMISION_FIJA = 3;
@@ -25,6 +26,7 @@ export async function GET(req: NextRequest) {
       select: {
         codigoGrupo: true,
         stripePaymentIntentId: true,
+        pagosOnline: true,
         // BUG 9: sin filtro de estado — incluir canceladas para que el huésped pueda
         // confirmar que su cancelación fue procesada
         reservas: {
@@ -36,6 +38,7 @@ export async function GET(req: NextRequest) {
             totalMxn: true,
             huesped: { select: { nombre: true, email: true } },
             tipoDeHabitacion: { select: { nombre: true } },
+            pagosExternos: { include: { ajustes: true } },
           },
           orderBy: { fechaIngreso: "asc" },
         },
@@ -64,13 +67,40 @@ export async function GET(req: NextRequest) {
       reservasParaCalculo[0].fechaSalida
     );
     const totalMxn = reservasActivas.reduce((s, r) => s + Number(r.totalMxn), 0);
+    const pagosExternosGrupo = grupo.reservas.flatMap((reserva) => reserva.pagosExternos);
+    const pagosExternosCentavos = pagosExternosGrupo.reduce(
+      (suma, pago) => suma + aCentavos(Number(pago.montoMxn)),
+      0
+    );
+    const reembolsosExternosCentavos = pagosExternosGrupo.reduce(
+      (suma, pago) => suma + pago.ajustes.reduce(
+        (subtotal, ajuste) => subtotal + aCentavos(Number(ajuste.montoMxn)),
+        0
+      ),
+      0
+    );
+    const resumenGrupo = calcularResumenFinanciero({
+      totalReservaCentavos: aCentavos(totalMxn),
+      pagosStripe: grupo.pagosOnline.map((pago) => ({
+        cobradoCentavos: aCentavos(Number(pago.montoMxn)),
+        reembolsadoCentavos: aCentavos(Number(pago.montoReembolsadoMxn)),
+        reembolsoPendienteCentavos: aCentavos(Number(pago.reembolsoPendienteMxn)),
+      })),
+      pagosExternos: pagosExternosGrupo.map((pago) => ({
+        cobradoCentavos: aCentavos(Number(pago.montoMxn)),
+        ajustesCentavos: pago.ajustes.reduce(
+          (suma, ajuste) => suma + aCentavos(Number(ajuste.montoMxn)),
+          0
+        ),
+      })),
+    });
 
     const ahoraGrupo = new Date();
     const limiteGrupo = new Date(fechaIngreso);
     limiteGrupo.setHours(limiteGrupo.getHours() - 48);
     const grupoConfirmado = reservasActivas.length > 0 && reservasActivas.every((r) => r.estado === "CONFIRMADA");
     const grupoCancelado = reservasActivas.length === 0;
-    const cancelableGrupo = grupoConfirmado && !!grupo.stripePaymentIntentId && ahoraGrupo < limiteGrupo;
+    const cancelableGrupo = grupoConfirmado && resumenGrupo.stripeNetoCentavos > 0 && ahoraGrupo < limiteGrupo;
     const comisionGrupo = cancelableGrupo
       ? Math.round((totalMxn * STRIPE_COMISION_PORCENTAJE + STRIPE_COMISION_FIJA) * 100) / 100
       : 0;
@@ -83,11 +113,18 @@ export async function GET(req: NextRequest) {
       fechaIngreso: fechaIngreso.toISOString(),
       fechaSalida: fechaSalida.toISOString(),
       totalMxn,
+      estadoFinanciero: resumenGrupo.estado,
+      saldoPendienteMxn: aMxn(resumenGrupo.saldoPendienteCentavos),
+      pagadoStripeNetoMxn: aMxn(resumenGrupo.stripeNetoCentavos),
+      pagosExternosMxn: aMxn(pagosExternosCentavos),
+      reembolsosExternosMxn: aMxn(reembolsosExternosCentavos),
       tipoDeHabitacion: { nombre: `${grupo.reservas.length} habitación${grupo.reservas.length !== 1 ? "es" : ""}` },
       huesped: grupo.reservas[0].huesped,
       origen: "ONLINE",
       cancelable: cancelableGrupo,
-      montoReembolso: cancelableGrupo ? totalMxn - comisionGrupo : 0,
+      montoReembolso: cancelableGrupo
+        ? Math.min(Math.max(0, totalMxn - comisionGrupo), aMxn(resumenGrupo.stripeNetoCentavos))
+        : 0,
       comisionRetenida: comisionGrupo,
       habitaciones: grupo.reservas.map((r) => ({
         tipoNombre: r.tipoDeHabitacion.nombre,
@@ -108,6 +145,8 @@ export async function GET(req: NextRequest) {
     include: {
       huesped: { select: { nombre: true, email: true } },
       tipoDeHabitacion: { select: { nombre: true } },
+      pagosOnline: true,
+      pagosExternos: { include: { ajustes: true } },
     },
   });
 
@@ -124,10 +163,38 @@ export async function GET(req: NextRequest) {
     ahora < horas48AntesChekin;
 
   const total = Number(reserva.totalMxn);
+  const pagosExternosCentavos = reserva.pagosExternos.reduce(
+    (suma, pago) => suma + aCentavos(Number(pago.montoMxn)),
+    0
+  );
+  const reembolsosExternosCentavos = reserva.pagosExternos.reduce(
+    (suma, pago) => suma + pago.ajustes.reduce(
+      (subtotal, ajuste) => subtotal + aCentavos(Number(ajuste.montoMxn)),
+      0
+    ),
+    0
+  );
+  const resumen = calcularResumenFinanciero({
+    totalReservaCentavos: aCentavos(total),
+    pagosStripe: reserva.pagosOnline.map((pago) => ({
+      cobradoCentavos: aCentavos(Number(pago.montoMxn)),
+      reembolsadoCentavos: aCentavos(Number(pago.montoReembolsadoMxn)),
+      reembolsoPendienteCentavos: aCentavos(Number(pago.reembolsoPendienteMxn)),
+    })),
+    pagosExternos: reserva.pagosExternos.map((pago) => ({
+      cobradoCentavos: aCentavos(Number(pago.montoMxn)),
+      ajustesCentavos: pago.ajustes.reduce(
+        (suma, ajuste) => suma + aCentavos(Number(ajuste.montoMxn)),
+        0
+      ),
+    })),
+  });
   const comisionRetenida = cancelable
     ? Math.round((total * STRIPE_COMISION_PORCENTAJE + STRIPE_COMISION_FIJA) * 100) / 100
     : 0;
-  const montoReembolso = cancelable ? total - comisionRetenida : 0;
+  const montoReembolso = cancelable
+    ? Math.min(Math.max(0, total - comisionRetenida), aMxn(resumen.stripeNetoCentavos))
+    : 0;
 
   return NextResponse.json({
     codigoReserva: reserva.codigoReserva,
@@ -135,6 +202,11 @@ export async function GET(req: NextRequest) {
     fechaIngreso: reserva.fechaIngreso.toISOString(),
     fechaSalida: reserva.fechaSalida.toISOString(),
     totalMxn: total,
+    estadoFinanciero: resumen.estado,
+    saldoPendienteMxn: aMxn(resumen.saldoPendienteCentavos),
+    pagadoStripeNetoMxn: aMxn(resumen.stripeNetoCentavos),
+    pagosExternosMxn: aMxn(pagosExternosCentavos),
+    reembolsosExternosMxn: aMxn(reembolsosExternosCentavos),
     tipoDeHabitacion: reserva.tipoDeHabitacion,
     huesped: reserva.huesped,
     origen: reserva.origen,

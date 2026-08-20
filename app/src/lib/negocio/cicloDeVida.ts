@@ -2,36 +2,47 @@ import { prisma } from "@/lib/prisma";
 import { reembolsarPagosOnline } from "@/lib/negocio/pagosOnline";
 import { enviarCancelacion } from "@/lib/emails";
 import { EstadoReserva } from "@prisma/client";
+import { aCentavos, aMxn, calcularResumenFinanciero } from "./resumenFinanciero";
 
 // Una reserva solo se puede borrar (hard delete) si no hay dinero real de por
 // medio: sin pago por Stripe capturado y sin anticipo/pago manual registrado.
 // Si pertenece a un grupo, el grupo tampoco debe tener nada pagado — de lo
 // contrario se debe usar "Cancelar" para conservar el historial de pago.
 export function tieneEliminacionSegura(reserva: {
-  stripePaymentIntentId: string | null;
-  pagoManual: { estadoDePago: string } | null;
-  grupo: { totalPagado: unknown } | null;
+  tienePagosStripe?: boolean;
+  tienePagosExternos?: boolean;
+  grupoPagadoCentavos?: number;
+  // Compatibilidad conservadora para call sites de lectura antiguos: la
+  // mutación real vuelve a cargar el ledger antes de borrar.
+  stripePaymentIntentId?: string | null;
+  pagoManual?: unknown;
+  grupo?: { totalPagado: unknown } | null;
 }): boolean {
-  if (reserva.stripePaymentIntentId) return false;
-  if (reserva.pagoManual && reserva.pagoManual.estadoDePago !== "PENDIENTE") return false;
-  if (reserva.grupo && Number(reserva.grupo.totalPagado) > 0) return false;
-  return true;
+  const tienePagosStripe = reserva.tienePagosStripe ?? Boolean(reserva.stripePaymentIntentId);
+  const tienePagosExternos = reserva.tienePagosExternos ?? Boolean(reserva.pagoManual);
+  const grupoPagadoCentavos = reserva.grupoPagadoCentavos ??
+    (reserva.grupo ? aCentavos(Number(reserva.grupo.totalPagado)) : 0);
+  return !tienePagosStripe && !tienePagosExternos && grupoPagadoCentavos === 0;
 }
 
 export async function eliminarReserva(reservaId: string, propiedadId: string) {
   const reserva = await prisma.reserva.findFirst({
     where: { id: reservaId, propiedadId },
-    include: { pagoManual: true, grupo: true },
+    include: { pagosOnline: { select: { id: true } }, pagosExternos: { select: { id: true } }, grupo: true },
   });
   if (!reserva) throw new Error("Reserva no encontrada");
-  if (!tieneEliminacionSegura(reserva)) {
+  if (!tieneEliminacionSegura({
+    tienePagosStripe: reserva.pagosOnline.length > 0,
+    tienePagosExternos: reserva.pagosExternos.length > 0,
+    grupoPagadoCentavos: reserva.grupo ? aCentavos(Number(reserva.grupo.totalPagado)) : 0,
+  })) {
     throw new Error("No se puede eliminar: tiene un pago confirmado. Usa Cancelar en su lugar.");
   }
 
   await prisma.$transaction(async (tx) => {
     await tx.asignacionDeHabitacion.deleteMany({ where: { reservaId } });
     await tx.solicitudCambio.deleteMany({ where: { reservaId } });
-    if (reserva.pagoManual) await tx.pagoManual.deleteMany({ where: { reservaId } });
+    await tx.pagoManual.deleteMany({ where: { reservaId } });
     await tx.reserva.delete({ where: { id: reservaId } });
 
     // Si era la última reserva activa de su grupo y el grupo no tiene nada
@@ -90,8 +101,8 @@ export async function checkIn(reservaId: string, propiedadId: string) {
     where: { id: reservaId, propiedadId },
     include: {
       asignacion: true,
-      pagoManual: true,
-      pagosOnline: { where: { estado: { not: "REEMBOLSADO" } } },
+      pagosOnline: true,
+      pagosExternos: { include: { ajustes: true } },
     },
   });
   if (!reserva) throw new Error("Reserva no encontrada");
@@ -100,22 +111,25 @@ export async function checkIn(reservaId: string, propiedadId: string) {
   if (!reserva.asignacion)
     throw new Error("REQUIERE_ASIGNACION");
 
-  // Una reserva creada por el equipo puede combinar cobros externos y Stripe.
-  // PagoManual conserva únicamente lo recibido fuera de la plataforma.
   if (reserva.origen === "MANUAL") {
-    const pagoExterno = reserva.pagoManual?.estadoDePago === "PAGADO_COMPLETO"
-      ? Number(reserva.totalMxn)
-      : reserva.pagoManual?.estadoDePago === "ANTICIPO_PAGADO"
-        ? Number(reserva.pagoManual.montoAnticipo ?? 0)
-        : 0;
-    const pagoStripe = reserva.pagosOnline.reduce(
-      (s, pago) => s + Number(pago.montoMxn) - Number(pago.montoReembolsadoMxn) - Number(pago.reembolsoPendienteMxn),
-      0
-    );
-    const saldoPendiente = Number(reserva.totalMxn) - pagoExterno - pagoStripe;
-    if (saldoPendiente > 0) {
+    const resumen = calcularResumenFinanciero({
+      totalReservaCentavos: aCentavos(Number(reserva.totalMxn)),
+      pagosStripe: reserva.pagosOnline.map((pago) => ({
+        cobradoCentavos: aCentavos(Number(pago.montoMxn)),
+        reembolsadoCentavos: aCentavos(Number(pago.montoReembolsadoMxn)),
+        reembolsoPendienteCentavos: aCentavos(Number(pago.reembolsoPendienteMxn)),
+      })),
+      pagosExternos: reserva.pagosExternos.map((pago) => ({
+        cobradoCentavos: aCentavos(Number(pago.montoMxn)),
+        ajustesCentavos: pago.ajustes.reduce(
+          (total, ajuste) => total + aCentavos(Number(ajuste.montoMxn)),
+          0
+        ),
+      })),
+    });
+    if (resumen.saldoPendienteCentavos > 0) {
       throw new Error(
-        `La reserva tiene un saldo pendiente de $${saldoPendiente.toLocaleString("es-MX")} MXN. Registra el pago antes de hacer check-in.`
+        `La reserva tiene un saldo pendiente de $${aMxn(resumen.saldoPendienteCentavos).toLocaleString("es-MX")} MXN. Registra el pago antes de hacer check-in.`
       );
     }
   }
@@ -164,7 +178,13 @@ type CancelacionInput = {
 export async function cancelarReserva(input: CancelacionInput) {
   const reserva = await prisma.reserva.findFirst({
     where: { id: input.reservaId, propiedadId: input.propiedadId },
-    include: { huesped: true, tipoDeHabitacion: true, propiedad: true },
+    include: {
+      huesped: true,
+      tipoDeHabitacion: true,
+      propiedad: true,
+      pagosOnline: true,
+      pagosExternos: { include: { ajustes: true } },
+    },
   });
   if (!reserva) throw new Error("Reserva no encontrada");
   if (reserva.estado === EstadoReserva.COMPLETADA || reserva.estado === EstadoReserva.CANCELADA)
@@ -182,17 +202,34 @@ export async function cancelarReserva(input: CancelacionInput) {
   }
 
   let montoReembolsadoMxn = 0;
+  const resumen = calcularResumenFinanciero({
+    totalReservaCentavos: aCentavos(Number(reserva.totalMxn)),
+    pagosStripe: reserva.pagosOnline.map((pago) => ({
+      cobradoCentavos: aCentavos(Number(pago.montoMxn)),
+      reembolsadoCentavos: aCentavos(Number(pago.montoReembolsadoMxn)),
+      reembolsoPendienteCentavos: aCentavos(Number(pago.reembolsoPendienteMxn)),
+    })),
+    pagosExternos: reserva.pagosExternos.map((pago) => ({
+      cobradoCentavos: aCentavos(Number(pago.montoMxn)),
+      ajustesCentavos: pago.ajustes.reduce(
+        (total, ajuste) => total + aCentavos(Number(ajuste.montoMxn)),
+        0
+      ),
+    })),
+  });
 
   // Reembolso Stripe si aplica
-  if (reserva.stripePaymentIntentId && input.politicaReembolso !== "SIN_REEMBOLSO") {
+  if (resumen.stripeNetoCentavos > 0 && input.politicaReembolso !== "SIN_REEMBOLSO") {
     const montoTotal = Number(reserva.totalMxn);
-    const monto = input.politicaReembolso === "TOTAL" ? montoTotal : (input.montoParcialMxn ?? 0);
+    const montoSolicitado = input.politicaReembolso === "TOTAL"
+      ? aMxn(resumen.stripeNetoCentavos)
+      : (input.montoParcialMxn ?? 0);
 
     // Validar monto: debe ser positivo y no superar el total
-    if (monto < 0) throw new Error("El monto de reembolso no puede ser negativo");
-    if (monto > montoTotal) throw new Error("El monto de reembolso no puede superar el total de la reserva");
+    if (montoSolicitado < 0) throw new Error("El monto de reembolso no puede ser negativo");
+    if (montoSolicitado > montoTotal) throw new Error("El monto de reembolso no puede superar el total de la reserva");
 
-    montoReembolsadoMxn = monto;
+    montoReembolsadoMxn = Math.min(montoSolicitado, aMxn(resumen.stripeNetoCentavos));
     const montoCentavos = Math.round(montoReembolsadoMxn * 100);
 
     if (montoCentavos > 0) {

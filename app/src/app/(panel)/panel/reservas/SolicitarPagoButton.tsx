@@ -4,7 +4,7 @@ import { useTransition } from "react";
 
 export function SolicitarPagoButton({
   reservaId,
-  totalMxn,
+  totalMxn: saldoPendienteMxn,
   emailHuesped,
   yaTieneLinkActivo,
   solicitarPagoAction,
@@ -20,7 +20,7 @@ export function SolicitarPagoButton({
   const handleClick = () => {
     const label = yaTieneLinkActivo
       ? `¿Reenviar link de pago a ${emailHuesped}? El link anterior quedará inválido.`
-      : `¿Enviar link de pago de $${totalMxn.toLocaleString("es-MX")} MXN a ${emailHuesped}?`;
+      : `¿Enviar link de pago de $${saldoPendienteMxn.toLocaleString("es-MX")} MXN a ${emailHuesped}?`;
     if (!confirm(label)) return;
     startTransition(() => {
       solicitarPagoAction(reservaId);

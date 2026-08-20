@@ -28,7 +28,9 @@ type ReservaData = {
   nombreHuesped: string;
   huesped: { nombre: string; email: string; telefono: string | null };
   asignacion: { habitacionId: string } | null;
-  pagoManual: { estadoDePago: string; montoAnticipo: number | null } | null;
+  estadoFinanciero: "SIN_PAGOS" | "PAGO_PARCIAL" | "PAGO_COMPLETO";
+  pagadoNetoMxn: number;
+  saldoPendienteMxn: number;
 };
 
 type BloqueoData = {
@@ -121,9 +123,8 @@ function getBlockColor(reserva: ReservaData): string {
   if (reserva.tipoEspecial === "PRECIO_ACORDADO") return "#0891b2";
   if (reserva.tipoEspecial === "PROMOCION") return "#db2777";
   if (reserva.origen === "ONLINE") return "#16a34a";
-  const pago = reserva.pagoManual?.estadoDePago;
-  if (pago === "PAGADO_COMPLETO") return "#16a34a";
-  if (pago === "ANTICIPO_PAGADO") return "#ca8a04";
+  if (reserva.estadoFinanciero === "PAGO_COMPLETO") return "#16a34a";
+  if (reserva.estadoFinanciero === "PAGO_PARCIAL") return "#ca8a04";
   return "#ea580c";
 }
 
@@ -715,20 +716,18 @@ export function CalendarioGrid({
           </div>
           <div>{daysBetween(tooltip.reserva.fechaIngreso, tooltip.reserva.fechaSalida)} noches · {tooltip.reserva.numPersonas} pax</div>
           <div className="font-medium mt-1">{formatMXN(tooltip.reserva.totalMxn)}</div>
-          {/* Anticipo y saldo */}
-          {tooltip.reserva.pagoManual?.estadoDePago === "ANTICIPO_PAGADO" &&
-            tooltip.reserva.pagoManual.montoAnticipo != null && (
+          {tooltip.reserva.estadoFinanciero !== "SIN_PAGOS" && (
               <div className="mt-1 space-y-0.5">
                 <div className="flex justify-between text-gray-300">
-                  <span>Anticipo</span>
-                  <span>{formatMXN(tooltip.reserva.pagoManual.montoAnticipo)}</span>
+                  <span>Pagado neto</span>
+                  <span>{formatMXN(tooltip.reserva.pagadoNetoMxn)}</span>
                 </div>
-                <div className="flex justify-between text-amber-400 font-medium">
+                <div className={`flex justify-between font-medium ${tooltip.reserva.saldoPendienteMxn > 0 ? "text-amber-400" : "text-green-400"}`}>
                   <span>Falta</span>
-                  <span>{formatMXN(tooltip.reserva.totalMxn - tooltip.reserva.pagoManual.montoAnticipo)}</span>
+                  <span>{formatMXN(tooltip.reserva.saldoPendienteMxn)}</span>
                 </div>
               </div>
-            )}
+          )}
           {tooltip.reserva.tipoEspecial && (
             <div className="mt-1 text-purple-300 capitalize">
               {tooltip.reserva.tipoEspecial.replace(/_/g, " ").toLowerCase()}
@@ -737,8 +736,7 @@ export function CalendarioGrid({
           <div className="mt-1 text-gray-400">
             {tooltip.reserva.origen === "ONLINE" ? "🌐 Online" : "✏️ Manual"}
             {" · "}
-            {tooltip.reserva.pagoManual?.estadoDePago?.replace(/_/g, " ").toLowerCase() ??
-              tooltip.reserva.estado.toLowerCase()}
+            {tooltip.reserva.estadoFinanciero.replace(/_/g, " ").toLowerCase()}
           </div>
           {tooltip.reserva.huesped.telefono && (
             <div className="text-gray-400">{tooltip.reserva.huesped.telefono}</div>

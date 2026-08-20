@@ -13,7 +13,7 @@ import { crearClaveIdempotenciaDirectCharge, crearDirectCharge, mensajeErrorConn
 import { rutaReservaDespuesDeGuardarNotas } from "@/lib/negocio/reglasReserva";
 import { validarCuentaConnectParaCobroDirecto } from "@/lib/stripeConnectAccount.server";
 import { asociarIntentoPagoStripe, registrarIntentoPago } from "@/lib/negocio/intentosPago";
-import { calcularResumenPagoReserva } from "@/lib/negocio/pagosOnline";
+import { aCentavos, aMxn, calcularResumenFinanciero } from "@/lib/negocio/resumenFinanciero";
 
 export async function crearReservaManualAction(formData: FormData) {
   const usuario = await getCurrentUsuario();
@@ -337,118 +337,128 @@ export async function solicitarPagoAction(reservaId: string) {
   const usuario = await getCurrentUsuario();
   if (!usuario) redirect("/sign-in");
 
-  const reserva = await prisma.reserva.findFirst({
-    where: { id: reservaId, propiedadId: usuario.propiedadId },
-    include: {
-      huesped: true,
-      tipoDeHabitacion: true,
-      propiedad: true,
-      pagoManual: true,
-      pagosOnline: {
-        where: { estado: { not: "REEMBOLSADO" } },
-      },
-    },
-  });
-
-  if (!reserva) redirect(`/panel/reservas`);
-  if (reserva.origen !== "MANUAL") redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("Solo aplica a reservas manuales")}`);
-  if (reserva.tipoEspecial === "CORTESIA") redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("Las cortesías no requieren pago")}`);
-  if (reserva.estado === "CANCELADA" || reserva.estado === "NO_SHOW" || reserva.estado === "COMPLETADA") {
-    redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("No se puede solicitar pago en este estado")}`);
-  }
-
-  const montoCobrar = calcularResumenPagoReserva({
-    totalMxn: Number(reserva.totalMxn),
-    pagoManual: reserva.pagoManual,
-    pagosOnline: reserva.pagosOnline,
-  }).saldoPendienteMxn;
-  if (montoCobrar <= 0.005) {
-    redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("Esta reserva ya está pagada por completo")}`);
-  }
-
-  // Invalidar el Checkout Session anterior si existe
-  if (reserva.stripeCheckoutSessionId) {
-    try {
-      const intentoAnterior = await prisma.intentoDePagoStripe.findUnique({
-        where: { stripeCheckoutSessionId: reserva.stripeCheckoutSessionId },
-        select: { stripeConnectAccountId: true },
-      });
-      await stripe.checkout.sessions.expire(
-        reserva.stripeCheckoutSessionId,
-        {},
-        intentoAnterior ? { stripeAccount: intentoAnterior.stripeConnectAccountId } : undefined
-      );
-    } catch {
-      // Session ya expiró o fue completada — ignorar
-    }
-  }
-
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ??
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
-
-  const expiraEn = new Date(Date.now() + 24 * 60 * 60 * 1000);
-
-  let session;
+  let resultadoCobro;
   try {
-    const directCharge = crearDirectCharge(reserva.propiedad, montoCobrar);
-    await validarCuentaConnectParaCobroDirecto(directCharge.stripeAccountId);
-    const intentoPagoId = crearClaveIdempotenciaDirectCharge("autorizacion-saldo-reserva", [
-      reserva.id,
-      Math.round(montoCobrar * 100),
-      reserva.stripeCheckoutSessionId ?? "sin-sesion-previa",
-    ]);
-    await registrarIntentoPago({
-      intentoId: intentoPagoId,
-      propiedadId: reserva.propiedadId,
-      stripeConnectAccountId: directCharge.stripeAccountId,
-      tipo: "MANUAL_PAGO",
-      montoCentavos: Math.round(montoCobrar * 100),
-      moneda: "mxn",
-      datosReserva: { reservaId: reserva.id },
-    });
-    session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      payment_method_types: ["card"],
-      line_items: [
-        {
-          quantity: 1,
-          price_data: {
-            currency: "mxn",
-            unit_amount: Math.round(montoCobrar * 100),
-            product_data: {
-              name: `Reserva completa — ${reserva.tipoDeHabitacion.nombre}`,
-              description: `${reserva.codigoReserva} · ${reserva.propiedad.nombre}`,
+    resultadoCobro = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${reservaId}, 19))`;
+      const reserva = await tx.reserva.findFirst({
+        where: { id: reservaId, propiedadId: usuario.propiedadId },
+        include: {
+          huesped: true,
+          tipoDeHabitacion: true,
+          propiedad: true,
+          pagosOnline: true,
+          pagosExternos: { include: { ajustes: true } },
+        },
+      });
+
+      if (!reserva) redirect(`/panel/reservas`);
+      if (reserva.origen !== "MANUAL") redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("Solo aplica a reservas manuales")}`);
+      if (reserva.tipoEspecial === "CORTESIA") redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("Las cortesías no requieren pago")}`);
+      if (reserva.estado === "CANCELADA" || reserva.estado === "NO_SHOW" || reserva.estado === "COMPLETADA") {
+        redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("No se puede solicitar pago en este estado")}`);
+      }
+
+      const resumen = calcularResumenFinanciero({
+        totalReservaCentavos: aCentavos(Number(reserva.totalMxn)),
+        pagosStripe: reserva.pagosOnline.map((pago) => ({
+          cobradoCentavos: aCentavos(Number(pago.montoMxn)),
+          reembolsadoCentavos: aCentavos(Number(pago.montoReembolsadoMxn)),
+          reembolsoPendienteCentavos: aCentavos(Number(pago.reembolsoPendienteMxn)),
+        })),
+        pagosExternos: reserva.pagosExternos.map((pago) => ({
+          cobradoCentavos: aCentavos(Number(pago.montoMxn)),
+          ajustesCentavos: pago.ajustes.reduce(
+            (total, ajuste) => total + aCentavos(Number(ajuste.montoMxn)),
+            0
+          ),
+        })),
+      });
+      if (aMxn(resumen.saldoPendienteCentavos) <= 0.005) {
+        redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("Esta reserva ya está pagada por completo")}`);
+      }
+      const montoCobrar = aMxn(resumen.saldoPendienteCentavos);
+      const expiraEn = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+      if (reserva.stripeCheckoutSessionId) {
+        try {
+          const intentoAnterior = await prisma.intentoDePagoStripe.findUnique({
+            where: { stripeCheckoutSessionId: reserva.stripeCheckoutSessionId },
+            select: { stripeConnectAccountId: true },
+          });
+          await stripe.checkout.sessions.expire(
+            reserva.stripeCheckoutSessionId,
+            {},
+            intentoAnterior ? { stripeAccount: intentoAnterior.stripeConnectAccountId } : undefined
+          );
+        } catch {}
+      }
+
+      const directCharge = crearDirectCharge(reserva.propiedad, montoCobrar);
+      await validarCuentaConnectParaCobroDirecto(directCharge.stripeAccountId);
+      const intentoPagoId = crearClaveIdempotenciaDirectCharge("autorizacion-saldo-reserva", [
+        reserva.id,
+        resumen.saldoPendienteCentavos,
+        reserva.stripeCheckoutSessionId ?? "sin-sesion-previa",
+      ]);
+      await registrarIntentoPago({
+        intentoId: intentoPagoId,
+        propiedadId: reserva.propiedadId,
+        stripeConnectAccountId: directCharge.stripeAccountId,
+        tipo: "MANUAL_PAGO",
+        montoCentavos: resumen.saldoPendienteCentavos,
+        moneda: "mxn",
+        datosReserva: { reservaId: reserva.id },
+      });
+      const session = await stripe.checkout.sessions.create({
+        mode: "payment",
+        payment_method_types: ["card"],
+        line_items: [
+          {
+            quantity: 1,
+            price_data: {
+              currency: "mxn",
+              unit_amount: resumen.saldoPendienteCentavos,
+              product_data: {
+                name: `Reserva completa — ${reserva.tipoDeHabitacion.nombre}`,
+                description: `${reserva.codigoReserva} · ${reserva.propiedad.nombre}`,
+              },
             },
           },
+        ],
+        customer_email: reserva.huesped.email,
+        payment_intent_data: directCharge.paymentIntentData,
+        metadata: {
+          reservaId: reserva.id,
+          tipo: "MANUAL_PAGO",
+          esPagoCompleto: "true",
+          propiedadId: reserva.propiedadId,
+          montoEsperadoCentavos: String(resumen.saldoPendienteCentavos),
+          moneda: "mxn",
+          stripeConnectAccountId: directCharge.stripeAccountId,
+          roomlyIntentoId: intentoPagoId,
         },
-      ],
-      customer_email: reserva.huesped.email,
-      payment_intent_data: directCharge.paymentIntentData,
-      metadata: {
-        reservaId: reserva.id,
-        tipo: "MANUAL_PAGO",
-        esPagoCompleto: "true",
-        propiedadId: reserva.propiedadId,
-        montoEsperadoCentavos: String(Math.round(montoCobrar * 100)),
-        moneda: "mxn",
-        stripeConnectAccountId: directCharge.stripeAccountId,
-        roomlyIntentoId: intentoPagoId,
-      },
-      expires_at: Math.floor(expiraEn.getTime() / 1000),
-      success_url: `${baseUrl}/p/${reserva.propiedad.slug}/confirmacion?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${baseUrl}/p/${reserva.propiedad.slug}`,
-    }, {
-      ...directCharge.requestOptions,
-      idempotencyKey: crearClaveIdempotenciaDirectCharge("saldo-reserva", [
-        reserva.id,
-        Math.round(montoCobrar * 100),
-        reserva.stripeCheckoutSessionId ?? "sin-sesion-previa",
-      ]),
+        expires_at: Math.floor(expiraEn.getTime() / 1000),
+        success_url: `${baseUrl}/p/${reserva.propiedad.slug}/confirmacion?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/p/${reserva.propiedad.slug}`,
+      }, {
+        ...directCharge.requestOptions,
+        idempotencyKey: crearClaveIdempotenciaDirectCharge("saldo-reserva", [
+          reserva.id,
+          resumen.saldoPendienteCentavos,
+          reserva.stripeCheckoutSessionId ?? "sin-sesion-previa",
+        ]),
+      });
+      await asociarIntentoPagoStripe(intentoPagoId, { stripeCheckoutSessionId: session.id });
+      return { reserva, montoCobrar, expiraEn, session };
     });
-    await asociarIntentoPagoStripe(intentoPagoId, { stripeCheckoutSessionId: session.id });
   } catch (err) {
     redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent(mensajeErrorConnect(err))}`);
   }
+
+  const { reserva, montoCobrar, expiraEn, session } = resultadoCobro;
 
   try {
     await prisma.reserva.update({

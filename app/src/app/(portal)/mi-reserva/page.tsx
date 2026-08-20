@@ -17,6 +17,11 @@ type ReservaDetalle = {
   fechaIngreso: string;
   fechaSalida: string;
   totalMxn: number;
+  estadoFinanciero: "SIN_PAGOS" | "PAGO_PARCIAL" | "PAGO_COMPLETO";
+  saldoPendienteMxn: number;
+  pagadoStripeNetoMxn: number;
+  pagosExternosMxn: number;
+  reembolsosExternosMxn: number;
   tipoDeHabitacion: { nombre: string };
   huesped: { nombre: string; email: string };
   origen: string;
@@ -264,6 +269,27 @@ export default function MiReservaPage() {
                   </div>
                 </div>
               )}
+
+              <div className="border-t border-gray-100 px-5 py-4 space-y-2 text-sm">
+                <div className="flex justify-between text-gray-600">
+                  <span>Pagado con Stripe (neto)</span>
+                  <span>${reserva.pagadoStripeNetoMxn.toLocaleString("es-MX")} MXN</span>
+                </div>
+                <div className="flex justify-between text-gray-600">
+                  <span>Pagos externos registrados</span>
+                  <span>${reserva.pagosExternosMxn.toLocaleString("es-MX")} MXN</span>
+                </div>
+                {reserva.reembolsosExternosMxn > 0 && (
+                  <div className="flex justify-between text-gray-500">
+                    <span>Reembolsos/ajustes externos</span>
+                    <span>−${reserva.reembolsosExternosMxn.toLocaleString("es-MX")} MXN</span>
+                  </div>
+                )}
+                <div className="flex justify-between border-t border-gray-100 pt-2 font-semibold text-gray-900">
+                  <span>Saldo pendiente</span>
+                  <span>${reserva.saldoPendienteMxn.toLocaleString("es-MX")} MXN</span>
+                </div>
+              </div>
             </div>
 
             {/* Acciones */}

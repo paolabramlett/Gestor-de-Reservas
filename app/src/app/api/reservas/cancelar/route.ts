@@ -3,6 +3,7 @@ import { rateLimit } from "@/lib/rateLimit";
 import { prisma } from "@/lib/prisma";
 import { reembolsarPagosOnline } from "@/lib/negocio/pagosOnline";
 import { enviarCancelacion } from "@/lib/emails";
+import { aCentavos, aMxn, calcularResumenFinanciero } from "@/lib/negocio/resumenFinanciero";
 
 const STRIPE_COMISION_PORCENTAJE = 0.036;
 const STRIPE_COMISION_FIJA = 3;
@@ -23,9 +24,13 @@ export async function POST(req: NextRequest) {
       where: { codigoGrupo: codigoNorm },
       include: {
         propiedad: true,
+        pagosOnline: true,
         reservas: {
           where: { estado: { notIn: ["CANCELADA", "NO_SHOW"] } },
-          include: { huesped: true },
+          include: {
+            huesped: true,
+            pagosExternos: { include: { ajustes: true } },
+          },
         },
       },
     });
@@ -52,21 +57,29 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // BUG 1: usar ?? para no caer al reduce cuando totalPagado es legítimamente 0
-    const totalPagado = Number(grupo.totalPagado);
-    const totalMxn = totalPagado > 0
-      ? totalPagado
-      : grupo.reservas.reduce((s, r) => s + Number(r.totalMxn), 0);
+    const totalMxn = grupo.reservas.reduce((s, r) => s + Number(r.totalMxn), 0);
     const comisionCalculada = Math.round((totalMxn * STRIPE_COMISION_PORCENTAJE + STRIPE_COMISION_FIJA) * 100) / 100;
     const comision = Math.min(totalMxn, comisionCalculada);
     const montoReembolso = Math.max(0, totalMxn - comision);
-    const pagosStripe = await prisma.pagoOnline.aggregate({
-      where: { grupoId: grupo.id, estado: { in: ["PAGADO", "REEMBOLSADO_PARCIAL"] } },
-      _sum: { montoMxn: true, montoReembolsadoMxn: true },
+    const pagosExternosGrupo = grupo.reservas.flatMap((reserva) => reserva.pagosExternos);
+    const resumenGrupo = calcularResumenFinanciero({
+      totalReservaCentavos: aCentavos(totalMxn),
+      pagosStripe: grupo.pagosOnline.map((pago) => ({
+        cobradoCentavos: aCentavos(Number(pago.montoMxn)),
+        reembolsadoCentavos: aCentavos(Number(pago.montoReembolsadoMxn)),
+        reembolsoPendienteCentavos: aCentavos(Number(pago.reembolsoPendienteMxn)),
+      })),
+      pagosExternos: pagosExternosGrupo.map((pago) => ({
+        cobradoCentavos: aCentavos(Number(pago.montoMxn)),
+        ajustesCentavos: pago.ajustes.reduce(
+          (suma, ajuste) => suma + aCentavos(Number(ajuste.montoMxn)),
+          0
+        ),
+      })),
     });
-    const netoStripe = Number(pagosStripe._sum.montoMxn ?? 0) - Number(pagosStripe._sum.montoReembolsadoMxn ?? 0);
+    const netoStripe = aMxn(resumenGrupo.stripeNetoCentavos);
     const montoReembolsoStripe = Math.max(0, Math.min(montoReembolso, netoStripe));
-    if (grupo.stripePaymentIntentId && totalPagado > 0 && netoStripe <= 0) {
+    if (grupo.stripePaymentIntentId && netoStripe <= 0) {
       return NextResponse.json(
         { error: "Este pago es anterior al ledger financiero y requiere conciliación antes de cancelar" },
         { status: 409 }
@@ -109,7 +122,19 @@ export async function POST(req: NextRequest) {
       });
     } catch { /* silently ignore email errors */ }
 
-    return NextResponse.json({ cancelada: true, montoReembolso: montoReembolsoStripe, comisionRetenida: comision });
+    return NextResponse.json({
+      cancelada: true,
+      montoReembolso: montoReembolsoStripe,
+      comisionRetenida: comision,
+      pagosExternosMxn: pagosExternosGrupo.reduce((suma, pago) => suma + Number(pago.montoMxn), 0),
+      reembolsosExternosMxn: pagosExternosGrupo.reduce(
+        (suma, pago) => suma + pago.ajustes.reduce(
+          (subtotal, ajuste) => subtotal + Number(ajuste.montoMxn),
+          0
+        ),
+        0
+      ),
+    });
   }
   // ── Fin cancelar grupo ──────────────────────────────────────────────────
 
@@ -121,6 +146,10 @@ export async function POST(req: NextRequest) {
     where: {
       codigoReserva: codigo,
       huesped: { email: email.toLowerCase() },
+    },
+    include: {
+      pagosOnline: true,
+      pagosExternos: { include: { ajustes: true } },
     },
   });
 
@@ -156,11 +185,33 @@ export async function POST(req: NextRequest) {
   const comisionCalculada = Math.round((total * STRIPE_COMISION_PORCENTAJE + STRIPE_COMISION_FIJA) * 100) / 100;
   const comision = Math.min(total, comisionCalculada);
   const montoReembolso = Math.max(0, total - comision);
-  const pagosStripe = await prisma.pagoOnline.aggregate({
-    where: { reservaId: reserva.id, estado: { in: ["PAGADO", "REEMBOLSADO_PARCIAL"] } },
-    _sum: { montoMxn: true, montoReembolsadoMxn: true },
+  const resumen = calcularResumenFinanciero({
+    totalReservaCentavos: aCentavos(total),
+    pagosStripe: reserva.pagosOnline.map((pago) => ({
+      cobradoCentavos: aCentavos(Number(pago.montoMxn)),
+      reembolsadoCentavos: aCentavos(Number(pago.montoReembolsadoMxn)),
+      reembolsoPendienteCentavos: aCentavos(Number(pago.reembolsoPendienteMxn)),
+    })),
+    pagosExternos: reserva.pagosExternos.map((pago) => ({
+      cobradoCentavos: aCentavos(Number(pago.montoMxn)),
+      ajustesCentavos: pago.ajustes.reduce(
+        (suma, ajuste) => suma + aCentavos(Number(ajuste.montoMxn)),
+        0
+      ),
+    })),
   });
-  const netoStripe = Number(pagosStripe._sum.montoMxn ?? 0) - Number(pagosStripe._sum.montoReembolsadoMxn ?? 0);
+  const netoStripe = aMxn(resumen.stripeNetoCentavos);
+  const pagosExternosMxn = reserva.pagosExternos.reduce(
+    (suma, pago) => suma + Number(pago.montoMxn),
+    0
+  );
+  const reembolsosExternosMxn = reserva.pagosExternos.reduce(
+    (suma, pago) => suma + pago.ajustes.reduce(
+      (subtotal, ajuste) => subtotal + Number(ajuste.montoMxn),
+      0
+    ),
+    0
+  );
   const montoReembolsoStripe = Math.max(0, Math.min(montoReembolso, netoStripe));
   if (reserva.stripePaymentIntentId && netoStripe <= 0) {
     return NextResponse.json(
@@ -212,5 +263,11 @@ export async function POST(req: NextRequest) {
     // El correo falla silenciosamente — la cancelación ya fue procesada
   }
 
-  return NextResponse.json({ cancelada: true, montoReembolso: montoReembolsoStripe, comisionRetenida: comision });
+  return NextResponse.json({
+    cancelada: true,
+    montoReembolso: montoReembolsoStripe,
+    comisionRetenida: comision,
+    pagosExternosMxn,
+    reembolsosExternosMxn,
+  });
 }

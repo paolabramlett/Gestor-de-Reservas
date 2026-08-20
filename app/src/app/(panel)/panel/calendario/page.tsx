@@ -2,6 +2,7 @@ import { getCurrentUsuario } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { CalendarioGrid } from "./CalendarioGrid";
+import { obtenerLedgerReserva } from "@/lib/negocio/pagosExternos.server";
 
 export default async function CalendarioPage({
   searchParams,
@@ -35,7 +36,6 @@ export default async function CalendarioPage({
       include: {
         huesped: true,
         asignacion: true,
-        pagoManual: true,
       },
     }),
     prisma.bloqueoDeHabitacion.findMany({
@@ -55,7 +55,15 @@ export default async function CalendarioPage({
     tipoNombre: h.tipoDeHabitacion.nombre,
   }));
 
-  const reservasData = reservas.map((r) => ({
+  const actorLedger = {
+    usuarioPropiedadId: usuario.id,
+    propiedadId: usuario.propiedadId,
+    rol: usuario.rol,
+  };
+  const ledgers = await Promise.all(
+    reservas.map((reserva) => obtenerLedgerReserva(actorLedger, reserva.id))
+  );
+  const reservasData = reservas.map((r, indice) => ({
     id: r.id,
     codigoReserva: r.codigoReserva,
     fechaIngreso: r.fechaIngreso.toISOString().slice(0, 10),
@@ -73,12 +81,9 @@ export default async function CalendarioPage({
       telefono: r.huesped.telefono,
     },
     asignacion: r.asignacion ? { habitacionId: r.asignacion.habitacionId } : null,
-    pagoManual: r.pagoManual
-      ? {
-          estadoDePago: r.pagoManual.estadoDePago as string,
-          montoAnticipo: r.pagoManual.montoAnticipo ? Number(r.pagoManual.montoAnticipo) : null,
-        }
-      : null,
+    estadoFinanciero: ledgers[indice].resumen.estado,
+    pagadoNetoMxn: ledgers[indice].resumen.pagadoNetoCentavos / 100,
+    saldoPendienteMxn: ledgers[indice].resumen.saldoPendienteCentavos / 100,
   }));
 
   const bloqueosData = bloqueos.map((b) => ({
