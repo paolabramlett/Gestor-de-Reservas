@@ -8,9 +8,9 @@ import { redirect } from "next/navigation";
 import { calcularPrecioNoche, calcularTotalReserva } from "@/lib/negocio/tarifas";
 import { verificarDisponibilidadAtómica, verificarHabitacionLibre, calcularDisponibilidad } from "@/lib/negocio/disponibilidad";
 import { stripe } from "@/lib/stripe";
-import { enviarSolicitudPago, enviarConfirmacion } from "@/lib/emails";
+import { enviarSolicitudPago } from "@/lib/emails";
 import { crearClaveIdempotenciaDirectCharge, crearDirectCharge, mensajeErrorConnect } from "@/lib/stripeConnect";
-import { rutaReservaDespuesDeGuardarNotas, validarPagoManual } from "@/lib/negocio/reglasReserva";
+import { rutaReservaDespuesDeGuardarNotas } from "@/lib/negocio/reglasReserva";
 import { validarCuentaConnectParaCobroDirecto } from "@/lib/stripeConnectAccount.server";
 import { asociarIntentoPagoStripe, registrarIntentoPago } from "@/lib/negocio/intentosPago";
 import { calcularResumenPagoReserva } from "@/lib/negocio/pagosOnline";
@@ -170,82 +170,6 @@ export async function asignarHabitacionAction(formData: FormData) {
   }
 
   redirect(`/panel/reservas/${reservaId}?success=${encodeURIComponent("Habitación asignada")}`);
-}
-
-export async function actualizarPagoYNotasAction(formData: FormData) {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
-
-  const reservaId = formData.get("reservaId") as string;
-  const estadoDePago = formData.get("estadoDePago") as EstadoDePago;
-  const notas = (formData.get("notas") as string) || undefined;
-  const montoAnticipoRaw = formData.get("montoAnticipo") as string;
-  const montoAnticipoSolicitado =
-    estadoDePago === EstadoDePago.ANTICIPO_PAGADO && montoAnticipoRaw
-      ? Number(montoAnticipoRaw)
-      : null;
-
-  const reserva = await prisma.reserva.findFirst({
-    where: { id: reservaId, propiedadId: usuario.propiedadId },
-    include: {
-      pagoManual: true,
-      pagosOnline: {
-        select: {
-          estado: true,
-          montoMxn: true,
-          montoReembolsadoMxn: true,
-          reembolsoPendienteMxn: true,
-        },
-      },
-      huesped: true,
-      tipoDeHabitacion: true,
-      propiedad: true,
-    },
-  });
-  if (!reserva) throw new Error("Reserva no encontrada");
-
-  if (![EstadoDePago.PENDIENTE, EstadoDePago.ANTICIPO_PAGADO, EstadoDePago.PAGADO_COMPLETO].includes(estadoDePago)) {
-    throw new Error("Estado de pago inválido");
-  }
-  const resumenStripe = calcularResumenPagoReserva({
-    totalMxn: Number(reserva.totalMxn),
-    pagoManual: null,
-    pagosOnline: reserva.pagosOnline,
-  });
-  const saldoSinPagoManual = resumenStripe.saldoPendienteMxn;
-  const montoAnticipo = estadoDePago === EstadoDePago.PAGADO_COMPLETO
-    ? saldoSinPagoManual
-    : montoAnticipoSolicitado;
-  validarPagoManual(saldoSinPagoManual, estadoDePago, montoAnticipo);
-
-  const estadoAnterior = reserva.pagoManual?.estadoDePago ?? EstadoDePago.PENDIENTE;
-
-  await prisma.pagoManual.upsert({
-    where: { reservaId },
-    update: { estadoDePago, notas, montoAnticipo },
-    create: { reservaId, estadoDePago, notas, montoAnticipo },
-  });
-
-  // El huésped no recibió confirmación al crear la reserva como "Pendiente"
-  // (ver crearReservaManual) — si ahora se marca como pagada, es el momento
-  // de mandarla. Solo en esa transición, para no reenviar en cada edición.
-  const pasaAPagada = estadoDePago === EstadoDePago.ANTICIPO_PAGADO || estadoDePago === EstadoDePago.PAGADO_COMPLETO;
-  if (estadoAnterior === EstadoDePago.PENDIENTE && pasaAPagada) {
-    await enviarConfirmacion({
-      emailHuesped: reserva.huesped.email,
-      codigoReserva: reserva.codigoReserva,
-      nombreHuesped: reserva.huesped.nombre,
-      nombreHotel: reserva.propiedad.nombre,
-      tipoHabitacion: reserva.tipoDeHabitacion.nombre,
-      fechaIngreso: reserva.fechaIngreso,
-      fechaSalida: reserva.fechaSalida,
-      numPersonas: reserva.numPersonas,
-      totalMxn: Number(reserva.totalMxn),
-      colorPrimario: reserva.propiedad.colorPrimario ?? undefined,
-    }).catch(() => {});
-  }
-
-  redirect(`/panel/reservas/${reservaId}`);
 }
 
 export async function actualizarNotasReservaAction(formData: FormData) {

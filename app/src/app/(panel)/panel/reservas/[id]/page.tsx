@@ -4,7 +4,6 @@ import { prisma } from "@/lib/prisma";
 import {
   asignarHabitacionAction,
   actualizarNotasReservaAction,
-  actualizarPagoYNotasAction,
   actualizarDatosReservaAction,
   solicitarPagoAction,
 } from "../actions";
@@ -18,8 +17,9 @@ import {
 import { PropuestaCambioPanel } from "../PropuestaCambioPanel";
 import { BotonesEstadoReserva, CancelarDialogClient } from "../BotonesEstadoReserva";
 import { SolicitarPagoButton } from "../SolicitarPagoButton";
-import { PagoForm } from "./PagoForm";
-import { calcularResumenPagoReserva } from "@/lib/negocio/pagosOnline";
+import { PagoLedger, type PagoLedgerInput } from "./PagoLedger";
+import { obtenerLedgerReserva } from "@/lib/negocio/pagosExternos.server";
+import { clerkClient } from "@clerk/nextjs/server";
 import Link from "next/link";
 
 const ESTADO_LABEL: Record<string, string> = {
@@ -60,20 +60,12 @@ export default async function ReservaDetallePage({
       tipoDeHabitacion: true,
       asignacion: { include: { habitacion: true } },
       pagoManual: true,
-      pagosOnline: {
-        select: {
-          estado: true,
-          montoMxn: true,
-          montoReembolsadoMxn: true,
-          reembolsoPendienteMxn: true,
-        },
-      },
       grupo: true,
     },
   });
   if (!reserva) notFound();
 
-  const [habitacionesDelTipo, tiposDeHabitacion, solicitudPendiente, ultimaSolicitudResuelta] = await Promise.all([
+  const [habitacionesDelTipo, tiposDeHabitacion, solicitudPendiente, ultimaSolicitudResuelta, ledger] = await Promise.all([
     prisma.habitacion.findMany({
       where: {
         propiedadId: usuario.propiedadId,
@@ -94,23 +86,74 @@ export default async function ReservaDetallePage({
       where: { reservaId: id, estado: { in: ["RECHAZADA", "CANCELADA", "EXPIRADA"] } },
       orderBy: { creadoEn: "desc" },
     }),
+    obtenerLedgerReserva({
+      usuarioPropiedadId: usuario.id,
+      propiedadId: usuario.propiedadId,
+      rol: usuario.rol,
+    }, id),
   ]);
+
+  const idsAutores = [...new Set(ledger.pagosExternos.flatMap((pago) => [
+    pago.creadoPorUsuarioId,
+    ...pago.ajustes.map((ajuste) => ajuste.creadoPorUsuarioId),
+  ]).filter((actorId): actorId is string => Boolean(actorId)))];
+  const membresiasAutores = idsAutores.length > 0
+    ? await prisma.usuarioPropiedad.findMany({
+        where: { propiedadId: usuario.propiedadId, id: { in: idsAutores } },
+        select: { id: true, clerkUserId: true },
+      })
+    : [];
+  const clerk = membresiasAutores.length > 0 ? await clerkClient() : null;
+  const nombresAutores = new Map(await Promise.all(membresiasAutores.map(async (membresia) => {
+    try {
+      const actor = await clerk!.users.getUser(membresia.clerkUserId);
+      const nombre = [actor.firstName, actor.lastName].filter(Boolean).join(" ")
+        || actor.primaryEmailAddress?.emailAddress
+        || "Usuario";
+      return [membresia.id, nombre] as const;
+    } catch {
+      return [membresia.id, "Usuario"] as const;
+    }
+  })));
 
   const esPagoManual = reserva.origen === "MANUAL";
   const esOnline = reserva.origen === "ONLINE";
   const estado = reserva.estado;
 
   const esEditable = estado === "CONFIRMADA" || estado === "EN_CURSO";
-  const resumenPago = calcularResumenPagoReserva({
-    totalMxn: Number(reserva.totalMxn),
-    pagoManual: reserva.pagoManual,
-    pagosOnline: reserva.pagosOnline,
-  });
-  const saldoPendiente = resumenPago.saldoPendienteMxn > 0.005
-    ? resumenPago.saldoPendienteMxn
+  const saldoPendiente = ledger.resumen.saldoPendienteCentavos > 0
+    ? ledger.resumen.saldoPendienteCentavos / 100
     : null;
-  // BUG 7: la sección de pago también se muestra en PENDIENTE_PAGO para poder reenviar el link
-  const esPagoNotasVisible = esPagoManual && (esEditable || estado === "PENDIENTE_PAGO");
+  const ledgerInput: PagoLedgerInput = {
+    reservaId: reserva.id,
+    rol: usuario.rol,
+    totalReservaCentavos: ledger.resumen.totalReservaCentavos,
+    pagadoNetoCentavos: ledger.resumen.pagadoNetoCentavos,
+    saldoPendienteCentavos: ledger.resumen.saldoPendienteCentavos,
+    estado: ledger.resumen.estado,
+    pagosStripe: ledger.pagosStripe.map((pago) => ({
+      ...pago,
+      creadoEn: pago.creadoEn.toISOString(),
+    })),
+    pagosExternos: ledger.pagosExternos.map((pago) => ({
+      id: pago.id,
+      montoCentavos: pago.montoCentavos,
+      metodo: pago.metodo,
+      fechaPago: pago.fechaPago.toISOString(),
+      nota: pago.nota,
+      autor: pago.creadoPorUsuarioId ? nombresAutores.get(pago.creadoPorUsuarioId) ?? "Usuario" : "Usuario eliminado",
+      estadoComprobante: pago.estadoComprobante,
+      reemplazaPagoExternoId: pago.reemplazaPagoExternoId,
+      ajustes: pago.ajustes.map((ajuste) => ({
+        id: ajuste.id,
+        tipo: ajuste.tipo,
+        montoCentavos: ajuste.montoCentavos,
+        motivo: ajuste.motivo,
+        autor: ajuste.creadoPorUsuarioId ? nombresAutores.get(ajuste.creadoPorUsuarioId) ?? "Usuario" : "Usuario eliminado",
+        creadoEn: ajuste.creadoEn.toISOString(),
+      })),
+    })),
+  };
 
   return (
     <div className="p-8 max-w-3xl">
@@ -522,122 +565,40 @@ export default async function ReservaDetallePage({
         )}
       </div>
 
-      {/* Pago y notas — reservas manuales editables o esperando pago */}
-      {esPagoNotasVisible && (
-        <div className="bg-white rounded-lg border border-gray-200 p-5 mb-6">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-gray-700">Pago y notas</h2>
-            {saldoPendiente !== null && usuario.propiedad.planActivo === "PRO" && usuario.propiedad.stripeConnectHabilitado && reserva.tipoEspecial !== "CORTESIA" && (
-              <SolicitarPagoButton
-                reservaId={reserva.id}
-                totalMxn={saldoPendiente}
-                emailHuesped={reserva.huesped.email}
-                yaTieneLinkActivo={
-                  reserva.estado === "PENDIENTE_PAGO" &&
-                  !!reserva.linkExpiraEn &&
-                  new Date(reserva.linkExpiraEn) > new Date()
-                }
-                solicitarPagoAction={solicitarPagoAction}
-              />
-            )}
-          </div>
-
-          {saldoPendiente !== null && usuario.propiedad.planActivo === "PRO" && !usuario.propiedad.stripeConnectHabilitado && (
-            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
-              Conecta tu cuenta de Stripe en Configuración → Pagos para poder solicitar pagos con tarjeta.
-            </p>
-          )}
-
-          {!resumenPago.pagoCompleto && resumenPago.montoPagadoMxn > 0 && (
-            <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 mb-4 text-sm">
-              <div className="flex justify-between gap-3 text-blue-700">
-                <span>Pagado ({resumenPago.metodo})</span>
-                <span>${resumenPago.montoPagadoMxn.toLocaleString("es-MX")} MXN</span>
-              </div>
-              <div className="flex justify-between gap-3 font-semibold text-blue-900 mt-1">
-                <span>Saldo pendiente</span>
-                <span>${resumenPago.saldoPendienteMxn.toLocaleString("es-MX")} MXN</span>
-              </div>
-            </div>
-          )}
-
-          {resumenPago.pagoCompleto ? (
-            <div className="space-y-4">
-              <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm font-semibold text-green-800">Pago completo</span>
-                  <span className="text-sm font-semibold text-green-800">
-                    ${resumenPago.montoPagadoMxn.toLocaleString("es-MX")} MXN
-                  </span>
-                </div>
-                <dl className="mt-2 space-y-1 text-sm">
-                  <div className="flex justify-between gap-3 text-green-700">
-                    <dt>Método</dt>
-                    <dd>{resumenPago.metodo}</dd>
-                  </div>
-                  <div className="flex justify-between gap-3 text-green-700">
-                    <dt>Saldo pendiente</dt>
-                    <dd>$0 MXN</dd>
-                  </div>
-                </dl>
-              </div>
-
-              <form action={actualizarNotasReservaAction} className="space-y-3">
-                <input type="hidden" name="reservaId" value={reserva.id} />
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Notas internas</label>
-                  <textarea
-                    name="notas"
-                    rows={3}
-                    defaultValue={reserva.pagoManual?.notas ?? ""}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                  />
-                </div>
-                <button type="submit" className="rounded-lg bg-gray-900 text-white px-4 py-2 text-sm font-medium hover:bg-gray-700">
-                  Guardar notas
-                </button>
-              </form>
-            </div>
-          ) : estado === "PENDIENTE_PAGO" ? (
-            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-              El formulario de pago está bloqueado mientras el huésped tiene un link activo. Usa el botón de arriba para reenviar o espera a que complete el pago.
-            </p>
-          ) : (
-            <PagoForm
+      <PagoLedger
+        input={ledgerInput}
+        accionesCabecera={
+          usuario.rol !== "FINANZAS" && esPagoManual && saldoPendiente !== null && usuario.propiedad.planActivo === "PRO" && usuario.propiedad.stripeConnectHabilitado && reserva.tipoEspecial !== "CORTESIA" ? (
+            <SolicitarPagoButton
               reservaId={reserva.id}
-              totalMxn={Number(reserva.totalMxn)}
-              otrosPagosMxn={resumenPago.montoStripeMxn}
-              estadoDePagoInicial={reserva.pagoManual?.estadoDePago ?? "PENDIENTE"}
-              montoAnticipoInicial={reserva.pagoManual?.montoAnticipo ? Number(reserva.pagoManual.montoAnticipo) : 0}
-              notasIniciales={reserva.pagoManual?.notas ?? ""}
-              actualizarPagoYNotasAction={actualizarPagoYNotasAction}
+              totalMxn={saldoPendiente}
+              emailHuesped={reserva.huesped.email}
+              yaTieneLinkActivo={
+                reserva.estado === "PENDIENTE_PAGO" &&
+                !!reserva.linkExpiraEn &&
+                new Date(reserva.linkExpiraEn) > new Date()
+              }
+              solicitarPagoAction={solicitarPagoAction}
             />
-          )}
-        </div>
+          ) : null
+        }
+      />
+
+      {usuario.rol !== "FINANZAS" && esPagoManual && saldoPendiente !== null && usuario.propiedad.planActivo === "PRO" && !usuario.propiedad.stripeConnectHabilitado && (
+        <p className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-600">
+          Conecta tu cuenta de Stripe en Configuración → Pagos para poder solicitar pagos con tarjeta.
+        </p>
       )}
 
-      {/* Info de pago en estados terminales */}
-      {esPagoManual && !esPagoNotasVisible && (
-        <div className="bg-white rounded-lg border border-gray-200 p-5 mb-6">
-          <h2 className="text-sm font-semibold text-gray-700 mb-3">Pago</h2>
-          <div className="space-y-1 text-sm">
-            <div className="flex justify-between text-gray-600">
-              <span>Pagado</span>
-              <span>${resumenPago.montoPagadoMxn.toLocaleString("es-MX")} MXN</span>
-            </div>
-            <div className="flex justify-between text-gray-600">
-              <span>Método</span>
-              <span>{resumenPago.metodo}</span>
-            </div>
-            <div className="flex justify-between font-medium text-gray-800">
-              <span>Saldo pendiente</span>
-              <span>${resumenPago.saldoPendienteMxn.toLocaleString("es-MX")} MXN</span>
-            </div>
+      {esPagoManual && (
+        <form action={actualizarNotasReservaAction} className="mb-6 space-y-3 rounded-lg border border-gray-200 bg-white p-5">
+          <input type="hidden" name="reservaId" value={reserva.id} />
+          <div>
+            <label className="mb-1 block text-xs text-gray-500">Notas internas de la reserva</label>
+            <textarea name="notas" rows={3} defaultValue={reserva.pagoManual?.notas ?? ""} maxLength={2000} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
           </div>
-          {reserva.pagoManual?.notas && (
-            <p className="text-sm text-gray-500 mt-2">{reserva.pagoManual.notas}</p>
-          )}
-        </div>
+          <button type="submit" className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">Guardar notas</button>
+        </form>
       )}
     </div>
   );
