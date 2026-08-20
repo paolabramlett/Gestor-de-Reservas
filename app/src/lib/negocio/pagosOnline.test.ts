@@ -67,6 +67,26 @@ describe("calcularResumenPagoReserva", () => {
     });
   });
 
+  it("reabre el saldo exacto cuando un pago externo precede a un reembolso parcial de Stripe", () => {
+    expect(calcularResumenPagoReserva({
+      totalMxn: 6_000,
+      pagoManual: { estadoDePago: "ANTICIPO_PAGADO", montoAnticipo: 2_000 },
+      pagosOnline: [{
+        estado: "REEMBOLSADO_PARCIAL",
+        montoMxn: 3_000,
+        montoReembolsadoMxn: 1_000,
+        reembolsoPendienteMxn: 0,
+      }],
+    })).toEqual({
+      montoPagadoMxn: 4_000,
+      montoStripeMxn: 2_000,
+      montoExternoMxn: 2_000,
+      saldoPendienteMxn: 2_000,
+      pagoCompleto: false,
+      metodo: "Stripe + pago externo",
+    });
+  });
+
   it("mantiene la compatibilidad de un pago externo completo sin anticipo registrado", () => {
     expect(calcularResumenPagoReserva({
       totalMxn: 1_250,

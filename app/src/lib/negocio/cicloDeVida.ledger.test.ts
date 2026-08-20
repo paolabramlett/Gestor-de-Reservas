@@ -62,6 +62,27 @@ describe("ciclo de vida con ledger financiero", () => {
     await expect(checkIn("res_1", "prop_1")).rejects.toThrow("$1,000");
   });
 
+  it("check-in usa el neto corregido y muestra el saldo pendiente exacto", async () => {
+    findFirst.mockResolvedValue({
+      ...reservaConLedger(),
+      pagosExternos: [
+        {
+          id: "pe_original",
+          montoMxn: 2_000,
+          ajustes: [{ tipo: "ANULACION", montoMxn: 2_000 }],
+        },
+        {
+          id: "pe_reemplazo",
+          montoMxn: 1_500,
+          ajustes: [],
+        },
+      ],
+    });
+
+    await expect(checkIn("res_1", "prop_1")).rejects.toThrow("$1,500");
+    expect(update).not.toHaveBeenCalled();
+  });
+
   it("una reserva con movimientos externos no se puede eliminar aunque su neto sea cero", () => {
     expect(tieneEliminacionSegura({
       tienePagosStripe: false,

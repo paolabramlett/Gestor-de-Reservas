@@ -17,8 +17,30 @@ vi.mock("@/lib/emails", () => ({
   enviarPagoFallido: vi.fn().mockResolvedValue(undefined),
 }));
 
-const describeE2E = process.env.RUN_STRIPE_E2E === "1" ? describe : describe.skip;
-const databaseUrl = process.env.DATABASE_URL ?? "";
+function normalizarDestinoPostgres(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "postgres:" && parsed.protocol !== "postgresql:") return null;
+    const host = parsed.hostname.toLowerCase().replace(/\.$/, "");
+    const puerto = parsed.port || "5432";
+    const base = decodeURIComponent(parsed.pathname.replace(/^\//, ""));
+    if (!host || !base || base.includes("/")) return null;
+    return `postgresql://${host}:${puerto}/${base}`;
+  } catch {
+    return null;
+  }
+}
+
+const databaseUrl = process.env.DATABASE_URL_E2E ?? "";
+const destinoE2E = normalizarDestinoPostgres(databaseUrl);
+const destinoCompartido = normalizarDestinoPostgres(process.env.DATABASE_URL ?? "");
+const gateE2E = !!destinoE2E &&
+  process.env.PAGOS_EXTERNOS_E2E_ISOLATED === "true" &&
+  process.env.PAGOS_EXTERNOS_E2E_SENTINEL === destinoE2E &&
+  destinoCompartido !== destinoE2E;
+const describeE2E = process.env.RUN_STRIPE_E2E === "1" && gateE2E
+  ? describe
+  : describe.skip;
 const stripeKey = process.env.STRIPE_SECRET_KEY ?? "";
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET_CONNECT ?? "";
 
@@ -31,7 +53,16 @@ describeE2E("webhook Stripe con PostgreSQL aislado y Stripe Test", () => {
 
   beforeAll(async () => {
     if (!stripeKey.startsWith("sk_test_")) throw new Error("E2E_REQUIERE_STRIPE_TEST");
-    if (!databaseUrl.includes("127.0.0.1:55432")) throw new Error("E2E_REQUIERE_POSTGRES_LOCAL");
+    const destinoActual = normalizarDestinoPostgres(process.env.DATABASE_URL_E2E ?? "");
+    if (
+      !destinoE2E ||
+      destinoActual !== destinoE2E ||
+      process.env.PAGOS_EXTERNOS_E2E_ISOLATED !== "true" ||
+      process.env.PAGOS_EXTERNOS_E2E_SENTINEL !== destinoE2E ||
+      normalizarDestinoPostgres(process.env.DATABASE_URL ?? "") === destinoE2E
+    ) {
+      throw new Error("E2E_REQUIERE_POSTGRES_AISLADO_CONFIRMADO");
+    }
     if (!webhookSecret.startsWith("whsec_")) throw new Error("E2E_REQUIERE_WEBHOOK_SECRET");
     prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
     stripe = new Stripe(stripeKey, { apiVersion: "2026-06-24.dahlia" });
@@ -247,8 +278,8 @@ describeE2E("webhook Stripe con PostgreSQL aislado y Stripe Test", () => {
     expect(cuenta.capabilities?.card_payments).toBe("active");
   }, 30_000);
 
-  it("confirma una Reserva manual al recibir el Checkout pagado con PrismaPg", async () => {
-    const tipo = await crearTipoConInventario(210);
+  it("registra Stripe 3000 como pago parcial de una Reserva manual de 6000", async () => {
+    const tipo = await crearTipoConInventario(6_000);
     const huesped = await prisma.huesped.create({
       data: {
         propiedadId,
@@ -268,14 +299,14 @@ describeE2E("webhook Stripe con PostgreSQL aislado y Stripe Test", () => {
         fechaSalida: new Date("2031-04-11T00:00:00.000Z"),
         numPersonas: 2,
         nombreHuesped: huesped.nombre,
-        totalMxn: 210,
+        totalMxn: 6_000,
         desglosePorNoche: [],
       },
     });
     const intentoId = crypto.randomUUID();
     const sessionId = `cs_test_manual_e2e_${Date.now()}`;
     const intent = await stripe.paymentIntents.create({
-      amount: 21_000,
+      amount: 300_000,
       currency: "mxn",
       payment_method: "pm_card_visa",
       confirm: true,
@@ -287,7 +318,7 @@ describeE2E("webhook Stripe con PostgreSQL aislado y Stripe Test", () => {
         propiedadId,
         stripeConnectAccountId: cuentaConnect,
         tipo: "MANUAL_PAGO",
-        montoCentavos: 21_000,
+        montoCentavos: 300_000,
         moneda: "mxn",
         datosReserva: { reservaId: reserva.id },
         stripePaymentIntentId: intent.id,
@@ -298,7 +329,7 @@ describeE2E("webhook Stripe con PostgreSQL aislado y Stripe Test", () => {
     const response = await enviarWebhookCheckout({
       id: sessionId,
       object: "checkout.session",
-      amount_total: 21_000,
+      amount_total: 300_000,
       currency: "mxn",
       payment_intent: intent.id,
       payment_status: "paid",
@@ -307,7 +338,7 @@ describeE2E("webhook Stripe con PostgreSQL aislado y Stripe Test", () => {
         propiedadId,
         reservaId: reserva.id,
         roomlyIntentoId: intentoId,
-        montoEsperadoCentavos: "21000",
+        montoEsperadoCentavos: "300000",
       },
     } as unknown as Stripe.Checkout.Session, `evt_e2e_manual_${Date.now()}`);
 
@@ -319,10 +350,10 @@ describeE2E("webhook Stripe con PostgreSQL aislado y Stripe Test", () => {
     expect(await prisma.pagoOnline.count({ where: { stripePaymentIntentId: intent.id } })).toBe(1);
     expect(emailMocks.enviarComprobantePago).toHaveBeenCalledWith(expect.objectContaining({
       codigoReserva: reserva.codigoReserva,
-      montoRecibidoCentavos: 21_000,
-      totalPagadoCentavos: 21_000,
-      totalReservaCentavos: 21_000,
-      saldoPendienteCentavos: 0,
+      montoRecibidoCentavos: 300_000,
+      totalPagadoCentavos: 300_000,
+      totalReservaCentavos: 600_000,
+      saldoPendienteCentavos: 300_000,
     }));
   }, 45_000);
 });

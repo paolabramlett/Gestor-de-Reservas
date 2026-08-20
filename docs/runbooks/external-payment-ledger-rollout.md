@@ -61,3 +61,40 @@ PAGOS_EXTERNOS_LEDGER_ENABLED=true
 ```
 
 Tras habilitarlo, monitorea diferencias de saldo, conflictos de idempotencia y fallos de comprobantes. Si aparece una diferencia no explicada, deshabilita nuevamente el feature, conserva los reportes y detén nuevas escrituras. No borres movimientos para revertir: usa los mecanismos de ajuste del ledger y restaura el respaldo únicamente mediante el procedimiento operativo aprobado.
+
+## 6. Aceptación en sandbox y evidencia
+
+La aceptación automatizada usa exclusivamente una base PostgreSQL desechable. El test queda omitido si falta cualquiera de estos tres valores o si el sentinel normalizado no coincide exactamente con el destino E2E. También se omite si `DATABASE_URL` apunta a la misma instancia normalizada.
+
+```bash
+cd app
+export DATABASE_URL_E2E='postgresql://usuario:clave@host-e2e:5432/roomly_e2e'
+export PAGOS_EXTERNOS_E2E_ISOLATED=true
+export PAGOS_EXTERNOS_E2E_SENTINEL='postgresql://host-e2e:5432/roomly_e2e'
+npm test -- src/app/api/webhooks/stripe/external-ledger.e2e.test.ts
+```
+
+El sentinel no incluye credenciales, parámetros ni schema: debe ser exactamente `postgresql://host:puerto/base`. Antes de ejecutar, confirma que la base sea desechable, tenga el esquema de prueba actualizado y no comparta destino con `DATABASE_URL`. Este test simula Stripe Test y el proveedor de correo; no usa Stripe Live ni envía mensajes reales.
+
+Ejecuta además las regresiones focalizadas:
+
+```bash
+cd app
+npm test -- \
+  src/lib/negocio/pagosOnline.test.ts \
+  src/lib/negocio/cicloDeVida.ledger.test.ts \
+  src/app/api/webhooks/stripe/route.test.ts
+```
+
+Registra evidencia sin secretos ni datos personales. No marques un escenario como aprobado hasta observar su resultado en el sandbox:
+
+- [ ] Stripe $3,000 sobre una reserva de $6,000 deja `PAGO_PARCIAL` y el comprobante muestra recibido $3,000, acumulado $3,000, total $6,000 y pendiente $3,000.
+- [ ] Una transferencia externa de $2,000 deja acumulado $5,000 y pendiente $1,000.
+- [ ] Repetir el mismo envío externo conserva una sola fila para la clave de idempotencia.
+- [ ] La carrera Stripe/externo por el último $1,000 tiene un solo ganador; el perdedor obtiene el conflicto previsto o un reembolso íntegro, y el neto nunca supera $6,000.
+- [ ] Corregir la transferencia de $2,000 a $1,500 conserva el original anulado, muestra el reemplazo y recalcula $500 pendientes.
+- [ ] Un reembolso externo seguido de un reembolso Stripe reabre exactamente el saldo esperado.
+- [ ] `FINANZAS` no puede mutar el ledger y no deja pagos ni ajustes nuevos.
+- [ ] Un fallo del comprobante conserva el pago en `FALLIDO`; el reenvío modifica únicamente el estado y metadatos del comprobante.
+
+Para la aceptación manual, registra fecha, reserva de sandbox, PaymentIntent de Stripe Test, asunto del correo, saldos observados y ajuste generado. Estado de evidencia al publicar este runbook: **pendiente de ejecución contra sandbox aislado**; una omisión segura del test no cuenta como aprobación E2E.
