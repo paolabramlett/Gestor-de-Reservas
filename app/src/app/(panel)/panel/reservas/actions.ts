@@ -130,8 +130,7 @@ export async function crearReservaConPagoAction(formData: FormData) {
 }
 
 export async function asignarHabitacionAction(formData: FormData) {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireGestionReservas();
 
   const reservaId = formData.get("reservaId") as string;
   const habitacionId = formData.get("habitacionId") as string;
@@ -171,8 +170,7 @@ export async function asignarHabitacionAction(formData: FormData) {
 }
 
 export async function actualizarNotasReservaAction(formData: FormData) {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireGestionReservas();
 
   const reservaId = formData.get("reservaId") as string;
   const notasRaw = formData.get("notas");
@@ -193,8 +191,7 @@ export async function actualizarNotasReservaAction(formData: FormData) {
 }
 
 export async function actualizarDatosReservaAction(formData: FormData) {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireGestionReservas();
 
   const reservaId = formData.get("reservaId") as string;
   const tipoDeHabitacionId = formData.get("tipoDeHabitacionId") as string;
@@ -306,8 +303,7 @@ export async function actualizarDatosReservaAction(formData: FormData) {
 }
 
 export async function actualizarEstadoReservaAction(formData: FormData) {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireGestionReservas();
 
   const reservaId = formData.get("reservaId") as string;
   const estado = formData.get("estado") as EstadoReserva;
@@ -332,8 +328,7 @@ export async function actualizarEstadoReservaAction(formData: FormData) {
 }
 
 export async function solicitarPagoAction(reservaId: string) {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireGestionReservas();
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ??
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
@@ -534,8 +529,7 @@ export async function cotizarHabitacionesPreviewAction(
   | { ok: true; habitaciones: Array<{ id: string; total: number; noches: number; desglose: Array<{ fecha: string; subtotal: number; fuente: string; temporada?: string }> }> }
   | { ok: false; error: string }
 > {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) return { ok: false, error: "No autenticado" };
+  const usuario = await requireGestionReservas();
   if (habitaciones.length === 0 || habitaciones.length > 20) {
     return { ok: false, error: "Cantidad de habitaciones inválida" };
   }
