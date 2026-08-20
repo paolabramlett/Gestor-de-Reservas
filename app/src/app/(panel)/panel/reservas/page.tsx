@@ -8,6 +8,8 @@ import { tieneEliminacionSegura } from "@/lib/negocio/cicloDeVida";
 import { cancelarReservasEnLoteAction, eliminarReservasEnLoteAction } from "./cicloDeVidaActions";
 import { ReservasTableClient, type ReservaFila } from "./ReservasTableClient";
 import { EstadoReserva, Prisma } from "@prisma/client";
+import { obtenerLedgerReserva } from "@/lib/negocio/pagosExternos.server";
+import { aCentavos } from "@/lib/negocio/resumenFinanciero";
 
 export default async function ReservasPage({
   searchParams,
@@ -61,14 +63,22 @@ export default async function ReservasPage({
       huesped: true,
       tipoDeHabitacion: true,
       asignacion: { include: { habitacion: true } },
-      pagoManual: true,
       grupo: { select: { codigoGrupo: true, totalPagado: true } },
     },
     orderBy: { fechaIngreso: "asc" },
     take: 200,
   });
 
-  const filas: ReservaFila[] = reservas.map((r) => ({
+  const actorLedger = {
+    usuarioPropiedadId: usuario.id,
+    propiedadId: usuario.propiedadId,
+    rol: usuario.rol,
+  };
+  const ledgers = await Promise.all(
+    reservas.map((reserva) => obtenerLedgerReserva(actorLedger, reserva.id))
+  );
+
+  const filas: ReservaFila[] = reservas.map((r, indice) => ({
     id: r.id,
     codigoReserva: r.codigoReserva,
     origenOnline: r.origen === "ONLINE",
@@ -81,11 +91,11 @@ export default async function ReservasPage({
     fechaSalida: r.fechaSalida.toISOString(),
     totalMxn: Number(r.totalMxn),
     estado: r.estado,
-    pagoLabel: r.pagoManual ? r.pagoManual.estadoDePago.replace("_", " ") : "Stripe",
+    pagoLabel: ledgers[indice].resumen.estado.replaceAll("_", " "),
     puedeEliminar: tieneEliminacionSegura({
-      stripePaymentIntentId: r.stripePaymentIntentId,
-      pagoManual: r.pagoManual,
-      grupo: r.grupo,
+      tienePagosStripe: ledgers[indice].pagosStripe.length > 0,
+      tienePagosExternos: ledgers[indice].pagosExternos.length > 0,
+      grupoPagadoCentavos: r.grupo ? aCentavos(Number(r.grupo.totalPagado)) : 0,
     }),
   }));
 

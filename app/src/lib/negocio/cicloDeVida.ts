@@ -9,20 +9,13 @@ import { aCentavos, aMxn, calcularResumenFinanciero } from "./resumenFinanciero"
 // Si pertenece a un grupo, el grupo tampoco debe tener nada pagado — de lo
 // contrario se debe usar "Cancelar" para conservar el historial de pago.
 export function tieneEliminacionSegura(reserva: {
-  tienePagosStripe?: boolean;
-  tienePagosExternos?: boolean;
-  grupoPagadoCentavos?: number;
-  // Compatibilidad conservadora para call sites de lectura antiguos: la
-  // mutación real vuelve a cargar el ledger antes de borrar.
-  stripePaymentIntentId?: string | null;
-  pagoManual?: unknown;
-  grupo?: { totalPagado: unknown } | null;
+  tienePagosStripe: boolean;
+  tienePagosExternos: boolean;
+  grupoPagadoCentavos: number;
 }): boolean {
-  const tienePagosStripe = reserva.tienePagosStripe ?? Boolean(reserva.stripePaymentIntentId);
-  const tienePagosExternos = reserva.tienePagosExternos ?? Boolean(reserva.pagoManual);
-  const grupoPagadoCentavos = reserva.grupoPagadoCentavos ??
-    (reserva.grupo ? aCentavos(Number(reserva.grupo.totalPagado)) : 0);
-  return !tienePagosStripe && !tienePagosExternos && grupoPagadoCentavos === 0;
+  return !reserva.tienePagosStripe &&
+    !reserva.tienePagosExternos &&
+    reserva.grupoPagadoCentavos === 0;
 }
 
 export async function eliminarReserva(reservaId: string, propiedadId: string) {
