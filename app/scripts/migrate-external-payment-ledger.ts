@@ -100,7 +100,7 @@ type PagoManualConsulta = {
 
 type ClienteLectura = {
   pagoManual: {
-    findMany(argumentos: object): Promise<PagoManualConsulta[]>;
+    findMany(argumentos: object): Promise<unknown>;
   };
 };
 
@@ -278,7 +278,7 @@ async function cargarFilas(prisma: ClienteLectura): Promise<FilaPagoManualLegacy
         },
       },
     },
-  });
+  }) as PagoManualConsulta[];
 
   return pagosManuales.map((pago) => {
     const clave = idempotencyKeyLegacy(pago.id);

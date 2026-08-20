@@ -151,7 +151,7 @@ export type DatosComprobantePagoExterno = {
 };
 
 export type ActualizacionComprobantePago = {
-  estado: "PENDIENTE" | "ENVIADO" | "FALLIDO";
+  estadoComprobante: "PENDIENTE" | "ENVIADO" | "FALLIDO";
   comprobanteEnviadoEn: Date | null;
   comprobanteError: string | null;
 };
@@ -230,7 +230,7 @@ export function crearServicioPagosExternos(
     if (!datos) throw new ErrorPagoExterno("PAGO_EXTERNO_NO_ENCONTRADO");
 
     await repositorio.actualizarEstadoComprobante(pago.id, {
-      estado: "PENDIENTE",
+      estadoComprobante: "PENDIENTE",
       comprobanteEnviadoEn: null,
       comprobanteError: null,
     });
@@ -244,7 +244,7 @@ export function crearServicioPagosExternos(
         saldoPendienteCentavos: resumen.saldoPendienteCentavos,
       });
       return repositorio.actualizarEstadoComprobante(pago.id, {
-        estado: "ENVIADO",
+        estadoComprobante: "ENVIADO",
         comprobanteEnviadoEn: new Date(),
         comprobanteError: null,
       });
@@ -254,7 +254,7 @@ export function crearServicioPagosExternos(
         nombreError: error instanceof Error ? error.name : "ErrorDesconocido",
       });
       return repositorio.actualizarEstadoComprobante(pago.id, {
-        estado: "FALLIDO",
+        estadoComprobante: "FALLIDO",
         comprobanteEnviadoEn: null,
         comprobanteError: ERROR_COMPROBANTE_SANITIZADO,
       });
