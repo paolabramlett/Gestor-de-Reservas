@@ -1,6 +1,6 @@
 "use server";
 
-import { getCurrentUsuario } from "@/lib/auth";
+import { requireGestionReservas } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { crearReservaManual, crearReservaConLinkDePago } from "@/lib/negocio/reservas";
 import { EstadoDePago, EstadoReserva, TipoEspecialReserva } from "@prisma/client";
@@ -16,8 +16,7 @@ import { asociarIntentoPagoStripe, registrarIntentoPago } from "@/lib/negocio/in
 import { aCentavos, aMxn, calcularResumenFinanciero } from "@/lib/negocio/resumenFinanciero";
 
 export async function crearReservaManualAction(formData: FormData) {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireGestionReservas();
 
   const tipoDeHabitacionId = formData.get("tipoDeHabitacionId") as string;
   const nombre = formData.get("nombre") as string;
@@ -74,8 +73,7 @@ export async function crearReservaManualAction(formData: FormData) {
 }
 
 export async function crearReservaConPagoAction(formData: FormData) {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireGestionReservas();
 
   const tipoDeHabitacionId = formData.get("tipoDeHabitacionId") as string;
   const nombre = formData.get("nombre") as string;

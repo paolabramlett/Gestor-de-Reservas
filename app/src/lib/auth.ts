@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { prisma } from "./prisma";
 import { RolUsuario } from "@prisma/client";
 import { recuperarMembresiaLegacy } from "./recuperarMembresiaLegacy";
+import { puedeGestionarReservas } from "./permisosPanel";
 
 export type { RolUsuario };
 
@@ -173,6 +174,15 @@ export async function requireFinanzas() {
   if (!usuario) redirect("/sign-in");
   const rolesFinanzas: string[] = [RolUsuario.ADMIN, RolUsuario.FINANZAS, RolUsuario.SUPER_ADMIN];
   if (!rolesFinanzas.includes(usuario.rol)) {
+    redirect("/panel?acceso=denegado");
+  }
+  return usuario;
+}
+
+export async function requireGestionReservas() {
+  const usuario = await getCurrentUsuario();
+  if (!usuario) redirect("/sign-in");
+  if (!puedeGestionarReservas(usuario.rol)) {
     redirect("/panel?acceso=denegado");
   }
   return usuario;

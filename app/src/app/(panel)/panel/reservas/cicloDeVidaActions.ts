@@ -1,6 +1,6 @@
 "use server";
 
-import { getCurrentUsuario } from "@/lib/auth";
+import { requireGestionReservas } from "@/lib/auth";
 import { checkIn, checkOut, marcarNoShow, cancelarReserva, eliminarReserva, completarRegistroCheckIn } from "@/lib/negocio/cicloDeVida";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
@@ -8,8 +8,7 @@ import { revalidatePath } from "next/cache";
 // Combina el registro del huésped (documento, nacionalidad, placas, políticas)
 // con el check-in en un solo paso desde recepción.
 export async function checkInAction(formData: FormData) {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireGestionReservas();
 
   const reservaId = formData.get("reservaId") as string;
   try {
@@ -29,8 +28,7 @@ export async function checkInAction(formData: FormData) {
 }
 
 export async function checkOutAction(formData: FormData) {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireGestionReservas();
 
   const reservaId = formData.get("reservaId") as string;
   await checkOut(reservaId, usuario.propiedadId);
@@ -38,8 +36,7 @@ export async function checkOutAction(formData: FormData) {
 }
 
 export async function noShowAction(formData: FormData) {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireGestionReservas();
 
   const reservaId = formData.get("reservaId") as string;
   await marcarNoShow(reservaId, usuario.propiedadId);
@@ -47,8 +44,7 @@ export async function noShowAction(formData: FormData) {
 }
 
 export async function cancelarReservaAction(formData: FormData) {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireGestionReservas();
 
   const reservaId = formData.get("reservaId") as string;
   const politicaReembolso = formData.get("politicaReembolso") as "TOTAL" | "PARCIAL" | "SIN_REEMBOLSO";
@@ -69,8 +65,7 @@ export async function cancelarReservaAction(formData: FormData) {
 // TOTAL porque un reembolso PARCIAL requiere un monto específico por reserva —
 // eso se sigue haciendo una por una desde el detalle.
 export async function cancelarReservasEnLoteAction(formData: FormData): Promise<{ ok: number; error: string[] }> {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireGestionReservas();
 
   const ids = formData.getAll("reservaIds") as string[];
   const politicaReembolso = formData.get("politicaReembolso") as "TOTAL" | "SIN_REEMBOLSO";
@@ -100,8 +95,7 @@ export async function cancelarReservasEnLoteAction(formData: FormData): Promise<
 // confirmado (ver tieneEliminacionSegura) — cualquier otra cosa se rechaza
 // individualmente para no perder historial de dinero real.
 export async function eliminarReservasEnLoteAction(formData: FormData): Promise<{ ok: number; error: string[] }> {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireGestionReservas();
 
   const ids = formData.getAll("reservaIds") as string[];
 

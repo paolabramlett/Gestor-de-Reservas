@@ -1,11 +1,9 @@
-import { getCurrentUsuario } from "@/lib/auth";
-import { redirect } from "next/navigation";
+import { requireGestionReservas } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 
 export default async function GruposPage() {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireGestionReservas();
 
   const grupos = await prisma.grupoReserva.findMany({
     where: { propiedadId: usuario.propiedadId },

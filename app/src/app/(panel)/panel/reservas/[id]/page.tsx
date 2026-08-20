@@ -1,5 +1,5 @@
-import { getCurrentUsuario } from "@/lib/auth";
-import { redirect, notFound } from "next/navigation";
+import { requireGestionReservas } from "@/lib/auth";
+import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import {
   asignarHabitacionAction,
@@ -47,8 +47,7 @@ export default async function ReservaDetallePage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ error?: string; notas?: string }>;
 }) {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireGestionReservas();
 
   const { id } = await params;
   const { error, notas } = await searchParams;

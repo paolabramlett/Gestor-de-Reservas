@@ -1,6 +1,6 @@
 "use server";
 
-import { getCurrentUsuario } from "@/lib/auth";
+import { requireGestionReservas } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { crearReservaManual } from "@/lib/negocio/reservas";
 import { EstadoDePago, EstadoReserva, TipoEspecialReserva } from "@prisma/client";
@@ -40,7 +40,7 @@ export async function crearGrupoConHabitacionesAction(
   habitaciones: HabitacionInput[]
 ): Promise<{ ok: true; grupoId: string } | { ok: false; error: string }> {
   try {
-    const usuario = await getCurrentUsuario();
+    const usuario = await requireGestionReservas();
     if (!usuario) return { ok: false, error: "No autenticado" };
     if (!nombre.trim()) return { ok: false, error: "El nombre del grupo es obligatorio" };
     if (habitaciones.length === 0) return { ok: false, error: "Agrega al menos una habitación" };
@@ -107,8 +107,7 @@ export async function crearGrupoConHabitacionesAction(
 // ── Editar datos del grupo ──────────────────────────────────────────────────
 
 export async function actualizarGrupoAction(formData: FormData) {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireGestionReservas();
 
   const grupoId = formData.get("grupoId") as string;
   const nombre = formData.get("nombre") as string;
@@ -182,8 +181,7 @@ export async function actualizarGrupoAction(formData: FormData) {
 // ── Eliminar grupo (desvincula reservas, no las borra) ──────────────────────
 
 export async function eliminarGrupoAction(formData: FormData) {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireGestionReservas();
 
   const grupoId = formData.get("grupoId") as string;
 
@@ -207,8 +205,7 @@ export async function eliminarGrupoAction(formData: FormData) {
 // ── Agregar habitación a un grupo existente ─────────────────────────────────
 
 export async function agregarHabitacionAlGrupoAction(formData: FormData) {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireGestionReservas();
 
   const grupoId = formData.get("grupoId") as string;
 
@@ -250,8 +247,7 @@ export async function agregarHabitacionAlGrupoAction(formData: FormData) {
 // ── Vincular reserva existente por código ───────────────────────────────────
 
 export async function vincularReservaAlGrupoAction(formData: FormData) {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireGestionReservas();
 
   const grupoId = formData.get("grupoId") as string;
   const codigoReserva = (formData.get("codigoReserva") as string).trim().toUpperCase();
@@ -279,8 +275,7 @@ export async function vincularReservaAlGrupoAction(formData: FormData) {
 // ── Desvincular reserva del grupo ───────────────────────────────────────────
 
 export async function desvincularReservaDelGrupoAction(formData: FormData) {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireGestionReservas();
 
   const reservaId = formData.get("reservaId") as string;
   const grupoId = formData.get("grupoId") as string;
@@ -296,8 +291,7 @@ export async function desvincularReservaDelGrupoAction(formData: FormData) {
 // ── Solicitar pago del grupo ────────────────────────────────────────────────
 
 export async function solicitarPagoGrupoAction(formData: FormData) {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireGestionReservas();
 
   const grupoId = formData.get("grupoId") as string;
   const montoRaw = formData.get("monto") as string;

@@ -1,5 +1,4 @@
-import { getCurrentUsuario } from "@/lib/auth";
-import { redirect } from "next/navigation";
+import { requireGestionReservas } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { CalendarioGrid } from "./CalendarioGrid";
 import { obtenerLedgerReserva } from "@/lib/negocio/pagosExternos.server";
@@ -9,8 +8,7 @@ export default async function CalendarioPage({
 }: {
   searchParams: Promise<{ mes?: string; año?: string }>;
 }) {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireGestionReservas();
 
   const sp = await searchParams;
   const hoy = new Date();

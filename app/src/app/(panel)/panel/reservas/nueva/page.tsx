@@ -1,5 +1,4 @@
-import { getCurrentUsuario } from "@/lib/auth";
-import { redirect } from "next/navigation";
+import { requireGestionReservas } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { NuevaReservaForm } from "./NuevaReservaForm";
 
@@ -8,8 +7,7 @@ export default async function NuevaReservaPage({
 }: {
   searchParams: Promise<{ from?: string }>;
 }) {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireGestionReservas();
 
   const { from } = await searchParams;
 

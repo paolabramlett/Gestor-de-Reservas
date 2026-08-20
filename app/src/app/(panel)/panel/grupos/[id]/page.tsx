@@ -1,5 +1,5 @@
-import { getCurrentUsuario } from "@/lib/auth";
-import { redirect, notFound } from "next/navigation";
+import { requireGestionReservas } from "@/lib/auth";
+import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import { AgregarHabitacionPanel } from "./AgregarHabitacionPanel";
@@ -32,8 +32,7 @@ export default async function GrupoDetallePage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ success?: string; error?: string }>;
 }) {
-  const usuario = await getCurrentUsuario();
-  if (!usuario) redirect("/sign-in");
+  const usuario = await requireGestionReservas();
 
   const { id } = await params;
   const sp = await searchParams;
