@@ -1,11 +1,11 @@
 import { requireFinanzas } from "@/lib/auth";
-import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { aCentavos } from "@/lib/negocio/resumenFinanciero";
+import { resumirMovimientos } from "@/lib/negocio/reportePagos";
+import type { MovimientoPago } from "@/lib/negocio/reportePagos";
 import { EstadoDePago } from "@prisma/client";
 import Link from "next/link";
 import { DatePicker } from "@/components/DatePicker";
-
-const MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
 function periodoDefecto() {
   const hoy = new Date();
@@ -35,8 +35,8 @@ export default async function ReportesPage({
   const def = periodoDefecto();
   const inicio = sp.inicio ?? def.inicio;
   const fin = sp.fin ?? def.fin;
-  const fechaInicio = new Date(inicio);
-  const fechaFin = new Date(fin + "T23:59:59");
+  const fechaInicio = new Date(inicio + "T00:00:00.000");
+  const fechaFin = new Date(fin + "T23:59:59.999");
 
   const tipos = await prisma.tipoDeHabitacion.findMany({
     where: { propiedadId: usuario.propiedadId },
@@ -67,22 +67,76 @@ export default async function ReportesPage({
     orderBy: { creadoEn: "desc" },
   });
 
-  // ── Métricas para el período (12.1 + 12.2) — query independiente sin filtros UI ──
-  const todasReservasPeriodo = await prisma.reserva.findMany({
-    where: {
-      propiedadId: usuario.propiedadId,
-      creadoEn: { gte: fechaInicio, lte: fechaFin },
-      estado: { in: ["CONFIRMADA", "EN_CURSO", "COMPLETADA"] },
-    },
-    select: { totalMxn: true, origen: true, tipoDeHabitacionId: true },
-  });
+  // ── Ingresos cobrados para el período — movimientos independientes de los filtros UI ──
+  const rango = { gte: fechaInicio, lte: fechaFin };
+  const [pagosStripe, pagosExternos] = await Promise.all([
+    prisma.pagoOnline.findMany({
+      where: {
+        propiedadId: usuario.propiedadId,
+        OR: [
+          { creadoEn: rango },
+          { actualizadoEn: rango, montoReembolsadoMxn: { gt: 0 } },
+        ],
+      },
+      select: {
+        montoMxn: true,
+        montoReembolsadoMxn: true,
+        creadoEn: true,
+        actualizadoEn: true,
+      },
+    }),
+    prisma.pagoExterno.findMany({
+      where: {
+        propiedadId: usuario.propiedadId,
+        OR: [
+          { fechaPago: rango },
+          { ajustes: { some: { creadoEn: rango } } },
+        ],
+      },
+      select: {
+        montoMxn: true,
+        metodo: true,
+        fechaPago: true,
+        ajustes: {
+          where: { creadoEn: rango },
+          select: { montoMxn: true, creadoEn: true },
+        },
+      },
+    }),
+  ]);
 
-  const totalIngresos = todasReservasPeriodo.reduce((s, r) => s + Number(r.totalMxn), 0);
-  const totalOnline = todasReservasPeriodo.filter((r) => r.origen === "ONLINE").reduce((s, r) => s + Number(r.totalMxn), 0);
-  const totalManual = todasReservasPeriodo.filter((r) => r.origen === "MANUAL").reduce((s, r) => s + Number(r.totalMxn), 0);
-
-  // alias para métricas de tipo que necesitan el array completo
-  const reservasActivas = todasReservasPeriodo;
+  const movimientos: MovimientoPago[] = [
+    ...pagosStripe.flatMap((pago): MovimientoPago[] => [
+      {
+        fecha: pago.creadoEn,
+        fuente: "STRIPE",
+        montoCentavos: aCentavos(Number(pago.montoMxn)),
+      },
+      ...(Number(pago.montoReembolsadoMxn) > 0
+        ? [{
+            fecha: pago.actualizadoEn,
+            fuente: "STRIPE" as const,
+            montoCentavos: -aCentavos(Number(pago.montoReembolsadoMxn)),
+          }]
+        : []),
+    ]),
+    ...pagosExternos.flatMap((pago): MovimientoPago[] => [
+      {
+        fecha: pago.fechaPago,
+        fuente: pago.metodo,
+        montoCentavos: aCentavos(Number(pago.montoMxn)),
+      },
+      ...pago.ajustes.map((ajuste) => ({
+        fecha: ajuste.creadoEn,
+        fuente: pago.metodo,
+        montoCentavos: -aCentavos(Number(ajuste.montoMxn)),
+      })),
+    ]),
+  ];
+  const ingresosCobrados = resumirMovimientos(
+    { inicio: fechaInicio, fin: fechaFin },
+    movimientos
+  );
 
   // Tasa de ocupación por tipo (12.1)
   const diasPeriodo = Math.max(
@@ -115,17 +169,6 @@ export default async function ReportesPage({
       return { tipo: t.nombre, tasa, habitaciones, nochesOcupadas, capacidadTotal };
     })
   );
-
-  // Ingresos por tipo (12.2)
-  const ingresosPorTipo = tipos.map((t) => ({
-    tipo: t.nombre,
-    online: reservasActivas
-      .filter((r) => r.tipoDeHabitacionId === t.id && r.origen === "ONLINE")
-      .reduce((s, r) => s + Number(r.totalMxn), 0),
-    manual: reservasActivas
-      .filter((r) => r.tipoDeHabitacionId === t.id && r.origen === "MANUAL")
-      .reduce((s, r) => s + Number(r.totalMxn), 0),
-  })).filter((r) => r.online + r.manual > 0);
 
   const ESTADO_LABEL: Record<string, string> = {
     CONFIRMADA: "Confirmada",
@@ -182,17 +225,21 @@ export default async function ReportesPage({
         </button>
       </form>
 
-      {/* ── Métricas principales (12.2) ── */}
-      <div className="grid grid-cols-3 gap-2 md:gap-4 mb-8">
-        <MetricCard label="Ingresos totales" value={`$${totalIngresos.toLocaleString("es-MX")} MXN`} sub={`${reservasActivas.length} reservas`} />
-        <MetricCard label="Online (Stripe)" value={`$${totalOnline.toLocaleString("es-MX")} MXN`} sub={`${reservasActivas.filter((r) => r.origen === "ONLINE").length} reservas`} />
-        <MetricCard label="Manual" value={`$${totalManual.toLocaleString("es-MX")} MXN`} sub={`${reservasActivas.filter((r) => r.origen === "MANUAL").length} reservas`} />
+      {/* ── Ingresos cobrados por movimientos (12.2) ── */}
+      <h2 className="text-sm font-semibold text-gray-700 mb-3">Ingresos cobrados por movimientos</h2>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-4 mb-8">
+        <MetricCard label="Total neto cobrado" value={formatearCentavos(ingresosCobrados.netoCentavos)} sub="Pagos menos reembolsos" />
+        <MetricCard label="Stripe" value={formatearCentavos(ingresosCobrados.stripeCentavos)} sub="Neto conciliado" />
+        <MetricCard label="Efectivo" value={formatearCentavos(ingresosCobrados.efectivoCentavos)} sub="Movimientos externos netos" />
+        <MetricCard label="Transferencia" value={formatearCentavos(ingresosCobrados.transferenciaCentavos)} sub="Movimientos externos netos" />
+        <MetricCard label="Terminal externa" value={formatearCentavos(ingresosCobrados.terminalExternaCentavos)} sub="Movimientos externos netos" />
+        <MetricCard label="Otros" value={formatearCentavos(ingresosCobrados.otrosCentavos)} sub="Movimientos externos netos" />
       </div>
 
       {/* ── Ocupación por tipo (12.1) ── */}
       {ocupacionPorTipo.length > 0 && (
         <div className="bg-white rounded-lg border border-gray-200 p-5 mb-8">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">Tasa de ocupación por tipo</h2>
+          <h2 className="text-sm font-semibold text-gray-700 mb-4">Tasa de ocupación por tipo · basada en reservas</h2>
           <div className="space-y-3">
             {ocupacionPorTipo.map((o) => (
               <div key={o.tipo}>
@@ -211,35 +258,6 @@ export default async function ReportesPage({
                 </div>
               </div>
             ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── Ingresos por tipo (12.2) ── */}
-      {ingresosPorTipo.length > 0 && (
-        <div className="bg-white rounded-lg border border-gray-200 p-5 mb-8">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">Ingresos por tipo de habitación</h2>
-          <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[320px]">
-            <thead>
-              <tr className="border-b border-gray-100">
-                <th className="text-left pb-2 text-gray-500 font-medium">Tipo</th>
-                <th className="text-right pb-2 text-gray-500 font-medium px-3">Online</th>
-                <th className="text-right pb-2 text-gray-500 font-medium px-3">Manual</th>
-                <th className="text-right pb-2 text-gray-500 font-medium">Total</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {ingresosPorTipo.map((r) => (
-                <tr key={r.tipo}>
-                  <td className="py-2 text-gray-700">{r.tipo}</td>
-                  <td className="py-2 text-right text-gray-600 px-3">${r.online.toLocaleString("es-MX")}</td>
-                  <td className="py-2 text-right text-gray-600 px-3">${r.manual.toLocaleString("es-MX")}</td>
-                  <td className="py-2 text-right font-medium text-gray-900">${(r.online + r.manual).toLocaleString("es-MX")}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
           </div>
         </div>
       )}
@@ -335,7 +353,7 @@ export default async function ReportesPage({
         </div>
         {reservas.length > 0 && (
           <div className="px-4 py-3 border-t border-gray-100 text-xs text-gray-400">
-            {reservas.length} reservas · Total mostrado: ${reservas.reduce((s, r) => s + Number(r.totalMxn), 0).toLocaleString("es-MX")} MXN
+            {reservas.length} reservas
           </div>
         )}
       </div>
@@ -351,6 +369,13 @@ function MetricCard({ label, value, sub }: { label: string; value: string; sub: 
       <div className="text-[10px] md:text-xs text-gray-400 mt-1">{sub}</div>
     </div>
   );
+}
+
+function formatearCentavos(centavos: number) {
+  return `${centavos < 0 ? "-" : ""}$${Math.abs(centavos / 100).toLocaleString("es-MX", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })} MXN`;
 }
 
 function mesAnterior() {
