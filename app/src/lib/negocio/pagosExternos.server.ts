@@ -20,6 +20,7 @@ export type RegistrarPagoExternoInput = {
 };
 
 export type CorregirPagoExternoInput = {
+  reservaId: string;
   pagoExternoId: string;
   nuevoMontoCentavos: number;
   metodo: RegistrarPagoExternoInput["metodo"];
@@ -30,6 +31,7 @@ export type CorregirPagoExternoInput = {
 };
 
 export type AjustarPagoExternoInput = {
+  reservaId: string;
   pagoExternoId: string;
   tipo: "ANULACION" | "REEMBOLSO";
   montoCentavos: number;
@@ -86,16 +88,20 @@ export type DatosLedgerReserva = {
 export type NuevoPagoExterno = Omit<PagoExternoLedger, "id" | "ajustes" | "creadoEn">;
 export type NuevoAjustePagoExterno = Omit<AjustePagoExternoLedger, "id" | "creadoEn">;
 
+export type ResultadoIdempotenciaPagoExterno = {
+  pago: PagoExternoLedger | null;
+  ajuste: (AjustePagoExternoLedger & {
+    propiedadId: string;
+    reservaId: string;
+  }) | null;
+};
+
 export type TransaccionPagosExternos = {
   adquirirLockReserva(reservaId: string): Promise<void>;
-  buscarPagoPorIdempotencia(
-    propiedadId: string,
+  adquirirLockIdempotencia(idempotencyKey: string): Promise<void>;
+  buscarResultadoIdempotencia(
     idempotencyKey: string
-  ): Promise<PagoExternoLedger | null>;
-  buscarAjustePorIdempotencia(
-    propiedadId: string,
-    idempotencyKey: string
-  ): Promise<AjustePagoExternoLedger | null>;
+  ): Promise<ResultadoIdempotenciaPagoExterno>;
   cargarLedgerReserva(
     propiedadId: string,
     reservaId: string
@@ -110,10 +116,6 @@ export type RepositorioPagosExternos = {
     propiedadId: string
   ): Promise<ActorPagoExterno | null>;
   transaccion<T>(trabajo: (tx: TransaccionPagosExternos) => Promise<T>): Promise<T>;
-  buscarReservaIdDePagoExterno(
-    propiedadId: string,
-    pagoExternoId: string
-  ): Promise<string | null>;
   leerLedgerReserva(
     propiedadId: string,
     reservaId: string
@@ -183,15 +185,22 @@ export function crearServicioPagosExternos(
 
       return repositorio.transaccion(async (tx) => {
         await tx.adquirirLockReserva(input.reservaId);
-        const existente = await tx.buscarPagoPorIdempotencia(
-          actor.propiedadId,
+        await tx.adquirirLockIdempotencia(input.idempotencyKey);
+        const resultadoIdempotencia = await tx.buscarResultadoIdempotencia(
           input.idempotencyKey
         );
-        if (existente) {
-          if (existente.reservaId !== input.reservaId) {
+        if (resultadoIdempotencia.ajuste) {
+          throw new ErrorPagoExterno("IDEMPOTENCIA_CONFLICTO");
+        }
+        if (resultadoIdempotencia.pago) {
+          if (
+            resultadoIdempotencia.pago.propiedadId !== actor.propiedadId ||
+            resultadoIdempotencia.pago.reservaId !== input.reservaId ||
+            resultadoIdempotencia.pago.reemplazaPagoExternoId !== null
+          ) {
             throw new ErrorPagoExterno("IDEMPOTENCIA_CONFLICTO");
           }
-          return existente;
+          return resultadoIdempotencia.pago;
         }
 
         const ledger = await tx.cargarLedgerReserva(actor.propiedadId, input.reservaId);
@@ -226,21 +235,21 @@ export function crearServicioPagosExternos(
 
     async corregirPagoExterno(actor: ActorPagoExterno, input: CorregirPagoExternoInput) {
       actor = await validarEscritura(actor);
-      const reservaId = await repositorio.buscarReservaIdDePagoExterno(
-        actor.propiedadId,
-        input.pagoExternoId
-      );
-      if (!reservaId) throw new ErrorPagoExterno("PAGO_EXTERNO_NO_ENCONTRADO");
 
       return repositorio.transaccion(async (tx) => {
-        await tx.adquirirLockReserva(reservaId);
-        const [reemplazoExistente, anulacionExistente] = await Promise.all([
-          tx.buscarPagoPorIdempotencia(actor.propiedadId, input.idempotencyKey),
-          tx.buscarAjustePorIdempotencia(actor.propiedadId, input.idempotencyKey),
-        ]);
+        await tx.adquirirLockReserva(input.reservaId);
+        await tx.adquirirLockIdempotencia(input.idempotencyKey);
+        const {
+          pago: reemplazoExistente,
+          ajuste: anulacionExistente,
+        } = await tx.buscarResultadoIdempotencia(input.idempotencyKey);
         if (reemplazoExistente && anulacionExistente) {
           if (
+            reemplazoExistente.propiedadId !== actor.propiedadId ||
+            reemplazoExistente.reservaId !== input.reservaId ||
             reemplazoExistente.reemplazaPagoExternoId !== input.pagoExternoId ||
+            anulacionExistente.propiedadId !== actor.propiedadId ||
+            anulacionExistente.reservaId !== input.reservaId ||
             anulacionExistente.pagoExternoId !== input.pagoExternoId ||
             anulacionExistente.tipo !== "ANULACION"
           ) {
@@ -249,10 +258,10 @@ export function crearServicioPagosExternos(
           return { anulacion: anulacionExistente, reemplazo: reemplazoExistente };
         }
         if (reemplazoExistente || anulacionExistente) {
-          throw new ErrorPagoExterno("IDEMPOTENCIA_INCONSISTENTE");
+          throw new ErrorPagoExterno("IDEMPOTENCIA_CONFLICTO");
         }
 
-        const ledger = await tx.cargarLedgerReserva(actor.propiedadId, reservaId);
+        const ledger = await tx.cargarLedgerReserva(actor.propiedadId, input.reservaId);
         if (!ledger) throw new ErrorPagoExterno("PAGO_EXTERNO_NO_ENCONTRADO");
         const original = ledger.pagosExternos.find(
           (pago) => pago.id === input.pagoExternoId
@@ -313,7 +322,7 @@ export function crearServicioPagosExternos(
         });
         const reemplazo = await tx.crearPagoExterno({
           propiedadId: actor.propiedadId,
-          reservaId,
+          reservaId: input.reservaId,
           montoCentavos: input.nuevoMontoCentavos,
           metodo: input.metodo,
           fechaPago: input.fechaPago,
@@ -329,20 +338,21 @@ export function crearServicioPagosExternos(
 
     async ajustarPagoExterno(actor: ActorPagoExterno, input: AjustarPagoExternoInput) {
       actor = await validarEscritura(actor);
-      const reservaId = await repositorio.buscarReservaIdDePagoExterno(
-        actor.propiedadId,
-        input.pagoExternoId
-      );
-      if (!reservaId) throw new ErrorPagoExterno("PAGO_EXTERNO_NO_ENCONTRADO");
 
       return repositorio.transaccion(async (tx) => {
-        await tx.adquirirLockReserva(reservaId);
-        const existente = await tx.buscarAjustePorIdempotencia(
-          actor.propiedadId,
+        await tx.adquirirLockReserva(input.reservaId);
+        await tx.adquirirLockIdempotencia(input.idempotencyKey);
+        const resultadoIdempotencia = await tx.buscarResultadoIdempotencia(
           input.idempotencyKey
         );
-        if (existente) {
+        if (resultadoIdempotencia.pago) {
+          throw new ErrorPagoExterno("IDEMPOTENCIA_CONFLICTO");
+        }
+        if (resultadoIdempotencia.ajuste) {
+          const existente = resultadoIdempotencia.ajuste;
           if (
+            existente.propiedadId !== actor.propiedadId ||
+            existente.reservaId !== input.reservaId ||
             existente.pagoExternoId !== input.pagoExternoId ||
             existente.tipo !== input.tipo
           ) {
@@ -351,7 +361,7 @@ export function crearServicioPagosExternos(
           return existente;
         }
 
-        const ledger = await tx.cargarLedgerReserva(actor.propiedadId, reservaId);
+        const ledger = await tx.cargarLedgerReserva(actor.propiedadId, input.reservaId);
         if (!ledger) throw new ErrorPagoExterno("PAGO_EXTERNO_NO_ENCONTRADO");
         const original = ledger.pagosExternos.find(
           (pago) => pago.id === input.pagoExternoId
@@ -482,18 +492,34 @@ function crearTransaccionPrisma(tx: Prisma.TransactionClient): TransaccionPagosE
     async adquirirLockReserva(reservaId) {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${reservaId}, 19))`;
     },
-    async buscarPagoPorIdempotencia(propiedadId, idempotencyKey) {
-      const pago = await tx.pagoExterno.findFirst({
-        where: { propiedadId, idempotencyKey },
-        include: { ajustes: true },
-      });
-      return pago ? mapearPagoExternoPrisma(pago) : null;
+    async adquirirLockIdempotencia(idempotencyKey) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${idempotencyKey}, 20))`;
     },
-    async buscarAjustePorIdempotencia(propiedadId, idempotencyKey) {
-      const ajuste = await tx.ajustePagoExterno.findFirst({
-        where: { idempotencyKey, pagoExterno: { propiedadId } },
-      });
-      return ajuste ? mapearAjustePrisma(ajuste) : null;
+    async buscarResultadoIdempotencia(idempotencyKey) {
+      const [pago, ajuste] = await Promise.all([
+        tx.pagoExterno.findUnique({
+          where: { idempotencyKey },
+          include: { ajustes: true },
+        }),
+        tx.ajustePagoExterno.findUnique({
+          where: { idempotencyKey },
+          include: {
+            pagoExterno: {
+              select: { propiedadId: true, reservaId: true },
+            },
+          },
+        }),
+      ]);
+      return {
+        pago: pago ? mapearPagoExternoPrisma(pago) : null,
+        ajuste: ajuste
+          ? {
+              ...mapearAjustePrisma(ajuste),
+              propiedadId: ajuste.pagoExterno.propiedadId,
+              reservaId: ajuste.pagoExterno.reservaId,
+            }
+          : null,
+      };
     },
     cargarLedgerReserva(propiedadId, reservaId) {
       return cargarLedgerPrisma(tx, propiedadId, reservaId);
@@ -551,13 +577,6 @@ export function crearRepositorioPrismaPagosExternos(
     },
     transaccion(trabajo) {
       return cliente.$transaction((tx) => trabajo(crearTransaccionPrisma(tx)));
-    },
-    async buscarReservaIdDePagoExterno(propiedadId, pagoExternoId) {
-      const pago = await cliente.pagoExterno.findFirst({
-        where: { id: pagoExternoId, propiedadId },
-        select: { reservaId: true },
-      });
-      return pago?.reservaId ?? null;
     },
     leerLedgerReserva(propiedadId, reservaId) {
       return cargarLedgerPrisma(cliente, propiedadId, reservaId);

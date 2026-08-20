@@ -70,30 +70,30 @@ class RepositorioEnMemoria implements RepositorioPagosExternos, TransaccionPagos
     this.eventos.push(`lock:${reservaId}`);
   }
 
-  async buscarPagoPorIdempotencia(
-    propiedadId: string,
-    idempotencyKey: string
-  ): Promise<PagoExternoLedger | null> {
-    this.eventos.push("idempotencia:pago");
-    return this.creados.find(
-      (pago) =>
-        pago.propiedadId === propiedadId && pago.idempotencyKey === idempotencyKey
-    ) ?? null;
+  async adquirirLockIdempotencia(idempotencyKey: string): Promise<void> {
+    this.eventos.push(`lock-idempotencia:${idempotencyKey}`);
   }
 
-  async buscarAjustePorIdempotencia(
-    propiedadId: string,
-    idempotencyKey: string
-  ) {
-    this.eventos.push("idempotencia:ajuste");
-    return this.ajustes.find(
-      (ajuste) => {
-        const pago = [...this.ledger.pagosExternos, ...this.creados].find(
-          (item) => item.id === ajuste.pagoExternoId
-        );
-        return pago?.propiedadId === propiedadId && ajuste.idempotencyKey === idempotencyKey;
-      }
+  async buscarResultadoIdempotencia(idempotencyKey: string) {
+    this.eventos.push("idempotencia:unificada");
+    const pagos = [...this.ledger.pagosExternos, ...this.creados];
+    const pago = pagos.find((item) => item.idempotencyKey === idempotencyKey) ?? null;
+    const ajusteBase = this.ajustes.find(
+      (item) => item.idempotencyKey === idempotencyKey
     ) ?? null;
+    const pagoAjustado = ajusteBase
+      ? pagos.find((item) => item.id === ajusteBase.pagoExternoId)
+      : null;
+    return {
+      pago,
+      ajuste: ajusteBase && pagoAjustado
+        ? {
+            ...ajusteBase,
+            propiedadId: pagoAjustado.propiedadId,
+            reservaId: pagoAjustado.reservaId,
+          }
+        : null,
+    };
   }
 
   async cargarLedgerReserva(propiedadId: string, reservaId: string) {
@@ -142,12 +142,6 @@ class RepositorioEnMemoria implements RepositorioPagosExternos, TransaccionPagos
     };
     this.ajustes.push(ajuste);
     return ajuste;
-  }
-
-  async buscarReservaIdDePagoExterno(propiedadId: string, pagoExternoId: string) {
-    return [...this.ledger.pagosExternos, ...this.creados].find(
-      (pago) => pago.propiedadId === propiedadId && pago.id === pagoExternoId
-    )?.reservaId ?? null;
   }
 
   async leerLedgerReserva(propiedadId: string, reservaId: string) {
@@ -269,6 +263,7 @@ describe("pagos externos", () => {
     });
 
     await service.corregirPagoExterno(actorAdmin, {
+      reservaId: "res_1",
       pagoExternoId: "ext_1",
       nuevoMontoCentavos: 250_000,
       metodo: "EFECTIVO",
@@ -295,6 +290,7 @@ describe("pagos externos", () => {
       saldoCentavos: 300_000,
     });
     const correccion = {
+      reservaId: "res_1",
       pagoExternoId: "ext_1",
       nuevoMontoCentavos: 250_000,
       metodo: "EFECTIVO" as const,
@@ -320,6 +316,7 @@ describe("pagos externos", () => {
 
     await expect(
       service.corregirPagoExterno(actorAdmin, {
+        reservaId: "res_1",
         pagoExternoId: "ext_1",
         nuevoMontoCentavos: 250_000,
         metodo: "EFECTIVO",
@@ -341,6 +338,7 @@ describe("pagos externos", () => {
 
     await expect(
       service.ajustarPagoExterno(actorAdmin, {
+        reservaId: "res_1",
         pagoExternoId: "ext_1",
         tipo: "REEMBOLSO",
         montoCentavos: 80_001,
@@ -410,7 +408,8 @@ describe("pagos externos", () => {
 
     expect(repo.eventos).toEqual([
       "lock:res_1",
-      "idempotencia:pago",
+      "lock-idempotencia:idem_1",
+      "idempotencia:unificada",
       "cargar:ledger",
       "insertar:pago",
     ]);
@@ -426,6 +425,7 @@ describe("pagos externos", () => {
 
       await expect(
         service.ajustarPagoExterno(actorAdmin, {
+          reservaId: "res_1",
           pagoExternoId: "ext_1",
           tipo,
           montoCentavos: 100_000,
@@ -445,6 +445,7 @@ describe("pagos externos", () => {
 
     await expect(
       service.corregirPagoExterno(actorAdmin, {
+        reservaId: "res_1",
         pagoExternoId: "ext_1",
         nuevoMontoCentavos: 250_000,
         metodo: "EFECTIVO",
@@ -463,6 +464,7 @@ describe("pagos externos", () => {
       pagoExternoCentavos: 100_000,
     });
     const reembolso = {
+      reservaId: "res_1",
       pagoExternoId: "ext_1",
       tipo: "REEMBOLSO" as const,
       montoCentavos: 20_000,
@@ -477,6 +479,162 @@ describe("pagos externos", () => {
     expect(repo.ajustes).toHaveLength(1);
   });
 
+  it("rechaza reutilizar en un ajuste la clave de un registro", async () => {
+    const { service, repo } = escenarioServicio({ saldoCentavos: 300_000 });
+    const pago = await service.registrarPagoExterno(actorAdmin, {
+      ...input,
+      idempotencyKey: "clave_cruzada_registro_ajuste",
+    });
+
+    await expect(
+      service.ajustarPagoExterno(actorAdmin, {
+        reservaId: "res_1",
+        pagoExternoId: pago.id,
+        tipo: "REEMBOLSO",
+        montoCentavos: 10_000,
+        motivo: "Devolución",
+        idempotencyKey: "clave_cruzada_registro_ajuste",
+      })
+    ).rejects.toThrow("IDEMPOTENCIA_CONFLICTO");
+    expect(repo.ajustes).toHaveLength(0);
+  });
+
+  it("inicia una corrección con locks antes de idempotencia y scoping", async () => {
+    const { service, repo } = escenarioServicio({
+      saldoCentavos: 300_000,
+      pagoExternoCentavos: 300_000,
+    });
+    const correccion = {
+      reservaId: "res_1",
+      pagoExternoId: "ext_1",
+      nuevoMontoCentavos: 250_000,
+      metodo: "EFECTIVO" as const,
+      fechaPago: new Date("2026-08-14T17:00:00Z"),
+      motivo: "Importe incorrecto",
+      idempotencyKey: "corr_secuencia",
+    };
+
+    await service.corregirPagoExterno(actorAdmin, correccion);
+
+    expect(repo.eventos).toEqual([
+      "lock:res_1",
+      "lock-idempotencia:corr_secuencia",
+      "idempotencia:unificada",
+      "cargar:ledger",
+      "insertar:ajuste",
+      "insertar:pago",
+    ]);
+  });
+
+  it("inicia un ajuste con locks antes de idempotencia y scoping", async () => {
+    const { service, repo } = escenarioServicio({
+      saldoCentavos: 500_000,
+      pagoExternoCentavos: 100_000,
+    });
+
+    await service.ajustarPagoExterno(actorAdmin, {
+      reservaId: "res_1",
+      pagoExternoId: "ext_1",
+      tipo: "REEMBOLSO",
+      montoCentavos: 10_000,
+      motivo: "Devolución",
+      idempotencyKey: "ajuste_secuencia",
+    });
+
+    expect(repo.eventos).toEqual([
+      "lock:res_1",
+      "lock-idempotencia:ajuste_secuencia",
+      "idempotencia:unificada",
+      "cargar:ledger",
+      "insertar:ajuste",
+    ]);
+  });
+
+  it("verifica dentro del lock que el pago pertenece a la Reserva indicada", async () => {
+    const { service, repo } = escenarioServicio({
+      saldoCentavos: 500_000,
+      pagoExternoCentavos: 100_000,
+    });
+
+    await expect(
+      service.ajustarPagoExterno(actorAdmin, {
+        reservaId: "res_otra",
+        pagoExternoId: "ext_1",
+        tipo: "REEMBOLSO",
+        montoCentavos: 10_000,
+        motivo: "No debe cruzarse",
+        idempotencyKey: "ajuste_reserva_incorrecta",
+      })
+    ).rejects.toThrow("PAGO_EXTERNO_NO_ENCONTRADO");
+    expect(repo.eventos).toEqual([
+      "lock:res_otra",
+      "lock-idempotencia:ajuste_reserva_incorrecta",
+      "idempotencia:unificada",
+      "cargar:ledger",
+    ]);
+    expect(repo.ajustes).toHaveLength(0);
+  });
+
+  it("rechaza reutilizar en un registro la clave de un ajuste", async () => {
+    const { service, repo } = escenarioServicio({
+      saldoCentavos: 500_000,
+      pagoExternoCentavos: 100_000,
+    });
+    await service.ajustarPagoExterno(actorAdmin, {
+      reservaId: "res_1",
+      pagoExternoId: "ext_1",
+      tipo: "REEMBOLSO",
+      montoCentavos: 10_000,
+      motivo: "Devolución",
+      idempotencyKey: "clave_cruzada_ajuste_registro",
+    });
+
+    await expect(
+      service.registrarPagoExterno(actorAdmin, {
+        ...input,
+        montoCentavos: 10_000,
+        idempotencyKey: "clave_cruzada_ajuste_registro",
+      })
+    ).rejects.toThrow("IDEMPOTENCIA_CONFLICTO");
+    expect(repo.creados).toHaveLength(0);
+  });
+
+  it("no confunde una corrección con un registro o ajuste que reutiliza su clave", async () => {
+    const { service, repo } = escenarioServicio({
+      saldoCentavos: 300_000,
+      pagoExternoCentavos: 300_000,
+    });
+    await service.corregirPagoExterno(actorAdmin, {
+      reservaId: "res_1",
+      pagoExternoId: "ext_1",
+      nuevoMontoCentavos: 250_000,
+      metodo: "EFECTIVO",
+      fechaPago: new Date("2026-08-14T17:00:00Z"),
+      motivo: "Importe incorrecto",
+      idempotencyKey: "clave_correccion_cruzada",
+    });
+
+    await expect(
+      service.registrarPagoExterno(actorAdmin, {
+        ...input,
+        montoCentavos: 10_000,
+        idempotencyKey: "clave_correccion_cruzada",
+      })
+    ).rejects.toThrow("IDEMPOTENCIA_CONFLICTO");
+    await expect(
+      service.ajustarPagoExterno(actorAdmin, {
+        reservaId: "res_1",
+        pagoExternoId: "ext_1",
+        tipo: "ANULACION",
+        montoCentavos: 300_000,
+        motivo: "No debe reutilizarse",
+        idempotencyKey: "clave_correccion_cruzada",
+      })
+    ).rejects.toThrow("IDEMPOTENCIA_CONFLICTO");
+    expect(repo.creados).toHaveLength(1);
+    expect(repo.ajustes).toHaveLength(1);
+  });
+
   it("exige que una anulación cubra todo el monto disponible", async () => {
     const { service } = escenarioServicio({
       saldoCentavos: 520_000,
@@ -486,6 +644,7 @@ describe("pagos externos", () => {
 
     await expect(
       service.ajustarPagoExterno(actorAdmin, {
+        reservaId: "res_1",
         pagoExternoId: "ext_1",
         tipo: "ANULACION",
         montoCentavos: 79_999,
@@ -503,6 +662,7 @@ describe("pagos externos", () => {
     });
 
     await service.ajustarPagoExterno(actorAdmin, {
+      reservaId: "res_1",
       pagoExternoId: "ext_1",
       tipo: "REEMBOLSO",
       montoCentavos: 20_000,
@@ -520,6 +680,7 @@ describe("pagos externos", () => {
 
     await expect(
       service.ajustarPagoExterno(actorAdmin, {
+        reservaId: "res_1",
         pagoExternoId: "stripe_1",
         tipo: "REEMBOLSO",
         montoCentavos: 10_000,
