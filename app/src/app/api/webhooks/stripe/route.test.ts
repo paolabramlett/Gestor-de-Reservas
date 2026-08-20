@@ -6,8 +6,13 @@ import { PrismaPg } from "@prisma/adapter-pg";
 
 vi.mock("server-only", () => ({}));
 
+const emailMocks = vi.hoisted(() => ({
+  enviarComprobantePago: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("@/lib/emails", () => ({
   enviarConfirmacion: vi.fn().mockResolvedValue(undefined),
+  enviarComprobantePago: emailMocks.enviarComprobantePago,
   enviarAlertaEquipo: vi.fn().mockResolvedValue(undefined),
   enviarPagoFallido: vi.fn().mockResolvedValue(undefined),
 }));
@@ -312,5 +317,12 @@ describeE2E("webhook Stripe con PostgreSQL aislado y Stripe Test", () => {
       stripePaymentIntentId: intent.id,
     });
     expect(await prisma.pagoOnline.count({ where: { stripePaymentIntentId: intent.id } })).toBe(1);
+    expect(emailMocks.enviarComprobantePago).toHaveBeenCalledWith(expect.objectContaining({
+      codigoReserva: reserva.codigoReserva,
+      montoRecibidoCentavos: 21_000,
+      totalPagadoCentavos: 21_000,
+      totalReservaCentavos: 21_000,
+      saldoPendienteCentavos: 0,
+    }));
   }, 45_000);
 });

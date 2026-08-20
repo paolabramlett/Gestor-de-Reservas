@@ -22,6 +22,72 @@ function linkPreCheckin(codigoReserva: string, emailHuesped: string): string {
   return `${appUrl}/precheckin?codigo=${encodeURIComponent(codigoReserva)}&email=${encodeURIComponent(emailHuesped)}`;
 }
 
+export type ResumenCorreoPago = {
+  montoRecibidoCentavos: number;
+  totalPagadoCentavos: number;
+  totalReservaCentavos: number;
+  saldoPendienteCentavos: number;
+};
+
+type DatosComprobantePago = ResumenCorreoPago & {
+  codigoReserva: string;
+  nombreHuesped: string;
+  nombreHotel: string;
+  tipoHabitacion: string;
+  fechaIngreso: string;
+  fechaSalida: string;
+  numPersonas: number;
+  colorPrimario?: string;
+  linkPreCheckin?: string;
+};
+
+function formatearCentavos(centavos: number): string {
+  return (centavos / 100).toLocaleString("es-MX", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+}
+
+export async function renderizarComprobantePago(params: DatosComprobantePago) {
+  return render(
+    ConfirmacionReserva({
+      codigoReserva: params.codigoReserva,
+      nombreHuesped: params.nombreHuesped,
+      nombreHotel: params.nombreHotel,
+      tipoHabitacion: params.tipoHabitacion,
+      fechaIngreso: params.fechaIngreso,
+      fechaSalida: params.fechaSalida,
+      numPersonas: params.numPersonas,
+      montoRecibidoMxn: formatearCentavos(params.montoRecibidoCentavos),
+      totalPagadoMxn: formatearCentavos(params.totalPagadoCentavos),
+      totalReservaMxn: formatearCentavos(params.totalReservaCentavos),
+      saldoPendienteMxn: formatearCentavos(params.saldoPendienteCentavos),
+      colorPrimario: params.colorPrimario,
+      linkPreCheckin: params.linkPreCheckin,
+    })
+  );
+}
+
+export async function enviarComprobantePago(params: Omit<DatosComprobantePago, "fechaIngreso" | "fechaSalida" | "linkPreCheckin"> & {
+  emailHuesped: string;
+  fechaIngreso: Date;
+  fechaSalida: Date;
+}) {
+  const html = await renderizarComprobantePago({
+    ...params,
+    fechaIngreso: fmtFecha(params.fechaIngreso),
+    fechaSalida: fmtFecha(params.fechaSalida),
+    linkPreCheckin: linkPreCheckin(params.codigoReserva, params.emailHuesped),
+  });
+
+  return resend.emails.send({
+    from: FROM,
+    to: params.emailHuesped,
+    subject: `${params.saldoPendienteCentavos === 0 ? "Pago completado" : "Anticipo recibido"}: ${params.codigoReserva} — ${params.nombreHotel}`,
+    html,
+  });
+}
+
 export async function enviarConfirmacion(params: {
   emailHuesped: string;
   codigoReserva: string;
@@ -34,26 +100,13 @@ export async function enviarConfirmacion(params: {
   totalMxn: number;
   colorPrimario?: string;
 }) {
-  const html = await render(
-    ConfirmacionReserva({
-      codigoReserva: params.codigoReserva,
-      nombreHuesped: params.nombreHuesped,
-      nombreHotel: params.nombreHotel,
-      tipoHabitacion: params.tipoHabitacion,
-      fechaIngreso: fmtFecha(params.fechaIngreso),
-      fechaSalida: fmtFecha(params.fechaSalida),
-      numPersonas: params.numPersonas,
-      totalMxn: params.totalMxn.toLocaleString("es-MX"),
-      colorPrimario: params.colorPrimario,
-      linkPreCheckin: linkPreCheckin(params.codigoReserva, params.emailHuesped),
-    })
-  );
-
-  return resend.emails.send({
-    from: FROM,
-    to: params.emailHuesped,
-    subject: `Reserva confirmada: ${params.codigoReserva} — ${params.nombreHotel}`,
-    html,
+  const totalCentavos = Math.round(params.totalMxn * 100);
+  return enviarComprobantePago({
+    ...params,
+    montoRecibidoCentavos: totalCentavos,
+    totalPagadoCentavos: totalCentavos,
+    totalReservaCentavos: totalCentavos,
+    saldoPendienteCentavos: 0,
   });
 }
 

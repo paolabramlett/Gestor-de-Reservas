@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { crearReservaOnline, generarCodigoReserva } from "@/lib/negocio/reservas";
-import { enviarConfirmacion, enviarAlertaEquipo, enviarPagoFallido } from "@/lib/emails";
+import { enviarAlertaEquipo, enviarComprobantePago, enviarPagoFallido } from "@/lib/emails";
 import { EstadoReserva, OrigenReserva, PlanRoomly } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import Stripe from "stripe";
@@ -11,6 +11,7 @@ import { reembolsarPagoDirectoHuesped, reembolsarPagoHuesped } from "@/lib/strip
 import { bloquearInventarioTipo, calcularDisponibilidad } from "@/lib/negocio/disponibilidad";
 import { validarCuentaEvento, validarDestinoPago, validarPagoRecibido } from "@/lib/negocio/pagosOnline";
 import { exigirIntentoPagoAutorizado, marcarIntentoPagoPagado, obtenerIntentoPago } from "@/lib/negocio/intentosPago";
+import { aCentavos, calcularResumenFinanciero } from "@/lib/negocio/resumenFinanciero";
 
 function generarCodigoGrupo(): string {
   const id = ulid();
@@ -188,7 +189,7 @@ export async function POST(req: NextRequest) {
         where: { id: meta.tipoDeHabitacionId },
       });
       if (propiedad && tipoHabitacion) {
-        const emailParams = {
+        const datosReservaCorreo = {
           codigoReserva: reserva.codigoReserva,
           nombreHuesped: meta.nombre,
           nombreHotel: propiedad.nombre,
@@ -196,20 +197,37 @@ export async function POST(req: NextRequest) {
           fechaIngreso: new Date(meta.fechaIngreso),
           fechaSalida: new Date(meta.fechaSalida),
           numPersonas: Number(meta.numPersonas),
-          totalMxn: Number(reserva.totalMxn),
           colorPrimario: propiedad.colorPrimario ?? undefined,
         };
+        const totalReservaCentavos = aCentavos(Number(reserva.totalMxn));
+        const resumenPago = calcularResumenFinanciero({
+          totalReservaCentavos,
+          pagosStripe: [{
+            cobradoCentavos: intent.amount_received,
+            reembolsadoCentavos: 0,
+            reembolsoPendienteCentavos: 0,
+          }],
+          pagosExternos: [],
+        });
 
         // Fire-and-forget: no bloqueamos la respuesta a Stripe
         Promise.allSettled([
-          enviarConfirmacion({ emailHuesped: meta.email, ...emailParams }),
+          enviarComprobantePago({
+            emailHuesped: meta.email,
+            ...datosReservaCorreo,
+            montoRecibidoCentavos: intent.amount_received,
+            totalPagadoCentavos: resumenPago.pagadoNetoCentavos,
+            totalReservaCentavos,
+            saldoPendienteCentavos: resumenPago.saldoPendienteCentavos,
+          }),
           propiedad.email
             ? enviarAlertaEquipo({
                 emailEquipo: propiedad.email,
                 emailHuesped: meta.email,
                 telefonoHuesped: meta.telefono || undefined,
                 origen: "ONLINE",
-                ...emailParams,
+                ...datosReservaCorreo,
+                totalMxn: Number(reserva.totalMxn),
               })
             : Promise.resolve(),
         ]).catch(() => {});
@@ -370,7 +388,19 @@ export async function POST(req: NextRequest) {
 
         if (grupo && grupo.reservas[0]) {
           const r0 = grupo.reservas[0];
-          await enviarConfirmacion({
+          const totalReservaCentavos = aCentavos(
+            reservas.reduce((total, reserva) => total + Number(reserva.totalMxn), 0)
+          );
+          const resumenPago = calcularResumenFinanciero({
+            totalReservaCentavos,
+            pagosStripe: [{
+              cobradoCentavos: aCentavos(nuevoTotalPagado),
+              reembolsadoCentavos: 0,
+              reembolsoPendienteCentavos: 0,
+            }],
+            pagosExternos: [],
+          });
+          await enviarComprobantePago({
             emailHuesped: r0.huesped.email,
             codigoReserva: grupo.codigoGrupo,
             nombreHuesped: r0.huesped.nombre,
@@ -379,7 +409,10 @@ export async function POST(req: NextRequest) {
             fechaIngreso: r0.fechaIngreso,
             fechaSalida: r0.fechaSalida,
             numPersonas: reservas.reduce((s, r) => s + r.numPersonas, 0),
-            totalMxn: montoCobrado > 0 ? montoCobrado : nuevoTotalPagado,
+            montoRecibidoCentavos: session.amount_total ?? 0,
+            totalPagadoCentavos: resumenPago.pagadoNetoCentavos,
+            totalReservaCentavos,
+            saldoPendienteCentavos: resumenPago.saldoPendienteCentavos,
             colorPrimario: grupo.propiedad.colorPrimario ?? undefined,
           });
         }
@@ -579,7 +612,19 @@ export async function POST(req: NextRequest) {
 
         const propiedad = await prisma.propiedad.findUnique({ where: { id: meta.propiedadId } });
         if (propiedad && fechaIngresoMin && fechaSalidaMax) {
-          await enviarConfirmacion({
+          const totalReservaCentavos = aCentavos(
+            roomsData.reduce((total, room) => total + room.total, 0)
+          );
+          const resumenPago = calcularResumenFinanciero({
+            totalReservaCentavos,
+            pagosStripe: [{
+              cobradoCentavos: session.amount_total ?? 0,
+              reembolsadoCentavos: 0,
+              reembolsoPendienteCentavos: 0,
+            }],
+            pagosExternos: [],
+          });
+          await enviarComprobantePago({
             emailHuesped: meta.email,
             codigoReserva: grupo.codigoGrupo,
             nombreHuesped: meta.nombre,
@@ -588,7 +633,10 @@ export async function POST(req: NextRequest) {
             fechaIngreso: fechaIngresoMin,
             fechaSalida: fechaSalidaMax,
             numPersonas: totalPersonas,
-            totalMxn: montoCobrado,
+            montoRecibidoCentavos: session.amount_total ?? 0,
+            totalPagadoCentavos: resumenPago.pagadoNetoCentavos,
+            totalReservaCentavos,
+            saldoPendienteCentavos: resumenPago.saldoPendienteCentavos,
             colorPrimario: propiedad.colorPrimario ?? undefined,
           });
         }
@@ -620,7 +668,7 @@ export async function POST(req: NextRequest) {
       if (!piId) throw new Error("PAGO_STRIPE_INCONSISTENTE");
 
       const resultado = await prisma.$transaction(async (tx) => {
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${reservaId}, 1))`;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${reservaId}, 19))`;
         const existente = await tx.pagoOnline.findUnique({ where: { stripePaymentIntentId: piId } });
         if (existente) return {
           existente,
@@ -630,17 +678,31 @@ export async function POST(req: NextRequest) {
         };
         const reserva = await tx.reserva.findFirst({
           where: { id: reservaId, propiedadId: session.metadata!.propiedadId },
-          include: { huesped: true, tipoDeHabitacion: true, propiedad: true, pagoManual: true },
+          include: {
+            huesped: true,
+            tipoDeHabitacion: true,
+            propiedad: true,
+            pagosOnline: true,
+            pagosExternos: { include: { ajustes: true } },
+          },
         });
         if (!reserva) throw new Error("RESERVA_INVALIDA");
-        const pagosAnteriores = await tx.pagoOnline.findMany({
-          where: { reservaId, estado: { not: "REEMBOLSADO" } },
+        const resumenAntes = calcularResumenFinanciero({
+          totalReservaCentavos: aCentavos(Number(reserva.totalMxn)),
+          pagosStripe: reserva.pagosOnline.map((pago) => ({
+            cobradoCentavos: aCentavos(Number(pago.montoMxn)),
+            reembolsadoCentavos: aCentavos(Number(pago.montoReembolsadoMxn)),
+            reembolsoPendienteCentavos: aCentavos(Number(pago.reembolsoPendienteMxn)),
+          })),
+          pagosExternos: reserva.pagosExternos.map((pago) => ({
+            cobradoCentavos: aCentavos(Number(pago.montoMxn)),
+            ajustesCentavos: pago.ajustes.reduce(
+              (total, ajuste) => total + aCentavos(Number(ajuste.montoMxn)),
+              0
+            ),
+          })),
         });
-        const montoAnterior = pagosAnteriores.reduce(
-          (s, pago) => s + Number(pago.montoMxn) - Number(pago.montoReembolsadoMxn) - Number(pago.reembolsoPendienteMxn),
-          0
-        );
-        const restante = Math.max(0, Number(reserva.totalMxn) - montoAnterior);
+        const restante = resumenAntes.saldoPendienteCentavos / 100;
         const montoAplicado = Math.min(restante, montoRecibido);
         const montoReembolso = Math.max(0, montoRecibido - montoAplicado);
         const pago = await tx.pagoOnline.create({
@@ -693,8 +755,34 @@ export async function POST(req: NextRequest) {
       }
 
       if (resultado.aplicado && resultado.reserva) {
-        const reserva = resultado.reserva;
-        const emailParams = {
+        const reserva = await prisma.reserva.findFirst({
+          where: { id: reservaId, propiedadId: session.metadata.propiedadId },
+          include: {
+            huesped: true,
+            tipoDeHabitacion: true,
+            propiedad: true,
+            pagosOnline: true,
+            pagosExternos: { include: { ajustes: true } },
+          },
+        });
+        if (!reserva) throw new Error("RESERVA_INVALIDA");
+        const totalReservaCentavos = aCentavos(Number(reserva.totalMxn));
+        const resumenPago = calcularResumenFinanciero({
+          totalReservaCentavos,
+          pagosStripe: reserva.pagosOnline.map((pago) => ({
+            cobradoCentavos: aCentavos(Number(pago.montoMxn)),
+            reembolsadoCentavos: aCentavos(Number(pago.montoReembolsadoMxn)),
+            reembolsoPendienteCentavos: aCentavos(Number(pago.reembolsoPendienteMxn)),
+          })),
+          pagosExternos: reserva.pagosExternos.map((pago) => ({
+            cobradoCentavos: aCentavos(Number(pago.montoMxn)),
+            ajustesCentavos: pago.ajustes.reduce(
+              (total, ajuste) => total + aCentavos(Number(ajuste.montoMxn)),
+              0
+            ),
+          })),
+        });
+        const datosReservaCorreo = {
           codigoReserva: reserva.codigoReserva,
           nombreHuesped: reserva.huesped.nombre,
           nombreHotel: reserva.propiedad.nombre,
@@ -702,19 +790,26 @@ export async function POST(req: NextRequest) {
           fechaIngreso: reserva.fechaIngreso,
           fechaSalida: reserva.fechaSalida,
           numPersonas: reserva.numPersonas,
-          totalMxn: Number(reserva.totalMxn),
           colorPrimario: reserva.propiedad.colorPrimario ?? undefined,
         };
 
         Promise.allSettled([
-          enviarConfirmacion({ emailHuesped: reserva.huesped.email, ...emailParams }),
+          enviarComprobantePago({
+            emailHuesped: reserva.huesped.email,
+            ...datosReservaCorreo,
+            montoRecibidoCentavos: session.amount_total ?? 0,
+            totalPagadoCentavos: resumenPago.pagadoNetoCentavos,
+            totalReservaCentavos,
+            saldoPendienteCentavos: resumenPago.saldoPendienteCentavos,
+          }),
           reserva.propiedad.email
             ? enviarAlertaEquipo({
                 emailEquipo: reserva.propiedad.email,
                 emailHuesped: reserva.huesped.email,
                 telefonoHuesped: reserva.huesped.telefono ?? undefined,
                 origen: "MANUAL",
-                ...emailParams,
+                ...datosReservaCorreo,
+                totalMxn: Number(reserva.totalMxn),
               })
             : Promise.resolve(),
         ]).catch(() => {});

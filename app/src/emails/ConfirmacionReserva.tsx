@@ -17,7 +17,10 @@ export type ConfirmacionReservaProps = {
   fechaIngreso: string;
   fechaSalida: string;
   numPersonas: number;
-  totalMxn: string;
+  montoRecibidoMxn: string;
+  totalPagadoMxn: string;
+  totalReservaMxn: string;
+  saldoPendienteMxn: string;
   colorPrimario?: string;
   linkPreCheckin?: string;
 };
@@ -30,14 +33,24 @@ export default function ConfirmacionReserva({
   fechaIngreso,
   fechaSalida,
   numPersonas,
-  totalMxn,
+  montoRecibidoMxn,
+  totalPagadoMxn,
+  totalReservaMxn,
+  saldoPendienteMxn,
   colorPrimario = "#111827",
   linkPreCheckin,
 }: ConfirmacionReservaProps) {
+  const pagoCompletado = saldoPendienteMxn === "0";
+  const tituloPago = pagoCompletado ? "Pago completado" : "Anticipo recibido";
+  const montoRecibido = `$${montoRecibidoMxn} MXN`;
+  const totalPagado = `$${totalPagadoMxn} MXN`;
+  const totalReserva = `$${totalReservaMxn} MXN`;
+  const saldoPendiente = `$${saldoPendienteMxn} MXN`;
+
   return (
     <Html>
       <Head />
-      <Preview>Tu reserva {codigoReserva} está confirmada en {nombreHotel}</Preview>
+      <Preview>{tituloPago}: reserva {codigoReserva} en {nombreHotel}</Preview>
       <Body style={{ backgroundColor: "#f9fafb", fontFamily: "sans-serif" }}>
         <Container style={{ maxWidth: 560, margin: "0 auto", padding: "32px 16px" }}>
           <Section style={{ backgroundColor: colorPrimario, borderRadius: 8, padding: "24px 32px", marginBottom: 24 }}>
@@ -48,6 +61,7 @@ export default function ConfirmacionReserva({
             <Text style={{ fontSize: 16, color: "#111827", marginTop: 0 }}>
               Hola {nombreHuesped},
             </Text>
+            <Heading style={{ color: "#111827", fontSize: 22 }}>{tituloPago}</Heading>
             <Text style={{ color: "#374151" }}>
               Tu reserva ha sido confirmada. Aquí están los detalles:
             </Text>
@@ -87,9 +101,27 @@ export default function ConfirmacionReserva({
             <table style={{ width: "100%" }}>
               <tbody>
                 <tr>
-                  <td style={{ fontWeight: "bold", color: "#111827", fontSize: 16 }}>Total pagado</td>
+                  <td style={{ color: "#374151", fontSize: 14 }}>Pago recibido ahora</td>
                   <td style={{ textAlign: "right" as const, fontWeight: "bold", color: "#111827", fontSize: 16 }}>
-                    ${totalMxn} MXN
+                    {montoRecibido}
+                  </td>
+                </tr>
+                <tr>
+                  <td style={{ color: "#374151", fontSize: 14 }}>Total pagado acumulado</td>
+                  <td style={{ textAlign: "right" as const, fontWeight: "bold", color: "#111827", fontSize: 16 }}>
+                    {totalPagado}
+                  </td>
+                </tr>
+                <tr>
+                  <td style={{ color: "#374151", fontSize: 14 }}>Total de la reserva</td>
+                  <td style={{ textAlign: "right" as const, fontWeight: "bold", color: "#111827", fontSize: 16 }}>
+                    {totalReserva}
+                  </td>
+                </tr>
+                <tr>
+                  <td style={{ color: "#374151", fontSize: 14 }}>Saldo pendiente</td>
+                  <td style={{ textAlign: "right" as const, fontWeight: "bold", color: "#111827", fontSize: 16 }}>
+                    {saldoPendiente}
                   </td>
                 </tr>
               </tbody>

@@ -2,6 +2,7 @@ import type { Prisma, RolUsuario } from "@prisma/client";
 import { prisma } from "../prisma";
 import { puedeMutarPagosExternos } from "./permisosPagosExternos";
 import { aCentavos, aMxn, calcularResumenFinanciero } from "./resumenFinanciero";
+import { enviarComprobantePago } from "../emails";
 
 export type ActorPagoExterno = {
   usuarioPropiedadId: string;
@@ -62,6 +63,8 @@ export type PagoExternoLedger = {
   idempotencyKey: string;
   reemplazaPagoExternoId: string | null;
   estadoComprobante: "NO_SOLICITADO" | "PENDIENTE" | "ENVIADO" | "FALLIDO";
+  comprobanteEnviadoEn?: Date | null;
+  comprobanteError?: string | null;
   ajustes: AjustePagoExternoLedger[];
   creadoEn: Date;
 };
@@ -120,6 +123,37 @@ export type RepositorioPagosExternos = {
     propiedadId: string,
     reservaId: string
   ): Promise<DatosLedgerReserva | null>;
+  leerDatosComprobante?(
+    propiedadId: string,
+    reservaId: string,
+    pagoExternoId: string
+  ): Promise<DatosComprobantePagoExterno | null>;
+  actualizarEstadoComprobante?(
+    pagoExternoId: string,
+    data: ActualizacionComprobantePago
+  ): Promise<PagoExternoLedger>;
+};
+
+export type DatosComprobantePagoExterno = {
+  pago: PagoExternoLedger;
+  ledger: DatosLedgerReserva;
+  destinatario: {
+    emailHuesped: string;
+    codigoReserva: string;
+    nombreHuesped: string;
+    nombreHotel: string;
+    tipoHabitacion: string;
+    fechaIngreso: Date;
+    fechaSalida: Date;
+    numPersonas: number;
+    colorPrimario?: string;
+  };
+};
+
+export type ActualizacionComprobantePago = {
+  estado: "PENDIENTE" | "ENVIADO" | "FALLIDO";
+  comprobanteEnviadoEn: Date | null;
+  comprobanteError: string | null;
 };
 
 export class ErrorPagoExterno extends Error {
@@ -131,7 +165,15 @@ export class ErrorPagoExterno extends Error {
 
 type ConfiguracionPagosExternos = {
   ledgerHabilitado: () => boolean;
+  enviarComprobante?: typeof enviarComprobantePago;
+  registrarErrorComprobante?: (detalle: {
+    pagoExternoId: string;
+    nombreError: string;
+  }) => void;
 };
+
+const ERROR_COMPROBANTE_SANITIZADO =
+  "No fue posible enviar el comprobante. Intenta nuevamente.";
 
 export function crearServicioPagosExternos(
   repositorio: RepositorioPagosExternos,
@@ -165,6 +207,60 @@ export function crearServicioPagosExternos(
     });
   }
 
+  async function procesarComprobante(
+    propiedadId: string,
+    reservaId: string,
+    pago: PagoExternoLedger,
+    forzarReenvio = false
+  ): Promise<PagoExternoLedger> {
+    if (
+      !configuracion.enviarComprobante ||
+      !repositorio.leerDatosComprobante ||
+      !repositorio.actualizarEstadoComprobante
+    ) {
+      return pago;
+    }
+    if (pago.estadoComprobante === "ENVIADO" && !forzarReenvio) return pago;
+
+    const datos = await repositorio.leerDatosComprobante(
+      propiedadId,
+      reservaId,
+      pago.id
+    );
+    if (!datos) throw new ErrorPagoExterno("PAGO_EXTERNO_NO_ENCONTRADO");
+
+    await repositorio.actualizarEstadoComprobante(pago.id, {
+      estado: "PENDIENTE",
+      comprobanteEnviadoEn: null,
+      comprobanteError: null,
+    });
+    const resumen = calcularResumen(datos.ledger);
+    try {
+      await configuracion.enviarComprobante({
+        ...datos.destinatario,
+        montoRecibidoCentavos: datos.pago.montoCentavos,
+        totalPagadoCentavos: resumen.pagadoNetoCentavos,
+        totalReservaCentavos: resumen.totalReservaCentavos,
+        saldoPendienteCentavos: resumen.saldoPendienteCentavos,
+      });
+      return repositorio.actualizarEstadoComprobante(pago.id, {
+        estado: "ENVIADO",
+        comprobanteEnviadoEn: new Date(),
+        comprobanteError: null,
+      });
+    } catch (error) {
+      configuracion.registrarErrorComprobante?.({
+        pagoExternoId: pago.id,
+        nombreError: error instanceof Error ? error.name : "ErrorDesconocido",
+      });
+      return repositorio.actualizarEstadoComprobante(pago.id, {
+        estado: "FALLIDO",
+        comprobanteEnviadoEn: null,
+        comprobanteError: ERROR_COMPROBANTE_SANITIZADO,
+      });
+    }
+  }
+
   return {
     async obtenerLedgerReserva(actor: ActorPagoExterno, reservaId: string) {
       const actorAutorizado = await repositorio.cargarActor(
@@ -183,7 +279,7 @@ export function crearServicioPagosExternos(
     async registrarPagoExterno(actor: ActorPagoExterno, input: RegistrarPagoExternoInput) {
       actor = await validarEscritura(actor);
 
-      return repositorio.transaccion(async (tx) => {
+      const pago = await repositorio.transaccion(async (tx) => {
         await tx.adquirirLockReserva(input.reservaId);
         await tx.adquirirLockIdempotencia(input.idempotencyKey);
         const resultadoIdempotencia = await tx.buscarResultadoIdempotencia(
@@ -231,6 +327,31 @@ export function crearServicioPagosExternos(
           estadoComprobante: input.enviarComprobante ? "PENDIENTE" : "NO_SOLICITADO",
         });
       });
+      return input.enviarComprobante
+        ? procesarComprobante(actor.propiedadId, input.reservaId, pago)
+        : pago;
+    },
+
+    async reenviarComprobantePagoExterno(
+      actor: ActorPagoExterno,
+      input: { reservaId: string; pagoExternoId: string }
+    ) {
+      actor = await validarEscritura(actor);
+      if (!repositorio.leerDatosComprobante) {
+        throw new ErrorPagoExterno("COMPROBANTE_NO_DISPONIBLE");
+      }
+      const datos = await repositorio.leerDatosComprobante(
+        actor.propiedadId,
+        input.reservaId,
+        input.pagoExternoId
+      );
+      if (!datos) throw new ErrorPagoExterno("PAGO_EXTERNO_NO_ENCONTRADO");
+      return procesarComprobante(
+        actor.propiedadId,
+        input.reservaId,
+        datos.pago,
+        true
+      );
     },
 
     async corregirPagoExterno(actor: ActorPagoExterno, input: CorregirPagoExternoInput) {
@@ -431,6 +552,8 @@ function mapearPagoExternoPrisma(pago: PagoExternoPrisma): PagoExternoLedger {
     idempotencyKey: pago.idempotencyKey,
     reemplazaPagoExternoId: pago.reemplazaPagoExternoId,
     estadoComprobante: pago.estadoComprobante,
+    comprobanteEnviadoEn: pago.comprobanteEnviadoEn,
+    comprobanteError: pago.comprobanteError,
     ajustes: pago.ajustes.map(mapearAjustePrisma),
     creadoEn: pago.creadoEn,
   };
@@ -581,6 +704,48 @@ export function crearRepositorioPrismaPagosExternos(
     leerLedgerReserva(propiedadId, reservaId) {
       return cargarLedgerPrisma(cliente, propiedadId, reservaId);
     },
+    async leerDatosComprobante(propiedadId, reservaId, pagoExternoId) {
+      const [ledger, reserva] = await Promise.all([
+        cargarLedgerPrisma(cliente, propiedadId, reservaId),
+        cliente.reserva.findFirst({
+          where: { id: reservaId, propiedadId },
+          select: {
+            codigoReserva: true,
+            fechaIngreso: true,
+            fechaSalida: true,
+            numPersonas: true,
+            huesped: { select: { email: true, nombre: true } },
+            tipoDeHabitacion: { select: { nombre: true } },
+            propiedad: { select: { nombre: true, colorPrimario: true } },
+          },
+        }),
+      ]);
+      const pago = ledger?.pagosExternos.find((item) => item.id === pagoExternoId);
+      if (!ledger || !reserva || !pago) return null;
+      return {
+        pago,
+        ledger,
+        destinatario: {
+          emailHuesped: reserva.huesped.email,
+          codigoReserva: reserva.codigoReserva,
+          nombreHuesped: reserva.huesped.nombre,
+          nombreHotel: reserva.propiedad.nombre,
+          tipoHabitacion: reserva.tipoDeHabitacion.nombre,
+          fechaIngreso: reserva.fechaIngreso,
+          fechaSalida: reserva.fechaSalida,
+          numPersonas: reserva.numPersonas,
+          colorPrimario: reserva.propiedad.colorPrimario ?? undefined,
+        },
+      };
+    },
+    async actualizarEstadoComprobante(pagoExternoId, data) {
+      const pago = await cliente.pagoExterno.update({
+        where: { id: pagoExternoId },
+        data,
+        include: { ajustes: true },
+      });
+      return mapearPagoExternoPrisma(pago);
+    },
   };
 }
 
@@ -588,9 +753,17 @@ const repositorioPrisma = crearRepositorioPrismaPagosExternos(prisma);
 
 const servicioPagosExternos = crearServicioPagosExternos(repositorioPrisma, {
   ledgerHabilitado: () => process.env.PAGOS_EXTERNOS_LEDGER_ENABLED === "true",
+  enviarComprobante: enviarComprobantePago,
+  registrarErrorComprobante: ({ pagoExternoId, nombreError }) => {
+    console.error("[pagos-externos] Falló el comprobante", {
+      pagoExternoId,
+      nombreError,
+    });
+  },
 });
 
 export const obtenerLedgerReserva = servicioPagosExternos.obtenerLedgerReserva;
 export const registrarPagoExterno = servicioPagosExternos.registrarPagoExterno;
+export const reenviarComprobantePagoExterno = servicioPagosExternos.reenviarComprobantePagoExterno;
 export const corregirPagoExterno = servicioPagosExternos.corregirPagoExterno;
 export const ajustarPagoExterno = servicioPagosExternos.ajustarPagoExterno;
