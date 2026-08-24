@@ -7,6 +7,7 @@ import { OnboardingChecklist } from "@/components/OnboardingChecklist";
 import { AlertasCheckIn, type ReservaConAlerta } from "./AlertasCheckIn";
 import { calcularEtapaAlerta } from "@/lib/negocio/alertasCheckIn";
 import { hoyEnMexico } from "@/lib/negocio/horaMexico";
+import { inicioDiaCalendarioUtc } from "@/lib/negocio/dashboard";
 
 export default async function PanelPage() {
   const usuario = await getCurrentUsuario();
@@ -15,6 +16,9 @@ export default async function PanelPage() {
   // Los servidores corren en UTC; usamos "hoy" en hora de México, no la del
   // servidor, para que las llegadas/salidas del día se clasifiquen bien.
   const hoy = hoyEnMexico();
+  const inicioDia = inicioDiaCalendarioUtc(hoy);
+  const mananaCalendario = new Date(inicioDia);
+  mananaCalendario.setUTCDate(mananaCalendario.getUTCDate() + 1);
   const manana = new Date(hoy);
   manana.setDate(manana.getDate() + 1);
   const en7dias = new Date(hoy);
@@ -40,7 +44,7 @@ export default async function PanelPage() {
       where: {
         propiedadId: usuario.propiedadId,
         estado: "EN_CURSO",
-        fechaSalida: { gte: hoy, lt: manana },
+        fechaSalida: { gte: inicioDia, lt: mananaCalendario },
       },
       include: {
         huesped: true,

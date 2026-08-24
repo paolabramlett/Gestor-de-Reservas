@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { esHuespedEnCasa } from "./dashboard";
+import { esHuespedEnCasa, inicioDiaCalendarioUtc } from "./dashboard";
 
 describe("estado En casa del dashboard", () => {
   const hoy = new Date("2026-08-24T06:00:00.000Z");
@@ -18,5 +18,9 @@ describe("estado En casa del dashboard", () => {
       fechaIngreso: new Date("2026-08-20T06:00:00.000Z"),
       fechaSalida: new Date("2026-08-26T06:00:00.000Z"),
     }, hoy)).toBe(true);
+  });
+
+  it("convierte hoy local en el inicio del día de calendario almacenado", () => {
+    expect(inicioDiaCalendarioUtc(hoy).toISOString()).toBe("2026-08-24T00:00:00.000Z");
   });
 });
