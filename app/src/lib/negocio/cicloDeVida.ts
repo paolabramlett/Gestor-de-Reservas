@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { reembolsarPagosOnline } from "@/lib/negocio/pagosOnline";
 import { enviarCancelacion } from "@/lib/emails";
 import { EstadoReserva } from "@prisma/client";
+import { RolUsuario } from "@prisma/client";
 import { aCentavos, aMxn, calcularResumenFinanciero } from "./resumenFinanciero";
 
 // Una reserva solo se puede borrar (hard delete) si no hay dinero real de por
@@ -57,6 +58,16 @@ export type RegistroCheckInInput = {
   politicasAceptadas: boolean;
 };
 
+export type AutorizacionSaldoPendiente = {
+  rol: RolUsuario;
+  usuarioPropiedadId: string;
+  motivo: string;
+};
+
+export function puedeAutorizarSaldoPendiente(rol: RolUsuario): boolean {
+  return rol === RolUsuario.ADMIN || rol === RolUsuario.SUPER_ADMIN;
+}
+
 // Guarda los datos de registro del huésped (documento, nacionalidad, placas y
 // aceptación de políticas). No cambia el estado de la reserva — se puede
 // llamar desde recepción al hacer check-in, o desde el link público de
@@ -89,7 +100,11 @@ export async function completarRegistroCheckIn(
   });
 }
 
-export async function checkIn(reservaId: string, propiedadId: string) {
+export async function checkIn(
+  reservaId: string,
+  propiedadId: string,
+  autorizacion?: AutorizacionSaldoPendiente
+) {
   const reserva = await prisma.reserva.findFirst({
     where: { id: reservaId, propiedadId },
     include: {
@@ -121,9 +136,21 @@ export async function checkIn(reservaId: string, propiedadId: string) {
       })),
     });
     if (resumen.saldoPendienteCentavos > 0) {
-      throw new Error(
-        `La reserva tiene un saldo pendiente de $${aMxn(resumen.saldoPendienteCentavos).toLocaleString("es-MX")} MXN. Registra el pago antes de hacer check-in.`
-      );
+      const motivo = autorizacion?.motivo.trim() ?? "";
+      if (!autorizacion || !puedeAutorizarSaldoPendiente(autorizacion.rol) || !motivo || motivo.length > 500) {
+        throw new Error(
+          `La reserva tiene un saldo pendiente de $${aMxn(resumen.saldoPendienteCentavos).toLocaleString("es-MX")} MXN. Registra el pago antes de hacer check-in o solicita autorización administrativa.`
+        );
+      }
+      return prisma.reserva.update({
+        where: { id: reservaId },
+        data: {
+          estado: EstadoReserva.EN_CURSO,
+          checkInSaldoPendienteAutorizadoEn: new Date(),
+          checkInSaldoPendienteAutorizadoPorId: autorizacion.usuarioPropiedadId,
+          checkInSaldoPendienteMotivo: motivo,
+        },
+      });
     }
   }
 

@@ -19,7 +19,15 @@ export async function checkInAction(formData: FormData) {
       placasVehiculo: (formData.get("placasVehiculo") as string) || null,
       politicasAceptadas: formData.get("politicasAceptadas") === "on",
     });
-    await checkIn(reservaId, usuario.propiedadId);
+    const autorizarSaldoPendiente = formData.get("autorizarSaldoPendiente") === "on";
+    const motivoSaldoPendiente = formData.get("motivoSaldoPendiente");
+    await checkIn(
+      reservaId,
+      usuario.propiedadId,
+      autorizarSaldoPendiente && typeof motivoSaldoPendiente === "string"
+        ? { rol: usuario.rol, usuarioPropiedadId: usuario.id, motivo: motivoSaldoPendiente }
+        : undefined
+    );
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Error";
     redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent(msg)}`);

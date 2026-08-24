@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import type { RolUsuario } from "@prisma/client";
 
 // ─── Shared dialog shell ──────────────────────────────────────────────────────
 
@@ -117,11 +118,13 @@ function CheckInDialog({
   action,
   saldoPendiente,
   registro,
+  rol,
 }: {
   reservaId: string;
   action: (fd: FormData) => Promise<void>;
   saldoPendiente?: number | null;
   registro?: RegistroCheckIn;
+  rol?: RolUsuario;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const yaRegistrado = !!registro?.politicasAceptadas;
@@ -244,6 +247,21 @@ function CheckInDialog({
               Confirmar Check-in
             </button>
           </div>
+          {!!saldoPendiente && saldoPendiente > 0 && (rol === "ADMIN" || rol === "SUPER_ADMIN") && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 space-y-2">
+              <label className="flex items-start gap-2 text-xs text-blue-900">
+                <input type="checkbox" name="autorizarSaldoPendiente" className="mt-0.5" />
+                <span>Autorizo el check-in con saldo pendiente como administrador.</span>
+              </label>
+              <textarea
+                name="motivoSaldoPendiente"
+                rows={2}
+                maxLength={500}
+                placeholder="Motivo obligatorio si autorizas la excepción"
+                className="w-full rounded-lg border border-blue-200 px-2.5 py-2 text-sm"
+              />
+            </div>
+          )}
         </form>
       </ConfirmDialog>
     </>
@@ -258,6 +276,7 @@ export function BotonesEstadoReserva({
   noShowAction,
   saldoPendiente,
   registro,
+  rol,
 }: {
   reservaId: string;
   estado: string;
@@ -266,11 +285,12 @@ export function BotonesEstadoReserva({
   noShowAction: (fd: FormData) => Promise<void>;
   saldoPendiente?: number | null;
   registro?: RegistroCheckIn;
+  rol?: RolUsuario;
 }) {
   return (
     <>
       {estado === "CONFIRMADA" && (
-        <CheckInDialog reservaId={reservaId} action={checkInAction} saldoPendiente={saldoPendiente} registro={registro} />
+        <CheckInDialog reservaId={reservaId} action={checkInAction} saldoPendiente={saldoPendiente} registro={registro} rol={rol} />
       )}
       {estado === "EN_CURSO" && (
         <BotonConConfirmacion accion="checkout" action={checkOutAction} reservaId={reservaId} />

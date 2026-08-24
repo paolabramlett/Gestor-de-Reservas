@@ -297,6 +297,9 @@ model Reserva {
   politicasAceptadas      Boolean              @default(false)
   politicasAceptadasEn    DateTime?
   registroCheckInEn       DateTime?
+  checkInSaldoPendienteAutorizadoEn DateTime?
+  checkInSaldoPendienteAutorizadoPorId String?
+  checkInSaldoPendienteMotivo String?
   creadoEn                DateTime             @default(now())
   actualizadoEn           DateTime             @updatedAt
 

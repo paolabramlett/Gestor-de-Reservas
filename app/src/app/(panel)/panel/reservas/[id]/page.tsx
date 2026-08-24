@@ -261,6 +261,7 @@ export default async function ReservaDetallePage({
             checkOutAction={checkOutAction}
             noShowAction={noShowAction}
             saldoPendiente={saldoPendiente}
+            rol={usuario.rol}
             registro={{
               documentoTipo: reserva.documentoTipo,
               documentoNumero: reserva.documentoNumero,
