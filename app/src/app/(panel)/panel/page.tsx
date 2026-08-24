@@ -53,6 +53,8 @@ export default async function PanelPage() {
       where: {
         propiedadId: usuario.propiedadId,
         estado: "EN_CURSO",
+        fechaIngreso: { lte: hoy },
+        fechaSalida: { gt: hoy },
       },
       include: {
         huesped: true,
