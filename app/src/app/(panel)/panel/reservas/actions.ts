@@ -162,18 +162,6 @@ export async function asignarHabitacionAction(formData: FormData) {
     });
   });
 
-  await registrarAuditoriaOperacion({
-    propiedadId: usuario.propiedadId,
-    actorUsuarioId: usuario.id,
-    reservaId,
-    accion: "ACTUALIZACION_RESERVA",
-    resultado: "EXITO",
-    rol: usuario.rol,
-    importeAnteriorMxn: Number(reserva.totalMxn),
-    importeNuevoMxn: total,
-    metadata: { fechaIngreso: fechaIngreso.toISOString(), fechaSalida: fechaSalida.toISOString(), numPersonas },
-  });
-
   if (conflicto) {
     redirect(
       `/panel/reservas/${reservaId}?error=${encodeURIComponent("Esa habitación ya está ocupada o bloqueada en esas fechas")}`
@@ -330,6 +318,18 @@ export async function actualizarDatosReservaAction(formData: FormData) {
     if (tipoChanged && reserva.asignacion) {
       await tx.asignacionDeHabitacion.delete({ where: { reservaId } });
     }
+  });
+
+  await registrarAuditoriaOperacion({
+    propiedadId: usuario.propiedadId,
+    actorUsuarioId: usuario.id,
+    reservaId,
+    accion: "ACTUALIZACION_RESERVA",
+    resultado: "EXITO",
+    rol: usuario.rol,
+    importeAnteriorMxn: Number(reserva.totalMxn),
+    importeNuevoMxn: total,
+    metadata: { fechaIngreso: fechaIngreso.toISOString(), fechaSalida: fechaSalida.toISOString(), numPersonas },
   });
 
   // BUG 12: mensaje correcto — esta acción actualiza datos de la reserva, no pagos
