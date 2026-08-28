@@ -19,6 +19,7 @@ import { BotonesEstadoReserva, CancelarDialogClient } from "../BotonesEstadoRese
 import { SolicitarPagoButton } from "../SolicitarPagoButton";
 import { puedeSolicitarPagoPorFecha } from "@/lib/negocio/vencimientoPagos";
 import { PagoLedger, type PagoLedgerInput } from "./PagoLedger";
+import { GuardarNotasButton } from "./GuardarNotasButton";
 import { obtenerLedgerReserva } from "@/lib/negocio/pagosExternos.server";
 import { clerkClient } from "@clerk/nextjs/server";
 import Link from "next/link";
@@ -243,12 +244,6 @@ export default async function ReservaDetallePage({
       {error && (
         <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
           {decodeURIComponent(error)}
-        </div>
-      )}
-
-      {notas === "guardadas" && (
-        <div className="mb-4 rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700" role="status">
-          Notas guardadas correctamente.
         </div>
       )}
 
@@ -598,7 +593,10 @@ export default async function ReservaDetallePage({
             <label className="mb-1 block text-xs text-gray-500">Notas internas de la reserva</label>
             <textarea name="notas" rows={3} defaultValue={reserva.pagoManual?.notas ?? ""} maxLength={2000} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
           </div>
-          <button type="submit" className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">Guardar notas</button>
+          <div className="flex items-center gap-3">
+            <GuardarNotasButton />
+            {notas === "guardadas" && <span className="text-sm text-green-700" role="status">✓ Guardadas</span>}
+          </div>
         </form>
       )}
     </div>
