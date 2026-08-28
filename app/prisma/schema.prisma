@@ -115,6 +115,7 @@ model Propiedad {
   intentosDePago    IntentoDePagoStripe[]
   usuarios          UsuarioPropiedad[]
   invitaciones      InvitacionEquipo[]
+  auditoria         AuditoriaOperacion[]
 
   @@map("propiedades")
 }
@@ -126,9 +127,10 @@ model UsuarioPropiedad {
   rol         RolUsuario
   creadoEn    DateTime   @default(now())
 
-  propiedad                   Propiedad           @relation(fields: [propiedadId], references: [id], onDelete: Cascade)
+  propiedad                   Propiedad            @relation(fields: [propiedadId], references: [id], onDelete: Cascade)
   pagosExternosCreados        PagoExterno[]
   ajustesPagosExternosCreados AjustePagoExterno[]
+  auditoria                   AuditoriaOperacion[]
 
   @@unique([clerkUserId, propiedadId])
   @@map("usuarios_propiedad")
@@ -260,9 +262,10 @@ model GrupoReserva {
   stripePaymentIntentId String?
   creadoEn              DateTime @default(now())
 
-  propiedad   Propiedad    @relation(fields: [propiedadId], references: [id], onDelete: Cascade)
+  propiedad   Propiedad            @relation(fields: [propiedadId], references: [id], onDelete: Cascade)
   reservas    Reserva[]
   pagosOnline PagoOnline[]
+  auditoria   AuditoriaOperacion[]
 
   @@map("grupos_reserva")
 }
@@ -270,38 +273,38 @@ model GrupoReserva {
 // ─── Reservas ────────────────────────────────────────────────────────────────
 
 model Reserva {
-  id                      String               @id @default(cuid())
-  codigoReserva           String               @unique
-  propiedadId             String
-  tipoDeHabitacionId      String
-  huespedId               String
-  grupoId                 String?
-  origen                  OrigenReserva
-  estado                  EstadoReserva        @default(CONFIRMADA)
-  fechaIngreso            DateTime             @db.Date
-  fechaSalida             DateTime             @db.Date
-  numPersonas             Int
-  nombreHuesped           String               @default("")
-  totalMxn                Decimal              @db.Decimal(10, 2)
-  desglosePorNoche        Json
-  stripePaymentIntentId   String?              @unique
-  stripeCheckoutSessionId String?              @unique
-  linkExpiraEn            DateTime?
-  tipoEspecial            TipoEspecialReserva?
-  lateCheckInEn           DateTime?
-  cargoLateCheckIn        Decimal?             @db.Decimal(10, 2)
-  documentoTipo           String?
-  documentoNumero         String?
-  nacionalidad            String?
-  placasVehiculo          String?
-  politicasAceptadas      Boolean              @default(false)
-  politicasAceptadasEn    DateTime?
-  registroCheckInEn       DateTime?
-  checkInSaldoPendienteAutorizadoEn DateTime?
+  id                                   String               @id @default(cuid())
+  codigoReserva                        String               @unique
+  propiedadId                          String
+  tipoDeHabitacionId                   String
+  huespedId                            String
+  grupoId                              String?
+  origen                               OrigenReserva
+  estado                               EstadoReserva        @default(CONFIRMADA)
+  fechaIngreso                         DateTime             @db.Date
+  fechaSalida                          DateTime             @db.Date
+  numPersonas                          Int
+  nombreHuesped                        String               @default("")
+  totalMxn                             Decimal              @db.Decimal(10, 2)
+  desglosePorNoche                     Json
+  stripePaymentIntentId                String?              @unique
+  stripeCheckoutSessionId              String?              @unique
+  linkExpiraEn                         DateTime?
+  tipoEspecial                         TipoEspecialReserva?
+  lateCheckInEn                        DateTime?
+  cargoLateCheckIn                     Decimal?             @db.Decimal(10, 2)
+  documentoTipo                        String?
+  documentoNumero                      String?
+  nacionalidad                         String?
+  placasVehiculo                       String?
+  politicasAceptadas                   Boolean              @default(false)
+  politicasAceptadasEn                 DateTime?
+  registroCheckInEn                    DateTime?
+  checkInSaldoPendienteAutorizadoEn    DateTime?
   checkInSaldoPendienteAutorizadoPorId String?
-  checkInSaldoPendienteMotivo String?
-  creadoEn                DateTime             @default(now())
-  actualizadoEn           DateTime             @updatedAt
+  checkInSaldoPendienteMotivo          String?
+  creadoEn                             DateTime             @default(now())
+  actualizadoEn                        DateTime             @updatedAt
 
   propiedad         Propiedad               @relation(fields: [propiedadId], references: [id], onDelete: Cascade)
   tipoDeHabitacion  TipoDeHabitacion        @relation(fields: [tipoDeHabitacionId], references: [id])
@@ -312,6 +315,7 @@ model Reserva {
   pagosOnline       PagoOnline[]
   pagosExternos     PagoExterno[]
   solicitudesCambio SolicitudCambio[]
+  auditoria         AuditoriaOperacion[]
 
   @@map("reservas")
 }
@@ -454,6 +458,37 @@ model AjustePagoExterno {
 
   @@index([pagoExternoId, creadoEn])
   @@map("ajustes_pagos_externos")
+}
+
+// Historial append-only de mutaciones operativas y financieras. No se expone
+// al cliente; las acciones del servidor son responsables de autorizar y
+// registrar cada evento.
+model AuditoriaOperacion {
+  id                 String      @id @default(cuid())
+  propiedadId        String
+  actorUsuarioId     String?
+  reservaId          String?
+  grupoId            String?
+  accion             String
+  resultado          String
+  rol                RolUsuario?
+  importeAnteriorMxn Decimal?    @db.Decimal(10, 2)
+  importeNuevoMxn    Decimal?    @db.Decimal(10, 2)
+  motivo             String?
+  idempotencyKey     String?
+  stripeId           String?
+  metadata           Json?
+  creadoEn           DateTime    @default(now())
+
+  propiedad    Propiedad         @relation(fields: [propiedadId], references: [id], onDelete: Restrict)
+  actorUsuario UsuarioPropiedad? @relation(fields: [actorUsuarioId], references: [id], onDelete: SetNull)
+  reserva      Reserva?          @relation(fields: [reservaId], references: [id], onDelete: SetNull)
+  grupo        GrupoReserva?     @relation(fields: [grupoId], references: [id], onDelete: SetNull)
+
+  @@index([propiedadId, creadoEn])
+  @@index([reservaId, creadoEn])
+  @@index([grupoId, creadoEn])
+  @@map("auditoria_operaciones")
 }
 
 // ─── Bloqueos ────────────────────────────────────────────────────────────────
