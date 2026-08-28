@@ -127,6 +127,7 @@ export async function reembolsarPagosOnline(input: {
   reservaId?: string;
   grupoId?: string;
   montoMxn: number;
+  motivo?: string;
 }): Promise<void> {
   if ((input.reservaId ? 1 : 0) + (input.grupoId ? 1 : 0) !== 1) throw new Error("DESTINO_REEMBOLSO_INVALIDO");
   const claveLock = input.reservaId ?? input.grupoId!;
@@ -163,14 +164,17 @@ export async function reembolsarPagosOnline(input: {
         throw new Error("CUENTA_ORIGEN_STRIPE_FALTANTE");
       }
       if (pago.modeloCobro === "DIRECT") {
-        await reembolsarPagoDirectoHuesped(
-          pago.stripePaymentIntentId,
-          pago.stripeConnectAccountId!,
-          parte.montoCentavos,
-          idempotencyKey
-        );
+        if (input.motivo) {
+          await reembolsarPagoDirectoHuesped(pago.stripePaymentIntentId, pago.stripeConnectAccountId!, parte.montoCentavos, idempotencyKey, input.motivo);
+        } else {
+          await reembolsarPagoDirectoHuesped(pago.stripePaymentIntentId, pago.stripeConnectAccountId!, parte.montoCentavos, idempotencyKey);
+        }
       } else {
-        await reembolsarPagoHuesped(pago.stripePaymentIntentId, parte.montoCentavos, idempotencyKey);
+        if (input.motivo) {
+          await reembolsarPagoHuesped(pago.stripePaymentIntentId, parte.montoCentavos, idempotencyKey, input.motivo);
+        } else {
+          await reembolsarPagoHuesped(pago.stripePaymentIntentId, parte.montoCentavos, idempotencyKey);
+        }
       }
       const nuevoReembolsado = Number(pago.montoReembolsadoMxn) + parte.montoCentavos / 100;
       await prisma.pagoOnline.update({

@@ -130,6 +130,7 @@ export function crearVistaLedger(input: PagoLedgerInput) {
     totalPagado: formatoMxn(input.pagadoNetoCentavos),
     saldoPendiente: formatoMxn(input.saldoPendienteCentavos),
     saldoPendienteCentavos: input.saldoPendienteCentavos,
+    saldoStripeCentavos: movimientosStripe.reduce((total, movimiento) => total + movimiento.montoCentavos, 0),
     puedeRegistrarExterno: puedeMutar && input.saldoPendienteCentavos > 0,
     movimientos: [...movimientosStripe, ...movimientosExternos].sort((a, b) =>
       a.fecha.localeCompare(b.fecha)
@@ -169,6 +170,9 @@ export function PagoLedger({
           {accionesCabecera}
           {vista.puedeRegistrarExterno && (
             <PagoExternoDialog reservaId={vista.reservaId} saldoPendienteCentavos={vista.saldoPendienteCentavos} />
+          )}
+          {vista.saldoStripeCentavos > 0 && input.rol !== "FINANZAS" && (
+            <ReembolsoStripeDialog reservaId={vista.reservaId} maximoCentavos={vista.saldoStripeCentavos} />
           )}
         </div>
       </div>
@@ -234,3 +238,4 @@ export function PagoLedger({
 import type { ReactNode } from "react";
 import { AccionesPagoExterno } from "./AccionesPagoExterno";
 import { PagoExternoDialog } from "./PagoExternoDialog";
+import { ReembolsoStripeDialog } from "./ReembolsoStripeDialog";

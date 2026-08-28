@@ -58,7 +58,8 @@ export function crearClaveIdempotenciaDirectCharge(
 export async function reembolsarPagoHuesped(
   paymentIntentId: string,
   montoCentavos?: number,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  motivo?: string
 ) {
   const { stripe } = await import("./stripe");
   const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
@@ -70,6 +71,7 @@ export async function reembolsarPagoHuesped(
     ...(esDestinationCharge
       ? { reverse_transfer: true, refund_application_fee: true }
       : {}),
+    ...(motivo ? { metadata: { roomly_motivo: motivo } } : {}),
   }, idempotencyKey ? { idempotencyKey } : undefined);
 }
 
@@ -79,12 +81,14 @@ export async function reembolsarPagoDirectoHuesped(
   paymentIntentId: string,
   stripeConnectAccountId: string,
   montoCentavos?: number,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  motivo?: string
 ) {
   const { stripe } = await import("./stripe");
   return stripe.refunds.create({
     payment_intent: paymentIntentId,
     ...(montoCentavos != null ? { amount: montoCentavos } : {}),
+    ...(motivo ? { metadata: { roomly_motivo: motivo } } : {}),
   }, {
     stripeAccount: stripeConnectAccountId,
     ...(idempotencyKey ? { idempotencyKey } : {}),
