@@ -75,6 +75,16 @@ export function crearVistaLedger(input: PagoLedgerInput) {
       0,
       pago.cobradoCentavos - pago.reembolsadoCentavos - pago.reembolsoPendienteCentavos
     ),
+    montoOriginal: formatoMxn(pago.cobradoCentavos),
+    montoReembolsado: formatoMxn(pago.reembolsadoCentavos),
+    montoAplicado: formatoMxn(Math.max(0, pago.cobradoCentavos - pago.reembolsadoCentavos - pago.reembolsoPendienteCentavos)),
+    estadoReembolso: pago.reembolsoPendienteCentavos > 0
+      ? "Reembolso pendiente"
+      : pago.reembolsadoCentavos >= pago.cobradoCentavos
+        ? "Reembolsado por Stripe"
+        : pago.reembolsadoCentavos > 0
+          ? "Reembolso parcial por Stripe"
+          : null,
     fecha: pago.creadoEn,
     detalle: "Conciliado automáticamente por Stripe",
     editable: false,
@@ -184,6 +194,14 @@ export function PagoLedger({
                 <span className="text-sm font-semibold text-gray-900">{movimiento.monto}</span>
               </div>
               <p className="mt-2 text-sm text-gray-600">{movimiento.detalle}</p>
+
+              {movimiento.fuente === "Stripe" && movimiento.estadoReembolso && (
+                <dl className="mt-2 grid grid-cols-1 gap-1 text-xs text-gray-600 sm:grid-cols-3">
+                  <div><dt className="inline font-medium">Importe original: </dt><dd className="inline">{movimiento.montoOriginal}</dd></div>
+                  <div><dt className="inline font-medium">Reembolsado: </dt><dd className="inline">{movimiento.montoReembolsado}</dd></div>
+                  <div><dt className="inline font-medium">Aplicado al saldo: </dt><dd className="inline">{movimiento.montoAplicado}</dd></div>
+                </dl>
+              )}
 
               {movimiento.fuente === "Pago externo" && (
                 <>

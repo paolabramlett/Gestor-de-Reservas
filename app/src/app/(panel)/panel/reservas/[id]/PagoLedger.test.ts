@@ -65,6 +65,23 @@ describe("crearVistaLedger", () => {
     });
   });
 
+  it("explica un reembolso total de Stripe sin mostrarlo como pago inexistente", () => {
+    const vista = crearVistaLedger({
+      ...base,
+      pagadoNetoCentavos: 0,
+      saldoPendienteCentavos: 300_000,
+      pagosStripe: [{ ...base.pagosStripe[0], reembolsadoCentavos: 300_000 }],
+    });
+
+    expect(vista.movimientos[0]).toMatchObject({
+      monto: "$0 MXN",
+      montoOriginal: "$3,000 MXN",
+      montoReembolsado: "$3,000 MXN",
+      montoAplicado: "$0 MXN",
+      estadoReembolso: "Reembolsado por Stripe",
+    });
+  });
+
   it("conserva el pago externo original y sus ajustes vinculados en la auditoría", () => {
     const vista = crearVistaLedger({
       ...base,
