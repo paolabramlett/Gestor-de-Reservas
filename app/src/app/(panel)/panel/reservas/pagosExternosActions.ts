@@ -11,6 +11,7 @@ import {
   type ActorPagoExterno,
 } from "@/lib/negocio/pagosExternos.server";
 import { revalidatePath } from "next/cache";
+import { registrarAuditoriaOperacion } from "@/lib/negocio/auditoria";
 
 export type ResultadoPagoExternoAction = {
   ok: boolean;
@@ -130,7 +131,7 @@ export async function registrarPagoExternoAction(
     const reservaId = campo(formData, "reservaId");
     const metodo = campo(formData, "metodo", 30);
     if (!METODOS.has(metodo)) throw new Error("DATOS_INVALIDOS");
-    await registrarPagoExterno(actor, {
+    const pago = await registrarPagoExterno(actor, {
       reservaId,
       montoCentavos: dineroCentavos(formData, "monto"),
       metodo: metodo as "EFECTIVO" | "TRANSFERENCIA" | "TERMINAL_EXTERNA" | "OTRO",
@@ -138,6 +139,17 @@ export async function registrarPagoExternoAction(
       nota: campoOpcional(formData, "nota", 500),
       enviarComprobante: formData.get("enviarComprobante") === "on",
       idempotencyKey: idempotencia(formData),
+    });
+    await registrarAuditoriaOperacion({
+      propiedadId: actor.propiedadId,
+      actorUsuarioId: actor.usuarioPropiedadId,
+      reservaId,
+      accion: "PAGO_EXTERNO",
+      resultado: "EXITO",
+      rol: actor.rol,
+      importeNuevoMxn: pago.montoCentavos / 100,
+      motivo: pago.nota,
+      idempotencyKey: pago.idempotencyKey,
     });
     refrescar(reservaId);
     return { ok: true, mensaje: "Pago externo registrado." };
@@ -155,7 +167,7 @@ export async function corregirPagoExternoAction(
     const reservaId = campo(formData, "reservaId");
     const metodo = campo(formData, "metodo", 30);
     if (!METODOS.has(metodo)) throw new Error("DATOS_INVALIDOS");
-    await corregirPagoExterno(actor, {
+    const resultado = await corregirPagoExterno(actor, {
       reservaId,
       pagoExternoId: campo(formData, "pagoExternoId"),
       nuevoMontoCentavos: dineroCentavos(formData, "monto"),
@@ -164,6 +176,17 @@ export async function corregirPagoExternoAction(
       motivo: campo(formData, "motivo", 500),
       nota: campoOpcional(formData, "nota", 500),
       idempotencyKey: idempotencia(formData),
+    });
+    await registrarAuditoriaOperacion({
+      propiedadId: actor.propiedadId,
+      actorUsuarioId: actor.usuarioPropiedadId,
+      reservaId,
+      accion: "CORRECCION_PAGO_EXTERNO",
+      resultado: "EXITO",
+      rol: actor.rol,
+      importeNuevoMxn: resultado.reemplazo.montoCentavos / 100,
+      motivo: campo(formData, "motivo", 500),
+      idempotencyKey: resultado.reemplazo.idempotencyKey,
     });
     refrescar(reservaId);
     return { ok: true, mensaje: "Corrección registrada; el movimiento original permanece en la auditoría." };
@@ -181,13 +204,24 @@ export async function ajustarPagoExternoAction(
     const reservaId = campo(formData, "reservaId");
     const tipo = campo(formData, "tipo", 20);
     if (!TIPOS_AJUSTE.has(tipo)) throw new Error("DATOS_INVALIDOS");
-    await ajustarPagoExterno(actor, {
+    const ajuste = await ajustarPagoExterno(actor, {
       reservaId,
       pagoExternoId: campo(formData, "pagoExternoId"),
       tipo: tipo as "ANULACION" | "REEMBOLSO",
       montoCentavos: dineroCentavos(formData, "monto"),
       motivo: campo(formData, "motivo", 500),
       idempotencyKey: idempotencia(formData),
+    });
+    await registrarAuditoriaOperacion({
+      propiedadId: actor.propiedadId,
+      actorUsuarioId: actor.usuarioPropiedadId,
+      reservaId,
+      accion: "AJUSTE_PAGO_EXTERNO",
+      resultado: "EXITO",
+      rol: actor.rol,
+      importeNuevoMxn: ajuste.montoCentavos / 100,
+      motivo: ajuste.motivo,
+      idempotencyKey: ajuste.idempotencyKey,
     });
     refrescar(reservaId);
     return {

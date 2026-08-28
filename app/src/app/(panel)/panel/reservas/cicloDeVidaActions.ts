@@ -4,6 +4,7 @@ import { requireGestionReservas } from "@/lib/auth";
 import { checkIn, checkOut, marcarNoShow, cancelarReserva, eliminarReserva, completarRegistroCheckIn } from "@/lib/negocio/cicloDeVida";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { registrarAuditoriaOperacion } from "@/lib/negocio/auditoria";
 
 // Combina el registro del huésped (documento, nacionalidad, placas, políticas)
 // con el check-in en un solo paso desde recepción.
@@ -26,8 +27,17 @@ export async function checkInAction(formData: FormData) {
       usuario.propiedadId,
       autorizarSaldoPendiente && typeof motivoSaldoPendiente === "string"
         ? { rol: usuario.rol, usuarioPropiedadId: usuario.id, motivo: motivoSaldoPendiente }
-        : undefined
+      : undefined
     );
+    await registrarAuditoriaOperacion({
+      propiedadId: usuario.propiedadId,
+      actorUsuarioId: usuario.id,
+      reservaId,
+      accion: "CHECK_IN",
+      resultado: "EXITO",
+      rol: usuario.rol,
+      motivo: typeof motivoSaldoPendiente === "string" ? motivoSaldoPendiente : null,
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Error";
     redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent(msg)}`);
@@ -40,6 +50,7 @@ export async function checkOutAction(formData: FormData) {
 
   const reservaId = formData.get("reservaId") as string;
   await checkOut(reservaId, usuario.propiedadId);
+  await registrarAuditoriaOperacion({ propiedadId: usuario.propiedadId, actorUsuarioId: usuario.id, reservaId, accion: "CHECK_OUT", resultado: "EXITO", rol: usuario.rol });
   redirect(`/panel/reservas/${reservaId}?success=${encodeURIComponent("Check-out registrado")}`);
 }
 
@@ -48,6 +59,7 @@ export async function noShowAction(formData: FormData) {
 
   const reservaId = formData.get("reservaId") as string;
   await marcarNoShow(reservaId, usuario.propiedadId);
+  await registrarAuditoriaOperacion({ propiedadId: usuario.propiedadId, actorUsuarioId: usuario.id, reservaId, accion: "NO_SHOW", resultado: "EXITO", rol: usuario.rol });
   redirect(`/panel/reservas/${reservaId}?success=${encodeURIComponent("Marcado como No-Show")}`);
 }
 
@@ -66,6 +78,7 @@ export async function cancelarReservaAction(formData: FormData) {
     politicaReembolso,
     montoParcialMxn,
   });
+  await registrarAuditoriaOperacion({ propiedadId: usuario.propiedadId, actorUsuarioId: usuario.id, reservaId, accion: "CANCELACION", resultado: "EXITO", rol: usuario.rol, motivo: politicaReembolso });
   redirect(`/panel/reservas/${reservaId}?success=${encodeURIComponent("Reserva cancelada")}`);
 }
 

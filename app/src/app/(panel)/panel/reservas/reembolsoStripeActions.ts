@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireGestionReservas } from "@/lib/auth";
 import { reembolsarPagosOnline } from "@/lib/negocio/pagosOnline";
+import { registrarAuditoriaOperacion } from "@/lib/negocio/auditoria";
 
 export type ResultadoReembolsoStripe = { ok: boolean; mensaje: string };
 
@@ -11,7 +12,7 @@ export async function reembolsarStripeAction(
   formData: FormData,
 ): Promise<ResultadoReembolsoStripe> {
   try {
-    await requireGestionReservas();
+    const usuario = await requireGestionReservas();
     const reservaId = formData.get("reservaId");
     const monto = formData.get("monto");
     const motivo = formData.get("motivo");
@@ -24,6 +25,16 @@ export async function reembolsarStripeAction(
     const montoMxn = Number(monto.replace(",", "."));
     if (!Number.isFinite(montoMxn) || montoMxn <= 0) return { ok: false, mensaje: "Captura un monto válido." };
     await reembolsarPagosOnline({ reservaId, montoMxn, motivo: motivo.trim() });
+    await registrarAuditoriaOperacion({
+      propiedadId: usuario.propiedadId,
+      actorUsuarioId: usuario.id,
+      reservaId,
+      accion: "REEMBOLSO_STRIPE",
+      resultado: "EXITO",
+      rol: usuario.rol,
+      importeNuevoMxn: montoMxn,
+      motivo: motivo.trim(),
+    });
     revalidatePath(`/panel/reservas/${reservaId}`);
     return { ok: true, mensaje: "Reembolso enviado a Stripe. El estado se actualizará al confirmar Stripe." };
   } catch (error) {
