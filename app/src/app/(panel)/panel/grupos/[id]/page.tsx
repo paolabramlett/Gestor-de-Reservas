@@ -6,6 +6,7 @@ import { AgregarHabitacionPanel } from "./AgregarHabitacionPanel";
 import { actualizarGrupoAction } from "../actions";
 import { BotonDesvincular, BotonEliminarGrupo } from "./BotonesGrupo";
 import { SolicitarPagoGrupo } from "./SolicitarPagoGrupo";
+import { puedeSolicitarPagoPorFecha } from "@/lib/negocio/vencimientoPagos";
 
 const ESTADO_LABEL: Record<string, string> = {
   PENDIENTE_PAGO: "Pago pendiente",
@@ -248,7 +249,7 @@ export default async function GrupoDetallePage({
           )}
 
           {/* Payment request — solo plan PRO con Stripe conectado */}
-          {usuario.propiedad.planActivo === "PRO" && usuario.propiedad.stripeConnectHabilitado && reservasActivas.length > 0 && contacto && restante > 0 && (
+          {usuario.propiedad.planActivo === "PRO" && usuario.propiedad.stripeConnectHabilitado && reservasActivas.length > 0 && contacto && restante > 0 && fechaMax && puedeSolicitarPagoPorFecha({ estado: "CONFIRMADA", fechaSalida: fechaMax, horaCheckOut: usuario.propiedad.horaCheckOut }) && (
             <SolicitarPagoGrupo
               grupoId={grupo.id}
               totalGrupo={totalGeneral}

@@ -11,6 +11,7 @@ import { enviarSolicitudPago } from "@/lib/emails";
 import { crearClaveIdempotenciaDirectCharge, crearDirectCharge, mensajeErrorConnect } from "@/lib/stripeConnect";
 import { validarCuentaConnectParaCobroDirecto } from "@/lib/stripeConnectAccount.server";
 import { asociarIntentoPagoStripe, registrarIntentoPago } from "@/lib/negocio/intentosPago";
+import { puedeSolicitarPagoPorFecha } from "@/lib/negocio/vencimientoPagos";
 
 function generarCodigoGrupo(): string {
   const id = ulid();
@@ -343,6 +344,9 @@ export async function solicitarPagoGrupoAction(formData: FormData) {
     (max, r) => (r.fechaSalida > max ? r.fechaSalida : max),
     grupo.reservas[0].fechaSalida
   );
+  if (!puedeSolicitarPagoPorFecha({ estado: "CONFIRMADA", fechaSalida: fechaMax, horaCheckOut: grupo.propiedad.horaCheckOut })) {
+    redirect(`/panel/grupos/${grupoId}?error=${encodeURIComponent("El periodo del grupo ya terminó; revisa el saldo vencido")}`);
+  }
   const totalPersonas = grupo.reservas.reduce((s, r) => s + r.numPersonas, 0);
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ??

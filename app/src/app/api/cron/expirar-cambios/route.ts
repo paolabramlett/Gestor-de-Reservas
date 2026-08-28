@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { enviarRespuestaCambioHotel } from "@/lib/emails";
+import { debeMarcarNoShow } from "@/lib/negocio/vencimientoPagos";
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
@@ -57,5 +58,26 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  return NextResponse.json({ procesadas: expiradas.length, pagosExpirados: reservasExpiradas.length });
+  // Después del umbral configurado por cada hotel, las confirmadas sin
+  // check-in pasan a NO_SHOW y dejan de ocupar inventario operativo.
+  const candidatasNoShow = await prisma.reserva.findMany({
+    where: { estado: "CONFIRMADA", fechaIngreso: { lte: new Date() } },
+    include: { propiedad: { select: { horaCheckIn: true, horasParaNoShow: true } } },
+  });
+  let noShows = 0;
+  for (const reserva of candidatasNoShow) {
+    if (!debeMarcarNoShow({
+      estado: reserva.estado,
+      fechaIngreso: reserva.fechaIngreso,
+      horaCheckIn: reserva.propiedad.horaCheckIn,
+      horasParaNoShow: reserva.propiedad.horasParaNoShow,
+    })) continue;
+    const cambio = await prisma.reserva.updateMany({
+      where: { id: reserva.id, estado: "CONFIRMADA" },
+      data: { estado: "NO_SHOW" },
+    });
+    noShows += cambio.count;
+  }
+
+  return NextResponse.json({ procesadas: expiradas.length, pagosExpirados: reservasExpiradas.length, noShows });
 }

@@ -17,6 +17,7 @@ import {
 import { PropuestaCambioPanel } from "../PropuestaCambioPanel";
 import { BotonesEstadoReserva, CancelarDialogClient } from "../BotonesEstadoReserva";
 import { SolicitarPagoButton } from "../SolicitarPagoButton";
+import { puedeSolicitarPagoPorFecha } from "@/lib/negocio/vencimientoPagos";
 import { PagoLedger, type PagoLedgerInput } from "./PagoLedger";
 import { obtenerLedgerReserva } from "@/lib/negocio/pagosExternos.server";
 import { clerkClient } from "@clerk/nextjs/server";
@@ -568,7 +569,7 @@ export default async function ReservaDetallePage({
       <PagoLedger
         input={ledgerInput}
         accionesCabecera={
-          usuario.rol !== "FINANZAS" && esPagoManual && saldoPendiente !== null && usuario.propiedad.planActivo === "PRO" && usuario.propiedad.stripeConnectHabilitado && reserva.tipoEspecial !== "CORTESIA" ? (
+          usuario.rol !== "FINANZAS" && esPagoManual && saldoPendiente !== null && usuario.propiedad.planActivo === "PRO" && usuario.propiedad.stripeConnectHabilitado && reserva.tipoEspecial !== "CORTESIA" && puedeSolicitarPagoPorFecha({ estado: reserva.estado, fechaSalida: reserva.fechaSalida, horaCheckOut: usuario.propiedad.horaCheckOut }) ? (
             <SolicitarPagoButton
               reservaId={reserva.id}
               totalMxn={saldoPendiente}

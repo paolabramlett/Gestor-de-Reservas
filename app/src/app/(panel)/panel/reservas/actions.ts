@@ -14,6 +14,7 @@ import { rutaReservaDespuesDeGuardarNotas } from "@/lib/negocio/reglasReserva";
 import { validarCuentaConnectParaCobroDirecto } from "@/lib/stripeConnectAccount.server";
 import { asociarIntentoPagoStripe, registrarIntentoPago } from "@/lib/negocio/intentosPago";
 import { aCentavos, aMxn, calcularResumenFinanciero } from "@/lib/negocio/resumenFinanciero";
+import { puedeSolicitarPagoPorFecha } from "@/lib/negocio/vencimientoPagos";
 
 export async function crearReservaManualAction(formData: FormData) {
   const usuario = await requireGestionReservas();
@@ -352,6 +353,9 @@ export async function solicitarPagoAction(reservaId: string) {
       if (reserva.tipoEspecial === "CORTESIA") redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("Las cortesías no requieren pago")}`);
       if (reserva.estado === "CANCELADA" || reserva.estado === "NO_SHOW" || reserva.estado === "COMPLETADA") {
         redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("No se puede solicitar pago en este estado")}`);
+      }
+      if (!puedeSolicitarPagoPorFecha({ estado: reserva.estado, fechaSalida: reserva.fechaSalida, horaCheckOut: reserva.propiedad.horaCheckOut })) {
+        redirect(`/panel/reservas/${reservaId}?error=${encodeURIComponent("El periodo de la reserva ya terminó; revisa el saldo vencido")}`);
       }
 
       const resumen = calcularResumenFinanciero({

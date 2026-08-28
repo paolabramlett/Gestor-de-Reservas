@@ -12,6 +12,7 @@ import { bloquearInventarioTipo, calcularDisponibilidad } from "@/lib/negocio/di
 import { validarCuentaEvento, validarDestinoPago, validarPagoRecibido } from "@/lib/negocio/pagosOnline";
 import { exigirIntentoPagoAutorizado, marcarIntentoPagoPagado, obtenerIntentoPago } from "@/lib/negocio/intentosPago";
 import { aCentavos, calcularResumenFinanciero } from "@/lib/negocio/resumenFinanciero";
+import { puedeSolicitarPagoPorFecha } from "@/lib/negocio/vencimientoPagos";
 
 function generarCodigoGrupo(): string {
   const id = ulid();
@@ -311,12 +312,24 @@ export async function POST(req: NextRequest) {
           await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${grupoId}, 2))`;
           const grupoBase = await tx.grupoReserva.findFirst({
             where: { id: grupoId, propiedadId: session.metadata!.propiedadId },
-            include: { reservas: { where: { estado: { notIn: [EstadoReserva.CANCELADA, EstadoReserva.NO_SHOW] } } } },
+            include: {
+              propiedad: { select: { horaCheckOut: true } },
+              reservas: { where: { estado: { notIn: [EstadoReserva.CANCELADA, EstadoReserva.NO_SHOW] } } },
+            },
           });
           if (!grupoBase) throw new Error("GRUPO_INVALIDO");
           const totalGrupoBase = grupoBase.reservas.reduce((s, r) => s + Number(r.totalMxn), 0);
           const restante = totalGrupoBase - Number(grupoBase.totalPagado);
-          const esExceso = montoCobrado > restante + 0.005;
+          const fechaSalidaMax = grupoBase.reservas.reduce(
+            (max, r) => (r.fechaSalida > max ? r.fechaSalida : max),
+            grupoBase.reservas[0]?.fechaSalida ?? new Date(0)
+          );
+          const periodoVencido = !puedeSolicitarPagoPorFecha({
+            estado: "CONFIRMADA",
+            fechaSalida: fechaSalidaMax,
+            horaCheckOut: grupoBase.propiedad.horaCheckOut,
+          });
+          const esExceso = periodoVencido || montoCobrado > restante + 0.005;
           const pago = await tx.pagoOnline.create({
             data: {
               propiedadId: grupoBase.propiedadId,
@@ -687,6 +700,28 @@ export async function POST(req: NextRequest) {
           },
         });
         if (!reserva) throw new Error("RESERVA_INVALIDA");
+        const pagoVencido = !puedeSolicitarPagoPorFecha({
+          estado: reserva.estado,
+          fechaSalida: reserva.fechaSalida,
+          horaCheckOut: reserva.propiedad.horaCheckOut,
+        });
+        if (pagoVencido) {
+          const pago = await tx.pagoOnline.create({
+            data: {
+              propiedadId: reserva.propiedadId,
+              reservaId,
+              stripePaymentIntentId: piId,
+              stripeCheckoutSessionId: session.id,
+              montoMxn: montoRecibido,
+              moneda: session.currency ?? "mxn",
+              modeloCobro: cuentaCheckoutDirecto ? "DIRECT" : "DESTINATION_LEGACY",
+              stripeConnectAccountId: cuentaCheckoutDirecto,
+              estado: "REEMBOLSO_PENDIENTE",
+              reembolsoPendienteMxn: montoRecibido,
+            },
+          });
+          return { existente: pago, reserva: null, aplicado: false, montoReembolso: montoRecibido };
+        }
         const resumenAntes = calcularResumenFinanciero({
           totalReservaCentavos: aCentavos(Number(reserva.totalMxn)),
           pagosStripe: reserva.pagosOnline.map((pago) => ({
