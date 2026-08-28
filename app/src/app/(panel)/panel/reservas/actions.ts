@@ -180,6 +180,16 @@ export async function asignarHabitacionAction(formData: FormData) {
     );
   }
 
+  await registrarAuditoriaOperacion({
+    propiedadId: usuario.propiedadId,
+    actorUsuarioId: usuario.id,
+    reservaId,
+    accion: "ASIGNACION_HABITACION",
+    resultado: "EXITO",
+    rol: usuario.rol,
+    metadata: { habitacionId },
+  });
+
   redirect(`/panel/reservas/${reservaId}?success=${encodeURIComponent("Habitación asignada")}`);
 }
 
@@ -199,6 +209,16 @@ export async function actualizarNotasReservaAction(formData: FormData) {
     where: { reservaId },
     update: { notas },
     create: { reservaId, estadoDePago: EstadoDePago.PENDIENTE, notas },
+  });
+
+  await registrarAuditoriaOperacion({
+    propiedadId: usuario.propiedadId,
+    actorUsuarioId: usuario.id,
+    reservaId,
+    accion: "ACTUALIZACION_NOTAS_RESERVA",
+    resultado: "EXITO",
+    rol: usuario.rol,
+    motivo: notas,
   });
 
   redirect(rutaReservaDespuesDeGuardarNotas(reservaId));
