@@ -12,6 +12,7 @@ import { crearClaveIdempotenciaDirectCharge, crearDirectCharge, mensajeErrorConn
 import { validarCuentaConnectParaCobroDirecto } from "@/lib/stripeConnectAccount.server";
 import { asociarIntentoPagoStripe, registrarIntentoPago } from "@/lib/negocio/intentosPago";
 import { puedeSolicitarPagoPorFecha } from "@/lib/negocio/vencimientoPagos";
+import { registrarAuditoriaOperacion } from "@/lib/negocio/auditoria";
 
 function generarCodigoGrupo(): string {
   const id = ulid();
@@ -140,6 +141,17 @@ export async function actualizarGrupoAction(formData: FormData) {
       notas,
       ...(totalPagado !== undefined ? { totalPagado } : {}),
     },
+  });
+
+  await registrarAuditoriaOperacion({
+    propiedadId: usuario.propiedadId,
+    actorUsuarioId: usuario.id,
+    grupoId,
+    accion: "ACTUALIZACION_GRUPO",
+    resultado: "EXITO",
+    rol: usuario.rol,
+    importeNuevoMxn: totalPagado ?? null,
+    motivo: notas,
   });
 
   // Si se modificó totalPagado, sincronizar estadoDePago en todas las reservas activas

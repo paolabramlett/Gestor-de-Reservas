@@ -15,6 +15,7 @@ import { validarCuentaConnectParaCobroDirecto } from "@/lib/stripeConnectAccount
 import { asociarIntentoPagoStripe, registrarIntentoPago } from "@/lib/negocio/intentosPago";
 import { aCentavos, aMxn, calcularResumenFinanciero } from "@/lib/negocio/resumenFinanciero";
 import { puedeSolicitarPagoPorFecha } from "@/lib/negocio/vencimientoPagos";
+import { registrarAuditoriaOperacion } from "@/lib/negocio/auditoria";
 
 export async function crearReservaManualAction(formData: FormData) {
   const usuario = await requireGestionReservas();
@@ -159,6 +160,18 @@ export async function asignarHabitacionAction(formData: FormData) {
       update: { habitacionId },
       create: { reservaId, habitacionId },
     });
+  });
+
+  await registrarAuditoriaOperacion({
+    propiedadId: usuario.propiedadId,
+    actorUsuarioId: usuario.id,
+    reservaId,
+    accion: "ACTUALIZACION_RESERVA",
+    resultado: "EXITO",
+    rol: usuario.rol,
+    importeAnteriorMxn: Number(reserva.totalMxn),
+    importeNuevoMxn: total,
+    metadata: { fechaIngreso: fechaIngreso.toISOString(), fechaSalida: fechaSalida.toISOString(), numPersonas },
   });
 
   if (conflicto) {
@@ -323,6 +336,16 @@ export async function actualizarEstadoReservaAction(formData: FormData) {
   await prisma.reserva.update({
     where: { id: reservaId },
     data: { estado },
+  });
+
+  await registrarAuditoriaOperacion({
+    propiedadId: usuario.propiedadId,
+    actorUsuarioId: usuario.id,
+    reservaId,
+    accion: "CAMBIO_ESTADO_RESERVA",
+    resultado: "EXITO",
+    rol: usuario.rol,
+    metadata: { estadoAnterior: reserva.estado, estadoNuevo: estado },
   });
 
   redirect(`/panel/reservas/${reservaId}?success=${encodeURIComponent("Reserva actualizada")}`);
