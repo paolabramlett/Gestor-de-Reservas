@@ -198,6 +198,31 @@ function checkoutGroupPaymentEvent(): Stripe.Event {
   return event;
 }
 
+function refundEvent(amountRefunded: number, amount = 180_000): Stripe.Event {
+  return {
+    id: "evt_refund",
+    object: "event",
+    account: cuentaConnect,
+    api_version: "2026-06-24.dahlia",
+    created: 1,
+    data: {
+      object: {
+        id: "ch_refund",
+        object: "charge",
+        amount,
+        amount_refunded: amountRefunded,
+        currency: "mxn",
+        payment_intent: "pi_refund",
+        refunded: amountRefunded === amount,
+      } as unknown as Stripe.Charge,
+    },
+    livemode: false,
+    pending_webhooks: 1,
+    request: { id: null, idempotency_key: null },
+    type: "charge.refunded",
+  } as Stripe.Event;
+}
+
 function request() {
   return new NextRequest("http://localhost/api/webhooks/stripe", {
     method: "POST",
@@ -367,7 +392,7 @@ describe("payment_intent.succeeded de una reserva pública directa", () => {
         numPersonas: 2,
         huesped: { nombre: "Ana Pérez", email: "ana@example.com", telefono: null },
         tipoDeHabitacion: { nombre: "Suite" },
-        propiedad: { nombre: "Casa Canteras", email: null, colorPrimario: null },
+        propiedad: { nombre: "Casa Canteras", email: null, colorPrimario: null, horaCheckOut: "12:00" },
         pagosOnline: [],
         pagosExternos: [],
       })
@@ -381,7 +406,7 @@ describe("payment_intent.succeeded de una reserva pública directa", () => {
         numPersonas: 2,
         huesped: { nombre: "Ana Pérez", email: "ana@example.com", telefono: null },
         tipoDeHabitacion: { nombre: "Suite" },
-        propiedad: { nombre: "Casa Canteras", email: null, colorPrimario: null },
+        propiedad: { nombre: "Casa Canteras", email: null, colorPrimario: null, horaCheckOut: "12:00" },
         pagosOnline: [{ montoMxn: 3_000, montoReembolsadoMxn: 0, reembolsoPendienteMxn: 0 }],
         pagosExternos: [],
       });
@@ -411,12 +436,27 @@ describe("payment_intent.succeeded de una reserva pública directa", () => {
     mocks.constructEvent.mockReturnValue(checkoutGroupPaymentEvent());
     mocks.paymentIntentRetrieve.mockResolvedValue({ id: "pi_grupo_pago", transfer_data: null });
     const reservas = [
-      { id: "res_1", totalMxn: 3_000, estado: "CONFIRMADA", numPersonas: 1 },
-      { id: "res_2", totalMxn: 3_000, estado: "CONFIRMADA", numPersonas: 1 },
+      {
+        id: "res_1",
+        totalMxn: 3_000,
+        estado: "CONFIRMADA",
+        numPersonas: 1,
+        fechaIngreso: new Date("2026-09-10T00:00:00Z"),
+        fechaSalida: new Date("2026-09-12T00:00:00Z"),
+      },
+      {
+        id: "res_2",
+        totalMxn: 3_000,
+        estado: "CONFIRMADA",
+        numPersonas: 1,
+        fechaIngreso: new Date("2026-09-10T00:00:00Z"),
+        fechaSalida: new Date("2026-09-12T00:00:00Z"),
+      },
     ];
     mocks.grupoFindFirst.mockResolvedValue({
       id: "grupo_1",
       propiedadId: "prop_1",
+      propiedad: { horaCheckOut: "12:00" },
       totalPagado: 0,
       reservas,
     });
@@ -432,7 +472,7 @@ describe("payment_intent.succeeded de una reserva pública directa", () => {
       id: "grupo_1",
       codigoGrupo: "GRP-AAAA-BBBB",
       nombre: "Boda",
-      propiedad: { nombre: "Casa Canteras", colorPrimario: null },
+      propiedad: { nombre: "Casa Canteras", colorPrimario: null, horaCheckOut: "12:00" },
       reservas: [{
         ...reservas[0],
         fechaIngreso: new Date("2026-09-10T00:00:00Z"),
@@ -451,5 +491,50 @@ describe("payment_intent.succeeded de una reserva pública directa", () => {
       totalReservaCentavos: 600_000,
       saldoPendienteCentavos: 300_000,
     }));
+  });
+});
+
+describe("charge.refunded sincroniza reembolsos iniciados en Stripe", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.STRIPE_WEBHOOK_SECRET_CONNECT = "whsec_connect_test";
+    process.env.STRIPE_SECRET_KEY = "sk_test_unit";
+    mocks.constructEvent.mockReturnValue(refundEvent(180_000));
+    mocks.pagoOnlineFindUnique.mockResolvedValue({
+      id: "pago_refund",
+      montoMxn: 1_800,
+      modeloCobro: "DIRECT",
+      stripeConnectAccountId: cuentaConnect,
+    });
+  });
+
+  it("marca un reembolso total y deja el ledger en cero neto", async () => {
+    const response = await POST(request());
+
+    expect(response.status).toBe(200);
+    expect(mocks.pagoOnlineUpdate).toHaveBeenCalledWith({
+      where: { id: "pago_refund" },
+      data: {
+        montoReembolsadoMxn: 1_800,
+        reembolsoPendienteMxn: 0,
+        estado: "REEMBOLSADO",
+      },
+    });
+  });
+
+  it("conserva el importe neto correcto en un reembolso parcial", async () => {
+    mocks.constructEvent.mockReturnValue(refundEvent(60_000, 180_000));
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(200);
+    expect(mocks.pagoOnlineUpdate).toHaveBeenCalledWith({
+      where: { id: "pago_refund" },
+      data: {
+        montoReembolsadoMxn: 600,
+        reembolsoPendienteMxn: 0,
+        estado: "PAGADO",
+      },
+    });
   });
 });

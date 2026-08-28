@@ -109,6 +109,53 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Modo de webhook incorrecto" }, { status: 400 });
   }
 
+  // Reembolsos iniciados directamente desde Stripe (fuera de Roomly) deben
+  // reflejarse en el ledger local. El estado de la reserva no cambia aquí:
+  // devolver el dinero y cancelar la reserva son decisiones independientes.
+  if (event.type === "charge.refunded") {
+    const charge = event.data.object as Stripe.Charge;
+    const paymentIntentId = typeof charge.payment_intent === "string"
+      ? charge.payment_intent
+      : charge.payment_intent?.id ?? null;
+    if (!paymentIntentId) return NextResponse.json({ received: true });
+
+    const pago = await prisma.pagoOnline.findUnique({
+      where: { stripePaymentIntentId: paymentIntentId },
+      select: {
+        id: true,
+        montoMxn: true,
+        modeloCobro: true,
+        stripeConnectAccountId: true,
+      },
+    });
+    if (!pago) return NextResponse.json({ received: true });
+
+    if (event.account) {
+      validarCuentaEvento(event.account, pago.stripeConnectAccountId ?? "");
+    } else if (pago.modeloCobro === "DIRECT") {
+      throw new Error("CUENTA_EVENTO_STRIPE_INCONSISTENTE");
+    }
+
+    if (!Number.isInteger(charge.amount) || charge.amount <= 0 ||
+        !Number.isInteger(charge.amount_refunded) || charge.amount_refunded < 0 ||
+        charge.amount_refunded > charge.amount || charge.currency !== "mxn") {
+      throw new Error("REEMBOLSO_STRIPE_INCONSISTENTE");
+    }
+
+    const reembolsadoCentavos = Math.min(charge.amount_refunded, charge.amount);
+    const reembolsadoMxn = reembolsadoCentavos / 100;
+    const cobradoCentavos = Math.round(Number(pago.montoMxn) * 100);
+    await prisma.pagoOnline.update({
+      where: { id: pago.id },
+      data: {
+        montoReembolsadoMxn: reembolsadoMxn,
+        reembolsoPendienteMxn: 0,
+        estado: reembolsadoCentavos >= cobradoCentavos ? "REEMBOLSADO" : "PAGADO",
+      },
+    });
+    return NextResponse.json({ received: true });
+  }
+
   if (event.type === "payment_intent.succeeded") {
     const intent = event.data.object as Stripe.PaymentIntent;
     const meta = intent.metadata;
