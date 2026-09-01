@@ -52,7 +52,7 @@ export function BuscadorReservas() {
         value={value}
         onChange={handleChange}
         placeholder="Buscar por código, nombre, correo, teléfono..."
-        className="w-full pl-9 pr-8 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-1 placeholder:text-gray-400"
+        className="roomly-input w-full pl-9 pr-8 py-2 text-sm placeholder:text-gray-400"
       />
       {value && (
         <button

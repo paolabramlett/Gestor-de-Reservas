@@ -112,7 +112,7 @@ export default async function ReservasPage({
         <h1 className="text-xl font-semibold text-gray-900">Reservas</h1>
         <Link
           href="/panel/reservas/nueva"
-          className="rounded-lg bg-gray-900 text-white px-4 py-2 text-sm font-medium hover:bg-gray-700 whitespace-nowrap"
+          className="roomly-button-primary px-4 py-2 text-sm whitespace-nowrap"
         >
           + Nueva reserva
         </Link>
@@ -135,7 +135,7 @@ export default async function ReservasPage({
               className={`px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap ${
                 (estado ?? "") === f.value
                   ? "bg-gray-900 text-white"
-                  : "bg-white border border-gray-300 text-gray-600 hover:bg-gray-50"
+                  : "bg-white border border-slate-300 text-gray-600 hover:bg-slate-50"
               }`}
             >
               {f.label}

@@ -401,7 +401,7 @@ export function CalendarioGrid({
         <div className="flex items-center gap-2">
           <a
             href={`/panel/calendario?mes=${prevMes}&año=${prevAño}`}
-            className="px-2 py-1 rounded border border-gray-300 text-sm hover:bg-gray-50"
+            className="px-2 py-1 rounded-xl border border-slate-300 text-sm hover:bg-slate-50"
           >
             ←
           </a>
@@ -411,7 +411,7 @@ export function CalendarioGrid({
             <select
               value={mes}
               onChange={(e) => router.push(`/panel/calendario?mes=${e.target.value}&año=${año}`)}
-              className="border border-gray-300 rounded-lg px-2 py-1 text-sm bg-white cursor-pointer"
+              className="roomly-input px-2 py-1 text-sm bg-white cursor-pointer"
             >
               {MES_NOMBRES.map((nombre, i) => (
                 <option key={i} value={i + 1}>{nombre}</option>
@@ -420,7 +420,7 @@ export function CalendarioGrid({
             <select
               value={año}
               onChange={(e) => router.push(`/panel/calendario?mes=${mes}&año=${e.target.value}`)}
-              className="border border-gray-300 rounded-lg px-2 py-1 text-sm bg-white cursor-pointer w-20"
+              className="roomly-input px-2 py-1 text-sm bg-white cursor-pointer w-20"
             >
               {Array.from({ length: 5 }, (_, i) => año - 2 + i).map((y) => (
                 <option key={y} value={y}>{y}</option>
@@ -430,23 +430,23 @@ export function CalendarioGrid({
 
           <a
             href={`/panel/calendario?mes=${nextMes}&año=${nextAño}`}
-            className="px-2 py-1 rounded border border-gray-300 text-sm hover:bg-gray-50"
+            className="px-2 py-1 rounded-xl border border-slate-300 text-sm hover:bg-slate-50"
           >
             →
           </a>
         </div>
 
         {/* Group toggle */}
-        <div className="flex rounded border border-gray-300 overflow-hidden text-sm">
+        <div className="flex rounded-xl border border-slate-300 overflow-hidden text-sm">
           <button
             onClick={() => setAgrupacion("numero")}
-            className={`px-3 py-1 ${agrupacion === "numero" ? "bg-gray-900 text-white" : "bg-white text-gray-700 hover:bg-gray-50"}`}
+            className={`px-3 py-1 ${agrupacion === "numero" ? "bg-gray-900 text-white" : "bg-white text-gray-700 hover:bg-slate-50"}`}
           >
             Por número
           </button>
           <button
             onClick={() => setAgrupacion("tipo")}
-            className={`px-3 py-1 ${agrupacion === "tipo" ? "bg-gray-900 text-white" : "bg-white text-gray-700 hover:bg-gray-50"}`}
+            className={`px-3 py-1 ${agrupacion === "tipo" ? "bg-gray-900 text-white" : "bg-white text-gray-700 hover:bg-slate-50"}`}
           >
             Por tipo
           </button>
@@ -483,7 +483,7 @@ export function CalendarioGrid({
         {/* Nueva reserva */}
         <Link
           href="/panel/reservas/nueva?from=calendario"
-          className="ml-auto rounded-lg bg-gray-900 text-white px-4 py-1.5 text-sm font-medium hover:bg-gray-700 flex-shrink-0"
+          className="roomly-button-primary ml-auto px-4 py-1.5 text-sm flex-shrink-0"
         >
           + Nueva reserva
         </Link>
@@ -512,7 +512,7 @@ export function CalendarioGrid({
       )}
 
       {/* Grid */}
-      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+      <div className="overflow-x-auto roomly-card">
         <div style={{ minWidth: LABEL_W + daysInMonth * COL_W }}>
           {/* Header row */}
           <div className="flex border-b border-gray-200 bg-gray-50 sticky top-0 z-20">

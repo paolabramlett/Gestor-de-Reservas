@@ -19,7 +19,7 @@ export function PagosSection({
 }: Props) {
   if (planActivo !== "PRO") {
     return (
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
+      <div className="roomly-card p-5">
         <h2 className="text-sm font-semibold text-gray-700 mb-1">Pagos con tarjeta</h2>
         <p className="text-sm text-gray-500">
           Solicitar pagos con tarjeta y el portal de reservas online son parte del plan Pro.{" "}
@@ -30,7 +30,7 @@ export function PagosSection({
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5">
+    <div className="roomly-card p-5">
       <h2 className="text-sm font-semibold text-gray-700 mb-1">Pagos con tarjeta</h2>
       <p className="text-xs text-gray-400 mb-4">
         El dinero de tus huéspedes va directo a tu propia cuenta de Stripe — Roomly nunca lo recibe
@@ -45,7 +45,7 @@ export function PagosSection({
           <form action={abrirDashboardStripeAction}>
             <button
               type="submit"
-              className="rounded-lg border border-gray-300 text-gray-700 px-4 py-2 text-sm font-medium hover:bg-gray-50"
+              className="rounded-xl border border-slate-300 text-gray-700 px-4 py-2 text-sm font-medium hover:bg-slate-50"
             >
               Ver mi dashboard de Stripe →
             </button>
@@ -72,7 +72,7 @@ export function PagosSection({
           <form action={iniciarConexionStripeAction}>
             <button
               type="submit"
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-slate-50"
             >
               Abrir formulario alojado de Stripe →
             </button>
