@@ -73,6 +73,9 @@ button, input, select, textarea {
 
 .roomly-button-primary {
   min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: var(--roomly-radius-md);
   background: var(--roomly-primary);
   color: var(--roomly-white);
@@ -91,6 +94,9 @@ button, input, select, textarea {
 }
 .roomly-input:hover { border-color: var(--roomly-text-secondary); }
 .roomly-input:focus { border-color: var(--roomly-text); box-shadow: 0 0 0 1px var(--roomly-text); outline: none; }
+
+/* Leave room for the native chevron instead of pinning it to the edge. */
+select { padding-right: 2.5rem; }
 
 .roomly-popover {
   border: 1px solid var(--roomly-border);
