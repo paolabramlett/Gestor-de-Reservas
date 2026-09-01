@@ -1,22 +1,39 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Roomly design tokens — centraliza aquí la identidad visual para futuros rediseños. */
+  --roomly-white: #ffffff;
+  --roomly-canvas: #f8fafc;
+  --roomly-surface-soft: #f1f5f9;
+  --roomly-border: #e2e8f0;
+  --roomly-border-strong: #cbd5e1;
+  --roomly-text: #111827;
+  --roomly-text-secondary: #64748b;
+  --roomly-text-muted: #94a3b8;
+  --roomly-primary: #111827;
+  --roomly-primary-hover: #1f2937;
+  --roomly-accent: #008a68;
+  --roomly-accent-hover: #006f55;
+  --roomly-info: #2563eb;
+  --roomly-warning: #b45309;
+  --roomly-danger: #dc2626;
+  --roomly-success: #15803d;
+  --roomly-radius-sm: 8px;
+  --roomly-radius-md: 12px;
+  --roomly-radius-lg: 16px;
+  --roomly-radius-xl: 24px;
+  --roomly-shadow-sm: 0 2px 4px rgb(15 23 42 / 0.08);
+  --roomly-shadow-md: 0 8px 24px rgb(15 23 42 / 0.12);
+  --roomly-shadow-lg: 0 16px 40px rgb(15 23 42 / 0.18);
+  --background: var(--roomly-canvas);
+  --foreground: var(--roomly-text);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: Arial, Helvetica, sans-serif;
+  --font-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 html, body {
@@ -30,5 +47,22 @@ html, body {
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.375;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button, input, select, textarea {
+  font: inherit;
+}
+
+:where(button, a, input, select, textarea):focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--roomly-info) 55%, transparent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 743px) {
+  body { font-size: 15px; }
 }
