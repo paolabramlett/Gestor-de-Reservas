@@ -63,6 +63,46 @@ button, input, select, textarea {
   outline-offset: 2px;
 }
 
+/* Shared component primitives. Keep component markup small and the visual
+   language in one place so a future redesign only needs token changes. */
+.roomly-card {
+  background: var(--roomly-white);
+  border: 1px solid var(--roomly-border);
+  border-radius: var(--roomly-radius-xl);
+}
+
+.roomly-button-primary {
+  min-height: 48px;
+  border-radius: var(--roomly-radius-md);
+  background: var(--roomly-primary);
+  color: var(--roomly-white);
+  font-weight: 500;
+  transition: background-color 160ms ease, transform 100ms ease, opacity 160ms ease;
+}
+.roomly-button-primary:hover { background: var(--roomly-primary-hover); }
+.roomly-button-primary:active { transform: scale(0.98); }
+.roomly-button-primary:disabled { cursor: wait; opacity: 0.6; }
+
+.roomly-input {
+  border: 1px solid var(--roomly-border-strong);
+  border-radius: var(--roomly-radius-md);
+  background: var(--roomly-white);
+  color: var(--roomly-text);
+}
+.roomly-input:hover { border-color: var(--roomly-text-secondary); }
+.roomly-input:focus { border-color: var(--roomly-text); box-shadow: 0 0 0 1px var(--roomly-text); outline: none; }
+
+.roomly-popover {
+  border: 1px solid var(--roomly-border);
+  border-radius: var(--roomly-radius-lg);
+  background: var(--roomly-white);
+  box-shadow: var(--roomly-shadow-lg);
+}
+
+.roomly-pill {
+  border-radius: 999px;
+}
+
 @media (max-width: 743px) {
   body { font-size: 15px; }
 }

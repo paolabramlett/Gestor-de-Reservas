@@ -30,20 +30,20 @@ export function OnboardingChecklist({ pasos }: { pasos: Paso[] }) {
   if (!visible || completados === todos) return null;
 
   return (
-    <div className="mb-6 bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <div className="roomly-card mb-6 overflow-hidden">
       <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 mb-2">
             <h2 className="text-sm font-semibold text-gray-900">
               Configura tu hotel — {completados} de {todos} completados
             </h2>
-            <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
+            <span className="roomly-pill text-xs font-medium text-blue-700 bg-blue-50 px-2 py-0.5">
               {pct}%
             </span>
           </div>
           <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
             <div
-              className="h-full bg-indigo-500 rounded-full transition-all duration-500"
+              className="h-full bg-blue-600 rounded-full transition-all duration-500"
               style={{ width: `${pct}%` }}
             />
           </div>
@@ -66,7 +66,7 @@ export function OnboardingChecklist({ pasos }: { pasos: Paso[] }) {
             <div
               className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
                 paso.completado
-                  ? "bg-emerald-500 border-emerald-500"
+                  ? "bg-green-600 border-green-600"
                   : "border-gray-300"
               }`}
             >
@@ -87,7 +87,7 @@ export function OnboardingChecklist({ pasos }: { pasos: Paso[] }) {
             {!paso.completado && (
               <Link
                 href={paso.href}
-                className="text-xs font-medium text-indigo-600 hover:text-indigo-800 shrink-0 whitespace-nowrap"
+                className="text-xs font-medium text-blue-700 hover:text-blue-900 shrink-0 whitespace-nowrap"
               >
                 {paso.cta} →
               </Link>

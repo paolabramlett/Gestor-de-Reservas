@@ -46,8 +46,8 @@ function SuccessToastInner() {
 
   return (
     <div
-      className={`fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-lg px-4 py-3 text-sm text-white shadow-xl transition-all duration-500 ${
-        esError ? "bg-red-700" : "bg-gray-900"
+      className={`fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-xl px-4 py-3 text-sm text-white shadow-xl transition-all duration-500 ${
+        esError ? "bg-red-600" : "bg-gray-900"
       } ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2 pointer-events-none"}`}
       onTransitionEnd={() => { if (!visible) setMessage(null); }}
     >

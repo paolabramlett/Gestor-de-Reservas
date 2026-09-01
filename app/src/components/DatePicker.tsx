@@ -152,7 +152,7 @@ export function DatePicker({
       <button
         type="button"
         onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center justify-between border border-gray-300 rounded-lg px-3 py-2 text-sm text-left hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-1 bg-white"
+        className="roomly-input w-full flex items-center justify-between px-3 py-2 text-sm text-left"
       >
         <span className={selected ? "text-gray-900" : "text-gray-400"}>
           {selected ? formatDisplay(selected) : "Seleccionar fecha"}
@@ -164,7 +164,7 @@ export function DatePicker({
 
       {/* Popover */}
       {open && (
-        <div className={`absolute top-full mt-1 z-50 bg-white rounded-xl border border-gray-200 shadow-xl p-4 w-72 ${alignRight ? "right-0" : "left-0"}`}>
+        <div className={`roomly-popover absolute top-full mt-1 z-50 p-4 w-72 ${alignRight ? "right-0" : "left-0"}`}>
 
           {/* Header: month/year with nav arrows */}
           <div className="flex items-center gap-2 mb-4">
@@ -182,7 +182,7 @@ export function DatePicker({
               <select
                 value={viewMonth}
                 onChange={e => setViewMonth(Number(e.target.value))}
-                className="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-sm bg-gray-50 focus:outline-none focus:border-gray-400 cursor-pointer"
+                className="roomly-input flex-1 px-2 py-1 text-sm bg-slate-50 cursor-pointer"
               >
                 {MES_NOMBRES.map((m, i) => (
                   <option key={i} value={i}>{m}</option>
@@ -191,7 +191,7 @@ export function DatePicker({
               <select
                 value={viewYear}
                 onChange={e => setViewYear(Number(e.target.value))}
-                className="w-[72px] border border-gray-200 rounded-lg px-2 py-1 text-sm bg-gray-50 focus:outline-none focus:border-gray-400 cursor-pointer"
+                className="roomly-input w-[72px] px-2 py-1 text-sm bg-slate-50 cursor-pointer"
               >
                 {yearOptions.map(y => (
                   <option key={y} value={y}>{y}</option>
