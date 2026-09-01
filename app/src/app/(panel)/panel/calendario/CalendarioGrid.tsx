@@ -420,7 +420,7 @@ export function CalendarioGrid({
             <select
               value={año}
               onChange={(e) => router.push(`/panel/calendario?mes=${mes}&año=${e.target.value}`)}
-              className="roomly-input px-2 py-1 text-sm bg-white cursor-pointer w-20"
+              className="roomly-input px-2 py-1 text-sm bg-white cursor-pointer w-24"
             >
               {Array.from({ length: 5 }, (_, i) => año - 2 + i).map((y) => (
                 <option key={y} value={y}>{y}</option>
