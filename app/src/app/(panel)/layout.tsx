@@ -92,7 +92,7 @@ export default async function PanelLayout({
 
   return (
     <ClerkProvider>
-    <div className="min-h-screen flex bg-gray-50">
+    <div className="h-screen flex overflow-hidden bg-gray-50">
       <Sidebar
         nombre={usuario.propiedad.nombre}
         rolLabel={ROL_LABEL[rol]}
@@ -101,7 +101,7 @@ export default async function PanelLayout({
         hotelActivoId={usuario.propiedadId}
         cambiarHotelActivoAction={cambiarHotelActivoAction}
       />
-      <main className="flex-1 min-w-0 overflow-auto pt-14 md:pt-0">
+      <main className="flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden pt-14 md:pt-0">
         <RolGuard rol={rol} rutasAdmin={RUTAS_ADMIN} rutasFinanzas={RUTAS_FINANZAS}>
           {children}
         </RolGuard>

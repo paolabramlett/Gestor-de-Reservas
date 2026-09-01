@@ -126,7 +126,7 @@ export function Sidebar({
       <div className="px-4 py-5 border-b border-gray-200">
         <HotelSwitcher {...switcherProps} />
       </div>
-      <nav className="flex-1 py-4">
+      <nav className="flex-1 min-h-0 overflow-y-auto py-4">
         {nav.map((item) => (
           <Link
             key={item.href}
@@ -154,7 +154,7 @@ export function Sidebar({
   return (
     <>
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex w-56 bg-white border-r border-gray-200 flex-col shrink-0">
+      <aside className="hidden md:flex h-full w-56 bg-white border-r border-gray-200 flex-col shrink-0 overflow-hidden">
         {sidebarContent}
       </aside>
 
@@ -182,7 +182,7 @@ export function Sidebar({
             aria-hidden="true"
           />
           {/* Panel */}
-          <aside className="relative w-64 bg-white flex flex-col h-full shadow-xl">
+          <aside className="relative w-64 bg-white flex flex-col h-dvh shadow-xl overflow-hidden">
             <div className="flex items-center justify-between px-4 py-4 border-b border-gray-200">
               <div className="min-w-0 flex-1">
                 <HotelSwitcher {...switcherProps} />
