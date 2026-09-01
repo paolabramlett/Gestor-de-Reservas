@@ -174,7 +174,7 @@ export default async function PanelPage() {
         </h1>
         <Link
           href="/panel/reservas/nueva"
-          className="rounded-lg bg-gray-900 text-white px-4 py-2 text-sm font-medium hover:bg-gray-700"
+          className="roomly-button-primary px-4 py-2 text-sm"
         >
           + Nueva reserva
         </Link>
@@ -192,15 +192,15 @@ export default async function PanelPage() {
 
       {/* KPIs */}
       <div className="grid grid-cols-3 gap-2 md:gap-4 mb-6 md:mb-8">
-        <div className="bg-white rounded-xl border border-gray-200 p-3 md:p-5">
+        <div className="roomly-card p-3 md:p-5">
           <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Llegadas hoy</p>
           <p className="text-2xl md:text-3xl font-bold text-gray-900">{llegadasHoy.length}</p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-3 md:p-5">
+        <div className="roomly-card p-3 md:p-5">
           <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">En casa</p>
           <p className="text-2xl md:text-3xl font-bold text-gray-900">{enCurso.length}</p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-3 md:p-5">
+        <div className="roomly-card p-3 md:p-5">
           <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Salidas hoy</p>
           <p className="text-2xl md:text-3xl font-bold text-gray-900">{salidasHoy.length}</p>
         </div>
@@ -278,7 +278,7 @@ function Section({
 }) {
   const arr = Array.isArray(children) ? children.filter(Boolean) : children ? [children] : [];
   return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <div className="roomly-card overflow-hidden">
       <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-gray-700">{title}</h2>
         {action && (

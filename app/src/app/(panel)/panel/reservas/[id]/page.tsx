@@ -157,7 +157,7 @@ export default async function ReservaDetallePage({
   };
 
   return (
-    <div className="p-8 max-w-3xl">
+    <div className="p-4 md:p-8 max-w-3xl">
       {/* Encabezado */}
       <div className="flex items-center gap-3 mb-2">
         <Link href="/panel/reservas" className="text-sm text-gray-500 hover:text-gray-700">← Reservas</Link>
@@ -304,7 +304,7 @@ export default async function ReservaDetallePage({
 
       {/* Datos editables de la reserva */}
       {esEditable ? (
-        <form action={actualizarDatosReservaAction} className="bg-white rounded-lg border border-gray-200 p-5 mb-6">
+        <form action={actualizarDatosReservaAction} className="roomly-card p-5 mb-6">
           <input type="hidden" name="reservaId" value={reserva.id} />
           <h2 className="text-sm font-semibold text-gray-700 mb-4">Datos de la reserva</h2>
 
@@ -315,7 +315,7 @@ export default async function ReservaDetallePage({
               <select
                 name="tipoDeHabitacionId"
                 defaultValue={reserva.tipoDeHabitacionId}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                className="roomly-input w-full px-3 py-2 text-sm"
               >
                 {tiposDeHabitacion.map((t) => (
                   <option key={t.id} value={t.id}>
@@ -458,7 +458,7 @@ export default async function ReservaDetallePage({
 
           <button
             type="submit"
-            className="rounded-lg bg-gray-900 text-white px-5 py-2 text-sm font-medium hover:bg-gray-700"
+            className="roomly-button-primary px-5 py-2 text-sm"
           >
             Guardar cambios
           </button>
@@ -466,7 +466,7 @@ export default async function ReservaDetallePage({
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
           {/* Detalles (solo lectura) */}
-          <div className="bg-white rounded-lg border border-gray-200 p-5">
+          <div className="roomly-card p-5">
             <h2 className="text-sm font-semibold text-gray-700 mb-3">Reserva</h2>
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between">
@@ -497,7 +497,7 @@ export default async function ReservaDetallePage({
           </div>
 
           {/* Huésped (solo lectura) */}
-          <div className="bg-white rounded-lg border border-gray-200 p-5">
+          <div className="roomly-card p-5">
             <h2 className="text-sm font-semibold text-gray-700 mb-3">Huésped</h2>
             <dl className="space-y-2 text-sm">
               <div>
@@ -520,7 +520,7 @@ export default async function ReservaDetallePage({
       )}
 
       {/* Asignación de habitación */}
-      <div className="bg-white rounded-lg border border-gray-200 p-5 mb-6">
+      <div className="roomly-card p-5 mb-6">
         <h2 className="text-sm font-semibold text-gray-700 mb-3">Habitación asignada</h2>
         {reserva.asignacion ? (
           <div className="flex items-center justify-between mb-3">
@@ -529,7 +529,7 @@ export default async function ReservaDetallePage({
             </p>
             <a
               href={`/panel/calendario?mes=${reserva.fechaIngreso.getMonth() + 1}&año=${reserva.fechaIngreso.getFullYear()}`}
-              className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-colors"
+              className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 border border-gray-200 rounded-xl px-3 py-1.5 hover:bg-gray-50 transition-colors"
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
@@ -554,7 +554,7 @@ export default async function ReservaDetallePage({
                 ))}
               </select>
             </div>
-            <button type="submit" className="rounded-lg bg-gray-900 text-white px-4 py-2 text-sm font-medium hover:bg-gray-700">
+            <button type="submit" className="roomly-button-primary px-4 py-2 text-sm">
               Asignar
             </button>
           </form>
@@ -587,11 +587,11 @@ export default async function ReservaDetallePage({
       )}
 
       {esPagoManual && (
-        <form action={actualizarNotasReservaAction} className="mb-6 space-y-3 rounded-lg border border-gray-200 bg-white p-5">
+        <form action={actualizarNotasReservaAction} className="roomly-card mb-6 space-y-3 p-5">
           <input type="hidden" name="reservaId" value={reserva.id} />
           <div>
             <label className="mb-1 block text-xs text-gray-500">Notas internas de la reserva</label>
-            <textarea name="notas" rows={3} defaultValue={reserva.pagoManual?.notas ?? ""} maxLength={2000} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            <textarea name="notas" rows={3} defaultValue={reserva.pagoManual?.notas ?? ""} maxLength={2000} className="roomly-input w-full px-3 py-2 text-sm" />
           </div>
           <div className="flex items-center gap-3">
             <GuardarNotasButton />
