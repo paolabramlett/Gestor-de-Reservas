@@ -37,6 +37,26 @@ export function PagosSection({
         ni lo retiene. Tú controlas tus datos bancarios y fiscales directamente con Stripe.
       </p>
 
+      <details className="mb-4 rounded-xl border border-slate-200 bg-slate-50/70 group">
+        <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-slate-700 flex items-center justify-between gap-3">
+          <span>¿Cuánto recibiré después de la comisión?</span>
+          <span className="text-slate-400 transition-transform group-open:rotate-180" aria-hidden="true">⌄</span>
+        </summary>
+        <div className="border-t border-slate-200 px-4 py-3 text-sm text-slate-600 space-y-2">
+          <p>
+            Stripe descuenta aproximadamente <strong>3.6% + $3 MXN</strong> por cobro con tarjeta.
+            Roomly no agrega una comisión adicional.
+          </p>
+          <div className="rounded-lg bg-white border border-slate-200 px-3 py-2 font-mono text-xs text-slate-700">
+            Ejemplo: cobro de $1,200 MXN → comisión aproximada de $46.20 MXN → recibes $1,153.80 MXN
+          </div>
+          <p className="text-xs text-slate-500">
+            Es una estimación orientativa. La tarifa final puede variar según el método de pago,
+            moneda y condiciones de tu cuenta; consulta el detalle en tu dashboard de Stripe.
+          </p>
+        </div>
+      </details>
+
       {stripeConnectHabilitado ? (
         <div className="space-y-4">
           <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-800">
