@@ -294,12 +294,25 @@ export default function MiReservaPage() {
 
             {/* Acciones */}
             {reserva.cancelable && !confirmandoCancelacion && (
-              <button
-                onClick={() => setConfirmandoCancelacion(true)}
-                className="w-full rounded-xl border border-red-200 text-red-600 py-3 text-sm font-medium hover:bg-red-50 transition-colors"
-              >
-                Cancelar reserva
-              </button>
+              <div className="space-y-2">
+                <details className="group rounded-xl border border-slate-200 bg-slate-50">
+                  <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-slate-700 flex items-center justify-between gap-2">
+                    <span>Consulta la política de reembolso</span>
+                    <span className="text-slate-400 transition-transform group-open:rotate-180" aria-hidden="true">⌄</span>
+                  </summary>
+                  <p className="border-t border-slate-200 px-4 py-3 text-xs leading-relaxed text-slate-600">
+                    Si cancelas dentro del plazo permitido, recibirás ${reserva.montoReembolso.toLocaleString("es-MX")} MXN.
+                    Se retiene ${reserva.comisionRetenida.toLocaleString("es-MX")} MXN de comisión de procesamiento de Stripe.
+                    Roomly no agrega una comisión adicional.
+                  </p>
+                </details>
+                <button
+                  onClick={() => setConfirmandoCancelacion(true)}
+                  className="w-full rounded-xl border border-red-200 text-red-600 py-3 text-sm font-medium hover:bg-red-50 transition-colors"
+                >
+                  Cancelar reserva
+                </button>
+              </div>
             )}
 
             {reserva.origen === "MANUAL" && reserva.estado === "CONFIRMADA" && (

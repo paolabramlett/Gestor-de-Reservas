@@ -181,9 +181,16 @@ export default async function ReservarPage({
                     Cancela antes del <span className="font-medium">{limiteFmt}</span> y recibe un reembolso de{" "}
                     <span className="font-medium">${montoReembolso.toLocaleString("es-MX")} MXN</span>.
                   </p>
-                  <p className="text-green-600">
-                    Se retiene ${comisionRetenida.toLocaleString("es-MX")} MXN de comisión de pasarela de pago (Stripe).
-                  </p>
+                  <details className="rounded-lg border border-green-200 bg-white/60 group">
+                    <summary className="cursor-pointer list-none px-3 py-2 text-green-700 font-medium flex items-center justify-between gap-2">
+                      <span>Ver detalle del reembolso</span>
+                      <span className="transition-transform group-open:rotate-180" aria-hidden="true">⌄</span>
+                    </summary>
+                    <p className="border-t border-green-200 px-3 py-2 text-green-600">
+                      Se retiene ${comisionRetenida.toLocaleString("es-MX")} MXN de comisión de procesamiento de Stripe.
+                      Roomly no agrega una comisión adicional.
+                    </p>
+                  </details>
                 </>
               ) : (
                 <p className="text-amber-700">
